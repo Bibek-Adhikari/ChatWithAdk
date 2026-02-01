@@ -4,7 +4,7 @@ import { ChatMessage } from '../types';
 
 interface ChatMessageItemProps {
   message: ChatMessage;
-  onImageClick: (url: string) => void;
+  onImageClick?: (url: string) => void;
 }
 
 const ChatMessageItem: React.FC<ChatMessageItemProps> = ({ message, onImageClick }) => {
@@ -33,17 +33,19 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = ({ message, onImageClick
                 </div>
               ) : (
                 <div 
-                  className="group relative cursor-pointer overflow-hidden rounded-2xl border-2 border-slate-700 shadow-xl transition-all hover:scale-[1.02]"
-                  onClick={() => onImageClick(part.content)}
+                  className={`group relative overflow-hidden rounded-2xl border-2 border-slate-700 shadow-xl transition-all ${onImageClick ? 'cursor-pointer hover:scale-[1.02]' : ''}`}
+                  onClick={() => onImageClick?.(part.content)}
                 >
                   <img 
                     src={part.content} 
                     alt="Generated content" 
                     className="w-full h-auto max-w-[280px] object-cover aspect-square"
                   />
-                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
-                    <i className="fas fa-expand text-white text-xl"></i>
-                  </div>
+                  {onImageClick && (
+                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                      <i className="fas fa-expand text-white text-xl"></i>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

@@ -2,9 +2,8 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { ChatMessage, ChatSession, GenerationState, MessagePart } from './types';
 import ChatMessageItem from './components/ChatMessageItem';
-import ImageModal from './components/ImageModal';
 import Sidebar from './components/Sidebar';
-import { generateTextResponse, generateImage } from './services/geminiService';
+import { generateTextResponse } from './services/geminiService';
 
 const STORAGE_KEY = 'chat_with_adk_history';
 
@@ -23,11 +22,8 @@ const App: React.FC = () => {
   const [inputValue, setInputValue] = useState('');
   const [status, setStatus] = useState<GenerationState>({
     isTyping: false,
-    isGeneratingImage: false,
     error: null,
   });
-  const [selectedImage, setSelectedImage] = useState<string | null>(null);
-  const [showTooltip, setShowTooltip] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -75,7 +71,7 @@ const App: React.FC = () => {
 
   const handleSend = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!inputValue.trim() || status.isTyping || status.isGeneratingImage) return;
+    if (!inputValue.trim() || status.isTyping) return;
 
     let sessionId = currentSessionId;
     if (!sessionId) {
@@ -105,44 +101,18 @@ const App: React.FC = () => {
     setStatus(prev => ({ ...prev, isTyping: true, error: null }));
 
     try {
-      if (currentInput.toLowerCase().startsWith('/image ')) {
-        const prompt = currentInput.slice(7).trim();
-        await triggerImageGeneration(sessionId, prompt);
-      } else {
-        const history = (currentSession?.messages || []).map(m => ({
-          role: m.role === 'assistant' ? 'model' : 'user',
-          parts: [{ text: m.parts.map(p => p.content).join(' ') }]
-        }));
-        
-        const responseText = await generateTextResponse(currentInput, history);
-
-        if (responseText.startsWith('/image ')) {
-          const prompt = responseText.slice(7).trim();
-          await triggerImageGeneration(sessionId, prompt);
-        } else {
-          addAssistantMessage(sessionId, [{ type: 'text', content: responseText }]);
-        }
-      }
+      const history = (currentSession?.messages || []).map(m => ({
+        role: m.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: m.parts.map(p => p.content).join(' ') }]
+      }));
+      
+      const responseText = await generateTextResponse(currentInput, history);
+      addAssistantMessage(sessionId, [{ type: 'text', content: responseText }]);
     } catch (err) {
       setStatus(prev => ({ ...prev, error: "Connection lost. Please try again." }));
     } finally {
       setStatus(prev => ({ ...prev, isTyping: false }));
     }
-  };
-
-  const triggerImageGeneration = async (sessionId: string, prompt: string) => {
-    setStatus(prev => ({ ...prev, isGeneratingImage: true }));
-    const b64Image = await generateImage(prompt);
-    
-    if (b64Image) {
-      addAssistantMessage(sessionId, [
-        { type: 'text', content: `Here is your creation: "${prompt}"` },
-        { type: 'image', content: b64Image }
-      ]);
-    } else {
-      addAssistantMessage(sessionId, [{ type: 'text', content: "I encountered an issue generating that image." }]);
-    }
-    setStatus(prev => ({ ...prev, isGeneratingImage: false }));
   };
 
   const updateSessionMessages = (sessionId: string, updater: (prev: ChatMessage[]) => ChatMessage[], firstInput?: string) => {
@@ -240,17 +210,16 @@ const App: React.FC = () => {
               <ChatMessageItem 
                 key={msg.id} 
                 message={msg as any} 
-                onImageClick={url => setSelectedImage(url)} 
               />
             ))}
             
-            {(status.isTyping || status.isGeneratingImage) && (
+            {status.isTyping && (
               <div className="flex items-start gap-2 mb-6 animate-pulse">
                 <div className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center text-slate-500">
                   <i className="fas fa-ellipsis"></i>
                 </div>
                 <div className="bg-slate-800/50 border border-slate-700/50 px-4 py-2 rounded-2xl text-xs text-slate-400">
-                  {status.isGeneratingImage ? 'Synthesizing visual data...' : 'Processing prompt...'}
+                  Processing prompt...
                 </div>
               </div>
             )}
@@ -273,34 +242,19 @@ const App: React.FC = () => {
               <div className="absolute -inset-0.5 bg-gradient-to-r from-blue-600 to-cyan-500 rounded-2xl blur opacity-20 group-focus-within:opacity-40 transition duration-500"></div>
               
               <div className="relative glass rounded-2xl p-1 flex items-center shadow-2xl">
-                <button 
-                  type="button"
-                  onClick={() => setShowTooltip(!showTooltip)}
-                  className="w-12 h-12 flex items-center justify-center text-slate-400 hover:text-blue-400 transition-colors relative"
-                >
-                  <i className="fas fa-wand-magic-sparkles"></i>
-                  {showTooltip && (
-                    <div className="absolute bottom-full left-0 mb-4 w-64 p-3 bg-slate-800 rounded-xl text-xs text-slate-300 border border-slate-700 shadow-2xl animate-in fade-in zoom-in-95">
-                      <p className="font-bold text-white mb-1">Image Lab</p>
-                      Type <code className="bg-slate-700 px-1.5 py-0.5 rounded text-blue-400">/image</code> followed by your vision to generate unique AI artwork.
-                      <div className="absolute left-5 -bottom-1 w-2 h-2 bg-slate-800 border-r border-b border-slate-700 rotate-45"></div>
-                    </div>
-                  )}
-                </button>
-
                 <input 
                   type="text"
                   value={inputValue}
                   onChange={(e) => setInputValue(e.target.value)}
-                  placeholder="Ask anything or generate images..."
-                  className="flex-1 bg-transparent border-none outline-none px-2 py-3 text-sm text-white placeholder:text-slate-500"
-                  disabled={status.isTyping || status.isGeneratingImage}
+                  placeholder="Ask anything..."
+                  className="flex-1 bg-transparent border-none outline-none px-6 py-3 text-sm text-white placeholder:text-slate-500"
+                  disabled={status.isTyping}
                 />
 
                 <button 
                   type="submit"
-                  disabled={!inputValue.trim() || status.isTyping || status.isGeneratingImage}
-                  className="w-12 h-12 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800 disabled:text-slate-600 text-white flex items-center justify-center transition-all active:scale-95 shadow-lg shadow-blue-500/20"
+                  disabled={!inputValue.trim() || status.isTyping}
+                  className="w-12 h-12 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800 disabled:text-slate-600 text-white flex items-center justify-center transition-all active:scale-95 shadow-lg shadow-blue-500/20 mr-1"
                 >
                   <i className={`fas ${status.isTyping ? 'fa-circle-notch fa-spin' : 'fa-paper-plane'}`}></i>
                 </button>
@@ -308,19 +262,11 @@ const App: React.FC = () => {
             </form>
             
             <div className="flex justify-center gap-6 mt-4 text-[10px] font-bold text-slate-600 tracking-wider uppercase">
-               <span className="flex items-center gap-1"><i className="fas fa-microchip text-blue-500"></i> Gemini 3 Flash</span>
-               <span className="flex items-center gap-1"><i className="fas fa-palette text-cyan-500"></i> Flash Image 2.5</span>
+               <span className="flex items-center gap-1"><i className="fas fa-microchip text-blue-500"></i> Gemini 1.5 Flash</span>
             </div>
           </div>
         </footer>
 
-        {/* Image Preview Modal */}
-        {selectedImage && (
-          <ImageModal 
-            imageUrl={selectedImage} 
-            onClose={() => setSelectedImage(null)} 
-          />
-        )}
       </div>
     </div>
   );

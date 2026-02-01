@@ -22,6 +22,5 @@ export interface ChatSession {
 
 export interface GenerationState {
   isTyping: boolean;
-  isGeneratingImage: boolean;
   error: string | null;
 }
