@@ -1,6 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 
-const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+const apiKey = import.meta.env.VITE_GEMINI_API_KEY || (process.env as any).VITE_GEMINI_API_KEY;
 
 // Debug log (obfuscated)
 console.log("VITE_GEMINI_API_KEY check:", apiKey ? `Present (Starts with: ${apiKey.substring(0, 4)}...)` : "MISSING");
@@ -9,7 +9,7 @@ function getAI() {
   if (!apiKey || apiKey === 'your_api_key_here') {
     console.error("VITE_GEMINI_API_KEY is not set in .env.local");
   }
-  return new GoogleGenAI({ apiKey: apiKey || "" });
+  return new GoogleGenAI(apiKey || "");
 }
 
 let aiInstance: GoogleGenAI | null = null;
@@ -31,30 +31,37 @@ export async function generateTextResponse(prompt: string, history: ChatHistoryE
 
   for (const modelName of FALLBACK_MODELS) {
     let retries = 0;
-    const maxRetries = 2;
+    const maxRetries = 1;
 
     while (retries <= maxRetries) {
       try {
         console.log(`Attempting with model: ${modelName} (Retry: ${retries})`);
-        const result = await ai.models.generateContent({
+        
+        const model = ai.getGenerativeModel({ 
           model: modelName,
-          contents: [
-            ...history,
-            { role: 'user', parts: [{ text: prompt }] }
-          ],
-          config: {
-            systemInstruction: `You are ChatWithAdk, a highly intelligent and creative assistant. 
-            Respond naturally with helpful, concise, and professional information.`,
+          generationConfig: {
             temperature: 0.7,
             topP: 0.95,
             topK: 64,
           },
+          systemInstruction: "You are ChatWithAdk, a highly intelligent and creative assistant. Respond naturally with helpful, concise, and professional information.",
         });
+
+        // Use startChat for better history management
+        const chat = model.startChat({
+          history: history,
+        });
+
+        const result = await chat.sendMessage(prompt);
+        const response = await result.response;
+        const text = response.text();
         
-        return result.text;
+        if (!text) throw new Error("Empty response from AI");
+        return text;
       } catch (err: any) {
         lastError = err;
-        const isQuotaError = err.message?.includes("429") || err.message?.includes("quota") || err.status === "RESOURCE_EXHAUSTED";
+        const errMsg = err.message || "";
+        const isQuotaError = errMsg.includes("429") || errMsg.includes("quota") || errMsg.includes("RESOURCE_EXHAUSTED");
         
         if (isQuotaError && retries < maxRetries) {
           const delay = Math.pow(2, retries) * 1000;
@@ -64,12 +71,11 @@ export async function generateTextResponse(prompt: string, history: ChatHistoryE
           continue;
         }
         
-        console.error(`Failed with model ${modelName}:`, err.message);
-        break; // Move to next model if it's not a retryable error or we ran out of retries
+        console.error(`Failed with model ${modelName}:`, errMsg);
+        break; 
       }
     }
   }
 
-  throw new Error(lastError?.message || "All models failed to generate response. Please try again later.");
+  throw new Error(lastError?.message || "All models failed to generate response. Please check your API key and connection.");
 }
-
