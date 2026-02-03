@@ -1,15 +1,30 @@
 import { GoogleGenAI } from "@google/genai";
 
-const apiKey = import.meta.env.VITE_GEMINI_API_KEY || (process.env as any).VITE_GEMINI_API_KEY;
+// Enhanced environment retrieval
+const getEnv = (key: string): string => {
+  // Try Vite's built-in way
+  if (import.meta.env[key]) return import.meta.env[key];
+  
+  // Try process.env if available (bundlers sometimes inject this)
+  try {
+    const procEnv = (window as any).process?.env;
+    if (procEnv && procEnv[key]) return procEnv[key];
+  } catch (e) {}
 
-// Debug log (obfuscated)
-console.log("VITE_GEMINI_API_KEY check:", apiKey ? `Present (Starts with: ${apiKey.substring(0, 4)}...)` : "MISSING");
+  return "";
+};
 
 function getAI() {
-  if (!apiKey || apiKey === 'your_api_key_here') {
-    console.error("VITE_GEMINI_API_KEY is not set in .env.local");
+  const key = getEnv('VITE_GEMINI_API_KEY') || getEnv('GEMINI_API_KEY');
+  
+  console.log("AI Init - Key length:", key ? key.length : 0);
+
+  if (!key || key === 'undefined' || key === 'null') {
+    throw new Error("An API Key must be set. Please check your .env.local file and ensure VITE_GEMINI_API_KEY is defined.");
   }
-  return new GoogleGenAI(apiKey || "");
+  
+  // The @google/genai SDK expects an options object with apiKey
+  return new GoogleGenAI({ apiKey: key });
 }
 
 let aiInstance: GoogleGenAI | null = null;
@@ -30,52 +45,37 @@ export async function generateTextResponse(prompt: string, history: ChatHistoryE
   let lastError: any = null;
 
   for (const modelName of FALLBACK_MODELS) {
-    let retries = 0;
-    const maxRetries = 1;
-
-    while (retries <= maxRetries) {
-      try {
-        console.log(`Attempting with model: ${modelName} (Retry: ${retries})`);
-        
-        const model = ai.getGenerativeModel({ 
-          model: modelName,
-          generationConfig: {
-            temperature: 0.7,
-            topP: 0.95,
-            topK: 64,
-          },
-          systemInstruction: "You are ChatWithAdk, a highly intelligent and creative assistant. Respond naturally with helpful, concise, and professional information.",
-        });
-
-        // Use startChat for better history management
-        const chat = model.startChat({
-          history: history,
-        });
-
-        const result = await chat.sendMessage(prompt);
-        const response = await result.response;
-        const text = response.text();
-        
-        if (!text) throw new Error("Empty response from AI");
-        return text;
-      } catch (err: any) {
-        lastError = err;
-        const errMsg = err.message || "";
-        const isQuotaError = errMsg.includes("429") || errMsg.includes("quota") || errMsg.includes("RESOURCE_EXHAUSTED");
-        
-        if (isQuotaError && retries < maxRetries) {
-          const delay = Math.pow(2, retries) * 1000;
-          console.warn(`Quota exceeded for ${modelName}. Retrying in ${delay}ms...`);
-          await new Promise(resolve => setTimeout(resolve, delay));
-          retries++;
-          continue;
+    try {
+      console.log(`Using model: ${modelName}`);
+      
+      // In @google/genai SDK, we use ai.models.generateContent
+      const result = await ai.models.generateContent({
+        model: modelName,
+        contents: [
+          ...history.map(h => ({
+            role: h.role,
+            parts: h.parts.map(p => ({ text: p.text }))
+          })),
+          { role: 'user', parts: [{ text: prompt }] }
+        ],
+        config: {
+          temperature: 0.7,
         }
-        
-        console.error(`Failed with model ${modelName}:`, errMsg);
-        break; 
+      });
+
+      const text = result.text;
+      
+      if (text) return text;
+    } catch (err: any) {
+      lastError = err;
+      console.error(`Error with ${modelName}:`, err.message || err);
+      if (err.message?.includes("429")) {
+        // Simple backoff
+        await new Promise(r => setTimeout(r, 2000));
       }
+      continue;
     }
   }
 
-  throw new Error(lastError?.message || "All models failed to generate response. Please check your API key and connection.");
+  throw new Error(lastError?.message || "All models failed. Check your connection or quota.");
 }
