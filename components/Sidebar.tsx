@@ -13,6 +13,7 @@ interface SidebarProps {
   onClose: () => void;
   user: User | null;
   onAuthClick: (mode: 'signin' | 'signup') => void;
+  theme: 'light' | 'dark';
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ 
@@ -24,7 +25,8 @@ const Sidebar: React.FC<SidebarProps> = ({
   isOpen,
   onClose,
   user,
-  onAuthClick
+  onAuthClick,
+  theme
 }) => {
   return (
     <>
@@ -37,9 +39,10 @@ const Sidebar: React.FC<SidebarProps> = ({
       )}
       
       <aside className={`
-        fixed inset-y-0 left-0 z-40 w-72 bg-slate-900 border-r border-white/5 flex flex-col transition-transform duration-300 transform
+        fixed inset-y-0 left-0 z-40 w-72 border-r flex flex-col transition-transform duration-300 transform
         ${isOpen ? 'translate-x-0' : '-translate-x-full'}
         lg:relative lg:translate-x-0
+        ${theme === 'dark' ? 'bg-slate-900 border-white/5' : 'bg-white border-slate-200'}
       `}>
         <div className="p-4 border-b border-white/5 shrink-0">
           <button 
@@ -63,8 +66,10 @@ const Sidebar: React.FC<SidebarProps> = ({
                 key={session.id}
                 className={`group flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-all ${
                   currentSessionId === session.id 
-                  ? 'bg-blue-600/10 text-blue-400 border border-blue-600/20' 
-                  : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200 border border-transparent'
+                  ? 'bg-blue-600/10 text-blue-500 border border-blue-600/20' 
+                  : theme === 'dark' 
+                    ? 'text-slate-400 hover:bg-slate-800 hover:text-slate-200 border border-transparent'
+                    : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 border border-transparent'
                 }`}
                 onClick={() => {
                   onSelectSession(session.id);
@@ -99,7 +104,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                   )}
                 </div>
                 <div className="min-w-0">
-                  <p className="text-[10px] font-bold text-white truncate">{user.displayName || user.email?.split('@')[0] || 'User'}</p>
+                  <p className={`text-[10px] font-bold truncate ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{user.displayName || user.email?.split('@')[0] || 'User'}</p>
                   <p className="text-[9px] text-slate-500 uppercase font-bold tracking-widest">Active Now</p>
                 </div>
               </div>

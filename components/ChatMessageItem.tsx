@@ -5,9 +5,10 @@ import { ChatMessage } from '../types';
 interface ChatMessageItemProps {
   message: ChatMessage;
   onImageClick?: (url: string) => void;
+  theme?: 'light' | 'dark';
 }
 
-const ChatMessageItem: React.FC<ChatMessageItemProps> = ({ message, onImageClick }) => {
+const ChatMessageItem: React.FC<ChatMessageItemProps> = ({ message, onImageClick, theme = 'dark' }) => {
   const isUser = message.role === 'user';
 
   return (
@@ -27,7 +28,9 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = ({ message, onImageClick
                   className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed shadow-sm
                     ${isUser 
                       ? 'bg-blue-600 text-white rounded-br-none' 
-                      : 'bg-slate-800 text-slate-100 rounded-bl-none border border-slate-700'}`}
+                      : theme === 'dark'
+                        ? 'bg-slate-800 text-slate-100 rounded-bl-none border border-slate-700'
+                        : 'bg-white text-slate-800 rounded-bl-none border border-slate-200 shadow-sm'}`}
                 >
                   {part.content}
                 </div>
@@ -57,7 +60,7 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = ({ message, onImageClick
         </div>
 
         {isUser && (
-          <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center text-white shrink-0 mb-1">
+          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white shrink-0 mb-1 ${theme === 'dark' ? 'bg-slate-700' : 'bg-slate-400'}`}>
             <i className="fas fa-user text-xs"></i>
           </div>
         )}

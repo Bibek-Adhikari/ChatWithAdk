@@ -12,9 +12,10 @@ interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
   initialMode: 'signin' | 'signup';
+  theme: 'light' | 'dark';
 }
 
-const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode }) => {
+const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode, theme }) => {
   const [mode, setMode] = useState<'signin' | 'signup'>(initialMode);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -60,17 +61,17 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode }) =
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
       <div 
-        className="glass w-full max-w-md rounded-3xl overflow-hidden shadow-2xl border border-white/10"
+        className={`glass w-full max-w-md rounded-3xl overflow-hidden shadow-2xl border ${theme === 'dark' ? 'border-white/10' : 'border-slate-200 bg-white'}`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="p-8">
           <div className="flex justify-between items-center mb-6">
-            <h2 className="text-2xl font-bold text-white tracking-tight">
+            <h2 className={`text-2xl font-bold tracking-tight ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>
               {mode === 'signin' ? 'Welcome Back' : 'Create Account'}
             </h2>
             <button 
               onClick={onClose}
-              className="w-10 h-10 flex items-center justify-center rounded-xl bg-white/5 text-slate-400 hover:text-white transition-all"
+              className={`w-10 h-10 flex items-center justify-center rounded-xl transition-all ${theme === 'dark' ? 'bg-white/5 text-slate-400 hover:text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
             >
               <i className="fas fa-times"></i>
             </button>
@@ -88,7 +89,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode }) =
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full bg-slate-900/50 border border-white/10 rounded-2xl py-3 pl-11 pr-4 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/50 transition-all"
+                  className={`w-full border rounded-2xl py-3 pl-11 pr-4 text-sm transition-all focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/50 ${theme === 'dark' ? 'bg-slate-900/50 border-white/10 text-white placeholder:text-slate-600' : 'bg-slate-50 border-slate-200 text-slate-900 placeholder:text-slate-400'}`}
                   placeholder="name@example.com"
                 />
               </div>
@@ -105,7 +106,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode }) =
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-slate-900/50 border border-white/10 rounded-2xl py-3 pl-11 pr-4 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/50 transition-all"
+                  className={`w-full border rounded-2xl py-3 pl-11 pr-4 text-sm transition-all focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/50 ${theme === 'dark' ? 'bg-slate-900/50 border-white/10 text-white placeholder:text-slate-600' : 'bg-slate-50 border-slate-200 text-slate-900 placeholder:text-slate-400'}`}
                   placeholder="••••••••"
                 />
               </div>
@@ -136,17 +137,17 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode }) =
 
           <div className="relative my-8">
             <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-white/5"></div>
+              <div className={`w-full border-t ${theme === 'dark' ? 'border-white/5' : 'border-slate-100'}`}></div>
             </div>
             <div className="relative flex justify-center text-[10px] uppercase font-bold tracking-widest">
-              <span className="bg-[#0f172a] px-3 text-slate-600">Or continue with</span>
+              <span className={`px-3 text-slate-600 ${theme === 'dark' ? 'bg-[#0f172a]' : 'bg-white'}`}>Or continue with</span>
             </div>
           </div>
 
           <button 
             onClick={handleGoogleSignIn}
             disabled={loading}
-            className="w-full bg-white/5 hover:bg-white/10 border border-white/10 text-white font-semibold py-3 rounded-2xl transition-all flex items-center justify-center gap-3 active:scale-[0.98]"
+            className={`w-full border font-semibold py-3 rounded-2xl transition-all flex items-center justify-center gap-3 active:scale-[0.98] ${theme === 'dark' ? 'bg-white/5 hover:bg-white/10 border-white/10 text-white' : 'bg-slate-50 hover:bg-slate-100 border-slate-200 text-slate-700'}`}
           >
             <i className="fab fa-google text-lg"></i>
             <span>Google Account</span>

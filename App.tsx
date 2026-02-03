@@ -11,6 +11,11 @@ import { onAuthStateChanged, signOut, User } from 'firebase/auth';
 const STORAGE_KEY = 'chat_with_adk_history';
 
 const App: React.FC = () => {
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    const saved = localStorage.getItem('theme');
+    return (saved as 'light' | 'dark') || 'dark';
+  });
+
   const [sessions, setSessions] = useState<ChatSession[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
     return saved ? JSON.parse(saved) : [];
@@ -35,6 +40,15 @@ const App: React.FC = () => {
   });
 
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('theme', theme);
+  }, [theme]);
+
+  const toggleTheme = () => {
+    setTheme(prev => prev === 'dark' ? 'light' : 'dark');
+  };
 
   const currentSession = useMemo(() => 
     sessions.find(s => s.id === currentSessionId), 
@@ -172,7 +186,7 @@ const App: React.FC = () => {
   );
 
   return (
-    <div className="flex h-screen overflow-hidden text-slate-200">
+    <div className={`flex h-screen overflow-hidden ${theme === 'dark' ? 'text-slate-200' : 'text-slate-800'}`}>
       <Sidebar 
         sessions={sessions}
         currentSessionId={currentSessionId}
@@ -183,9 +197,10 @@ const App: React.FC = () => {
         onClose={() => setIsSidebarOpen(false)}
         user={user}
         onAuthClick={handleAuthClick}
+        theme={theme}
       />
 
-      <div className="flex-1 flex flex-col min-w-0 bg-slate-950/20">
+      <div className={`flex-1 flex flex-col min-w-0 ${theme === 'dark' ? 'bg-slate-950/20' : 'bg-slate-50'}`}>
         {/* Header */}
         <header className="px-6 py-4 glass border-b border-white/5 flex items-center justify-between shrink-0 z-10">
           <div className="flex items-center gap-3">
@@ -208,24 +223,30 @@ const App: React.FC = () => {
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-4 text-slate-400">
+          <div className="flex items-center gap-2 sm:gap-4 text-slate-400">
+            <button 
+              onClick={toggleTheme}
+              className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${theme === 'dark' ? 'hover:text-yellow-400 bg-slate-900/50' : 'hover:text-blue-600 bg-slate-200/50'}`}
+              title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
+            >
+              <i className={`fas ${theme === 'dark' ? 'fa-sun' : 'fa-moon'}`}></i>
+            </button>
+
             {user ? (
               <div className="flex items-center gap-3">
                 <div className="hidden sm:block text-right">
-                  <p className="text-[10px] font-bold text-white leading-none">{user.displayName || 'User'}</p>
+                  <p className={`text-[10px] font-bold leading-none ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{user.displayName || 'User'}</p>
                   <p className="text-[9px] text-slate-500 leading-tight">Pro Member</p>
                 </div>
                 <button 
-                  onClick={() => signOut(auth)}
-                  className="w-10 h-10 rounded-xl bg-slate-900 border border-white/5 flex items-center justify-center hover:bg-slate-800 transition-all group overflow-hidden"
-                  title="Sign Out"
+                  className={`w-10 h-10 rounded-xl border border-white/5 flex items-center justify-center transition-all overflow-hidden ${theme === 'dark' ? 'bg-slate-900 hover:bg-slate-800' : 'bg-white hover:bg-slate-50'}`}
+                  title="Profile"
                 >
                   {user.photoURL ? (
                     <img src={user.photoURL} alt="Avatar" className="w-full h-full object-cover" />
                   ) : (
-                    <i className="fas fa-user-check text-emerald-400 group-hover:hidden"></i>
+                    <i className="fas fa-user-circle text-2xl text-blue-500"></i>
                   )}
-                  <i className="fas fa-sign-out-alt text-red-400 hidden group-hover:block absolute"></i>
                 </button>
               </div>
             ) : (
@@ -237,7 +258,9 @@ const App: React.FC = () => {
                 <span>Sign In</span>
               </button>
             )}
-            <button className="hover:text-white transition-colors p-2"><i className="fas fa-cog"></i></button>
+            <button className={`hover:text-white transition-colors p-2 w-10 h-10 rounded-xl flex items-center justify-center ${theme === 'dark' ? 'hover:bg-slate-800' : 'hover:bg-slate-200 text-slate-600'}`}>
+              <i className="fas fa-cog"></i>
+            </button>
           </div>
         </header>
 
@@ -262,15 +285,16 @@ const App: React.FC = () => {
               <ChatMessageItem 
                 key={msg.id} 
                 message={msg as any} 
+                theme={theme}
               />
             ))}
             
             {status.isTyping && (
               <div className="flex items-start gap-2 mb-6 animate-pulse">
-                <div className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center text-slate-500">
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-slate-500 ${theme === 'dark' ? 'bg-slate-800' : 'bg-slate-200'}`}>
                   <i className="fas fa-ellipsis"></i>
                 </div>
-                <div className="bg-slate-800/50 border border-slate-700/50 px-4 py-2 rounded-2xl text-xs text-slate-400">
+                <div className={`border px-4 py-2 rounded-2xl text-xs ${theme === 'dark' ? 'bg-slate-800/50 border-slate-700/50 text-slate-400' : 'bg-white border-slate-200 text-slate-600'}`}>
                   Processing prompt...
                 </div>
               </div>
@@ -288,18 +312,18 @@ const App: React.FC = () => {
         </main>
 
         {/* Input Section */}
-        <footer className="p-4 sm:p-6 bg-gradient-to-t from-slate-950 to-transparent shrink-0">
+        <footer className={`p-4 sm:p-6 shrink-0 ${theme === 'dark' ? 'bg-gradient-to-t from-slate-950 to-transparent' : 'bg-white border-t border-slate-100'}`}>
           <div className="max-w-3xl mx-auto relative">
             <form onSubmit={handleSend} className="relative group">
               <div className="absolute -inset-0.5 bg-gradient-to-r from-blue-600 to-cyan-500 rounded-2xl blur opacity-20 group-focus-within:opacity-40 transition duration-500"></div>
               
-              <div className="relative glass rounded-2xl p-1 flex items-center shadow-2xl">
+              <div className={`relative glass rounded-2xl p-1 flex items-center shadow-2xl ${theme === 'light' ? 'bg-white/80' : ''}`}>
                 <input 
                   type="text"
                   value={inputValue}
                   onChange={(e) => setInputValue(e.target.value)}
                   placeholder="Ask anything..."
-                  className="flex-1 bg-transparent border-none outline-none px-6 py-3 text-sm text-white placeholder:text-slate-500"
+                  className={`flex-1 bg-transparent border-none outline-none px-6 py-3 text-sm placeholder:text-slate-500 ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}
                   disabled={status.isTyping}
                 />
 
@@ -313,7 +337,7 @@ const App: React.FC = () => {
               </div>
             </form>
             
-            <div className="flex justify-center gap-6 mt-4 text-[10px] font-bold text-slate-600 tracking-wider uppercase">
+            <div className="flex justify-center gap-6 mt-4 text-[10px] font-bold text-slate-500 tracking-wider uppercase">
                <span className="flex items-center gap-1"><i className="fas fa-microchip text-blue-500"></i> Gemini 2.0 Flash</span>
             </div>
           </div>
@@ -325,6 +349,7 @@ const App: React.FC = () => {
         isOpen={authModal.open}
         onClose={() => setAuthModal(prev => ({ ...prev, open: false }))}
         initialMode={authModal.mode}
+        theme={theme}
       />
     </div>
   );
