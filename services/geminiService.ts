@@ -1,4 +1,4 @@
-import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
+import { GoogleGenAI } from "@google/genai";
 
 const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
 
@@ -9,7 +9,7 @@ function getAI() {
   if (!apiKey || apiKey === 'your_api_key_here') {
     console.error("VITE_GEMINI_API_KEY is not set in .env.local");
   }
-  return new GoogleGenAI(apiKey || "");
+  return new GoogleGenAI({ apiKey: apiKey || "" });
 }
 
 let aiInstance: GoogleGenAI | null = null;
@@ -18,27 +18,34 @@ const getAiInstance = () => {
   return aiInstance;
 };
 
-export async function generateTextResponse(prompt: string, history: {role: string, parts: {text: string}[]}[]): Promise<string> {
+export interface ChatHistoryEntry {
+  role: 'user' | 'model';
+  parts: { text: string }[];
+}
+
+export async function generateTextResponse(prompt: string, history: ChatHistoryEntry[]): Promise<string> {
   const ai = getAiInstance();
   
-  const response: GenerateContentResponse = await (ai as any).models.generateContent({
-    model: 'gemini-1.5-flash', // Using a highly stable model name
-    contents: [
-      ...history.map(h => ({
-        role: h.role === 'assistant' ? 'model' : 'user',
-        parts: h.parts.map(p => ({ text: p.text || (p as any).content }))
-      })),
-      { role: 'user', parts: [{ text: prompt }] }
-    ],
-    config: {
-      systemInstruction: `You are ChatWithAdk, a highly intelligent and creative assistant. 
-      Respond naturally with helpful, concise, and professional information.`,
-      temperature: 0.7,
-      topP: 0.95,
-      topK: 64,
-    },
-  });
-  
-  return response.text || "I'm sorry, I couldn't process that request.";
+  try {
+    const result = await ai.models.generateContent({
+      model: 'gemini-1.5-flash',
+      contents: [
+        ...history,
+        { role: 'user', parts: [{ text: prompt }] }
+      ],
+      config: {
+        systemInstruction: `You are ChatWithAdk, a highly intelligent and creative assistant. 
+        Respond naturally with helpful, concise, and professional information.`,
+        temperature: 0.7,
+        topP: 0.95,
+        topK: 64,
+      },
+    });
+    
+    return result.text;
+  } catch (err: any) {
+    console.error("Gemini API Error:", err);
+    throw new Error(err.message || "Failed to generate response from Gemini.");
+  }
 }
 

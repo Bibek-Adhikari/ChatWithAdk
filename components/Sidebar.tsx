@@ -1,6 +1,7 @@
 
-import React from 'react';
 import { ChatSession } from '../types';
+import { User, signOut } from 'firebase/auth';
+import { auth } from '../services/firebase';
 
 interface SidebarProps {
   sessions: ChatSession[];
@@ -10,6 +11,8 @@ interface SidebarProps {
   onDeleteSession: (id: string) => void;
   isOpen: boolean;
   onClose: () => void;
+  user: User | null;
+  onAuthClick: (mode: 'signin' | 'signup') => void;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ 
@@ -19,7 +22,9 @@ const Sidebar: React.FC<SidebarProps> = ({
   onNewChat, 
   onDeleteSession,
   isOpen,
-  onClose
+  onClose,
+  user,
+  onAuthClick
 }) => {
   return (
     <>
@@ -82,15 +87,54 @@ const Sidebar: React.FC<SidebarProps> = ({
           )}
         </div>
 
-        <div className="p-4 border-t border-white/5 text-[10px] text-slate-600 font-medium tracking-tight">
-          <div className="flex items-center justify-between">
-            <span>v1.2.0 Stable</span>
-            <span>By ADK</span>
-          </div>
+        <div className="p-4 border-t border-white/5">
+          {user ? (
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-8 h-8 rounded-lg bg-blue-600/20 border border-blue-600/30 flex items-center justify-center shrink-0">
+                  {user.photoURL ? (
+                    <img src={user.photoURL} alt="" className="w-full h-full rounded-lg object-cover" />
+                  ) : (
+                    <i className="fas fa-user text-blue-400 text-xs"></i>
+                  )}
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[10px] font-bold text-white truncate">{user.displayName || user.email?.split('@')[0] || 'User'}</p>
+                  <p className="text-[9px] text-slate-500 uppercase font-bold tracking-widest">Active Now</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => signOut(auth)}
+                className="p-2 text-slate-500 hover:text-red-400 transition-colors"
+                title="Sign Out"
+              >
+                <i className="fas fa-sign-out-alt text-xs"></i>
+              </button>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2">
+              <div className="flex gap-2">
+                <button 
+                  onClick={() => onAuthClick('signin')}
+                  className="flex-1 px-3 py-2 bg-slate-800 hover:bg-slate-750 text-white rounded-lg text-[10px] font-bold transition-all border border-white/5 active:scale-95"
+                >
+                  SIGN IN
+                </button>
+                <button 
+                  onClick={() => onAuthClick('signup')}
+                  className="flex-1 px-3 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-[10px] font-bold transition-all shadow-lg shadow-blue-500/10 active:scale-95"
+                >
+                  SIGN UP
+                </button>
+              </div>
+              <p className="text-center text-[9px] text-slate-600 font-bold uppercase tracking-[0.2em] mt-1">Smart Chat & Studio</p>
+            </div>
+          )}
         </div>
       </aside>
     </>
   );
 };
+
 
 export default Sidebar;

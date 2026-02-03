@@ -3,7 +3,10 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { ChatMessage, ChatSession, GenerationState, MessagePart } from './types';
 import ChatMessageItem from './components/ChatMessageItem';
 import Sidebar from './components/Sidebar';
+import AuthModal from './components/AuthModal';
 import { generateTextResponse } from './services/geminiService';
+import { auth } from './services/firebase';
+import { onAuthStateChanged, signOut, User } from 'firebase/auth';
 
 const STORAGE_KEY = 'chat_with_adk_history';
 
@@ -25,6 +28,11 @@ const App: React.FC = () => {
     error: null,
   });
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [user, setUser] = useState<User | null>(null);
+  const [authModal, setAuthModal] = useState<{ open: boolean; mode: 'signin' | 'signup' }>({
+    open: false,
+    mode: 'signin'
+  });
 
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -36,6 +44,13 @@ const App: React.FC = () => {
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions));
   }, [sessions]);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+    });
+    return () => unsubscribe();
+  }, []);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -59,6 +74,10 @@ const App: React.FC = () => {
     setSessions(prev => [newSession, ...prev]);
     setCurrentSessionId(newId);
     if (window.innerWidth < 1024) setIsSidebarOpen(false);
+  };
+
+  const handleAuthClick = (mode: 'signin' | 'signup') => {
+    setAuthModal({ open: true, mode });
   };
 
   const handleDeleteSession = (id: string) => {
@@ -102,14 +121,17 @@ const App: React.FC = () => {
 
     try {
       const history = (currentSession?.messages || []).map(m => ({
-        role: m.role === 'assistant' ? 'model' : 'user',
+        role: (m.role === 'assistant' ? 'model' : 'user') as 'user' | 'model',
         parts: [{ text: m.parts.map(p => p.content).join(' ') }]
       }));
       
+      console.log("Sending prompt with history:", { prompt: currentInput, historyLength: history.length });
+      
       const responseText = await generateTextResponse(currentInput, history);
       addAssistantMessage(sessionId, [{ type: 'text', content: responseText }]);
-    } catch (err) {
-      setStatus(prev => ({ ...prev, error: "Connection lost. Please try again." }));
+    } catch (err: any) {
+      console.error("Chat error:", err);
+      setStatus(prev => ({ ...prev, error: err.message || "Connection lost. Please try again." }));
     } finally {
       setStatus(prev => ({ ...prev, isTyping: false }));
     }
@@ -159,6 +181,8 @@ const App: React.FC = () => {
         onDeleteSession={handleDeleteSession}
         isOpen={isSidebarOpen}
         onClose={() => setIsSidebarOpen(false)}
+        user={user}
+        onAuthClick={handleAuthClick}
       />
 
       <div className="flex-1 flex flex-col min-w-0 bg-slate-950/20">
@@ -185,7 +209,35 @@ const App: React.FC = () => {
             </div>
           </div>
           <div className="flex items-center gap-4 text-slate-400">
-            <button className="hover:text-white transition-colors"><i className="fas fa-cog"></i></button>
+            {user ? (
+              <div className="flex items-center gap-3">
+                <div className="hidden sm:block text-right">
+                  <p className="text-[10px] font-bold text-white leading-none">{user.displayName || 'User'}</p>
+                  <p className="text-[9px] text-slate-500 leading-tight">Pro Member</p>
+                </div>
+                <button 
+                  onClick={() => signOut(auth)}
+                  className="w-10 h-10 rounded-xl bg-slate-900 border border-white/5 flex items-center justify-center hover:bg-slate-800 transition-all group overflow-hidden"
+                  title="Sign Out"
+                >
+                  {user.photoURL ? (
+                    <img src={user.photoURL} alt="Avatar" className="w-full h-full object-cover" />
+                  ) : (
+                    <i className="fas fa-user-check text-emerald-400 group-hover:hidden"></i>
+                  )}
+                  <i className="fas fa-sign-out-alt text-red-400 hidden group-hover:block absolute"></i>
+                </button>
+              </div>
+            ) : (
+              <button 
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600/10 hover:bg-blue-600/20 text-blue-400 border border-blue-600/20 rounded-xl text-xs font-bold transition-all active:scale-95"
+                onClick={() => handleAuthClick('signin')}
+              >
+                <i className="fas fa-sign-in-alt"></i>
+                <span>Sign In</span>
+              </button>
+            )}
+            <button className="hover:text-white transition-colors p-2"><i className="fas fa-cog"></i></button>
           </div>
         </header>
 
@@ -268,6 +320,12 @@ const App: React.FC = () => {
         </footer>
 
       </div>
+
+      <AuthModal 
+        isOpen={authModal.open}
+        onClose={() => setAuthModal(prev => ({ ...prev, open: false }))}
+        initialMode={authModal.mode}
+      />
     </div>
   );
 };
