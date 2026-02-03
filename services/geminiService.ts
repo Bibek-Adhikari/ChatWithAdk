@@ -15,7 +15,6 @@ const getEnv = (key: string): string => {
 };
 
 function getAI() {
-  // Use Vite's standard env loading
   const key = import.meta.env.VITE_GEMINI_API_KEY || "";
   
   if (key) {
@@ -27,8 +26,8 @@ function getAI() {
     throw new Error("Invalid or missing API Key. Please check your .env.local file.");
   }
   
-  // Use v1 for maximum stability with 1.5 models
-  return new GoogleGenAI({ apiKey: key, apiVersion: 'v1' });
+  // Use v1beta to support the newer/experimental models available to this key
+  return new GoogleGenAI({ apiKey: key, apiVersion: 'v1beta' });
 }
 
 let aiInstance: GoogleGenAI | null = null;
@@ -42,10 +41,12 @@ export interface ChatHistoryEntry {
   parts: { text: string }[];
 }
 
+// Updated fallback list based on actual models available to this specific key
 const FALLBACK_MODELS = [
-  'gemini-1.5-flash',
   'gemini-2.0-flash',
-  'gemini-1.5-pro'
+  'gemini-flash-latest',
+  'gemini-pro-latest',
+  'gemini-flash-lite-latest'
 ];
 
 export async function generateTextResponse(prompt: string, history: ChatHistoryEntry[]): Promise<string> {
@@ -82,18 +83,27 @@ export async function generateTextResponse(prompt: string, history: ChatHistoryE
         throw new Error("The API key provided is invalid or expired. Please get a fresh key from AI Studio.");
       }
 
+      // If it's a quota issue, we should wait slightly before trying the next model
+      if (errorMsg.includes("429") || errorMsg.includes("RESOURCE_EXHAUSTED")) {
+        console.warn("Quota exceeded, waiting 2 seconds...");
+        await new Promise(r => setTimeout(r, 2000));
+        continue; // Try next model
+      }
+
       // If it's a 404, we'll try the next model in the list
       if (errorMsg.includes("404") || errorMsg.includes("not found")) {
         continue;
       }
 
-      // For rate limits, wait a bit and try next
-      if (errorMsg.includes("429")) {
-        await new Promise(r => setTimeout(r, 1000));
-        continue;
-      }
+      // Small delay between different models to avoid bursting
+      await new Promise(r => setTimeout(r, 500));
     }
   }
 
-  throw new Error(lastError?.message || "Failed to connect to Gemini. Check your API key and quota.");
+  // If we're here, all models failed
+  if (lastError?.message?.includes("429") || lastError?.message?.includes("RESOURCE_EXHAUSTED")) {
+    throw new Error("Rate limit reached. Please wait a few seconds before trying again.");
+  }
+
+  throw new Error(lastError?.message || "All fallback models failed. Please check your API key and connection.");
 }

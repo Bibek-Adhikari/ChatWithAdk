@@ -4,6 +4,7 @@ import { ChatMessage, ChatSession, GenerationState, MessagePart } from './types'
 import ChatMessageItem from './components/ChatMessageItem';
 import Sidebar from './components/Sidebar';
 import AuthModal from './components/AuthModal';
+import SettingsModal from './components/SettingsModal';
 import { generateTextResponse } from './services/geminiService';
 import { auth } from './services/firebase';
 import { onAuthStateChanged, signOut, User } from 'firebase/auth';
@@ -38,6 +39,7 @@ const App: React.FC = () => {
     open: false,
     mode: 'signin'
   });
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -71,6 +73,24 @@ const App: React.FC = () => {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [currentSession?.messages, status]);
+
+  // Keyboard Shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ctrl + K for New Chat
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault();
+        handleNewChat();
+      }
+      // Esc to close all modals
+      if (e.key === 'Escape') {
+        setAuthModal(prev => ({ ...prev, open: false }));
+        setIsSettingsOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   const handleNewChat = () => {
     const newId = Date.now().toString();
@@ -236,14 +256,6 @@ const App: React.FC = () => {
             </div>
           </div>
           <div className="flex items-center gap-2 sm:gap-4 text-slate-400">
-            <button 
-              onClick={toggleTheme}
-              className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${theme === 'dark' ? 'hover:text-yellow-400 bg-slate-900/50' : 'hover:text-blue-600 bg-slate-200/50'}`}
-              title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
-            >
-              <i className={`fas ${theme === 'dark' ? 'fa-sun' : 'fa-moon'}`}></i>
-            </button>
-
             {user ? (
               <div className="flex items-center gap-3">
                 <div className="hidden sm:block text-right">
@@ -270,8 +282,13 @@ const App: React.FC = () => {
                 <span>Sign In</span>
               </button>
             )}
-            <button className={`hover:text-white transition-colors p-2 w-10 h-10 rounded-xl flex items-center justify-center ${theme === 'dark' ? 'hover:bg-slate-800' : 'hover:bg-slate-200 text-slate-600'}`}>
-              <i className="fas fa-cog"></i>
+            
+            <button 
+              onClick={() => setIsSettingsOpen(true)}
+              className={`hover:text-blue-500 transition-all p-2 w-10 h-10 rounded-xl flex items-center justify-center active:scale-90 ${theme === 'dark' ? 'hover:bg-white/5' : 'hover:bg-slate-200 text-slate-600'}`}
+              title="Settings & Tools"
+            >
+              <i className="fas fa-cog text-lg"></i>
             </button>
           </div>
         </header>
@@ -392,6 +409,12 @@ const App: React.FC = () => {
         onClose={() => setAuthModal(prev => ({ ...prev, open: false }))}
         initialMode={authModal.mode}
         theme={theme}
+      />
+      <SettingsModal 
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        theme={theme}
+        onToggleTheme={toggleTheme}
       />
     </div>
   );
