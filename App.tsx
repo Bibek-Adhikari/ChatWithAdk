@@ -314,7 +314,7 @@ const App: React.FC = () => {
             </form>
             
             <div className="flex justify-center gap-6 mt-4 text-[10px] font-bold text-slate-600 tracking-wider uppercase">
-               <span className="flex items-center gap-1"><i className="fas fa-microchip text-blue-500"></i> Gemini 1.5 Flash</span>
+               <span className="flex items-center gap-1"><i className="fas fa-microchip text-blue-500"></i> Gemini 2.0 Flash</span>
             </div>
           </div>
         </footer>
