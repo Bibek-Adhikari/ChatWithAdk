@@ -1,4 +1,5 @@
 
+import React, { useState } from 'react';
 import { ChatSession } from '../types';
 import { User, signOut } from 'firebase/auth';
 import { auth } from '../services/firebase';
@@ -9,6 +10,7 @@ interface SidebarProps {
   onSelectSession: (id: string) => void;
   onNewChat: () => void;
   onDeleteSession: (id: string) => void;
+  onRenameSession: (id: string, newTitle: string) => void;
   isOpen: boolean;
   onClose: () => void;
   user: User | null;
@@ -22,124 +24,174 @@ const Sidebar: React.FC<SidebarProps> = ({
   onSelectSession, 
   onNewChat, 
   onDeleteSession,
+  onRenameSession,
   isOpen,
   onClose,
   user,
   onAuthClick,
   theme
 }) => {
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState('');
+
+  const handleStartEdit = (session: ChatSession) => {
+    setEditingId(session.id);
+    setEditValue(session.title);
+  };
+
+  const handleSaveEdit = (id: string) => {
+    if (editValue.trim()) {
+      onRenameSession(id, editValue.trim());
+    }
+    setEditingId(null);
+  };
+
   return (
     <>
       {/* Mobile Backdrop */}
       {isOpen && (
         <div 
-          className="fixed inset-0 bg-black/60 z-30 lg:hidden" 
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-30 lg:hidden transition-all duration-500" 
           onClick={onClose}
         />
       )}
       
       <aside className={`
-        fixed inset-y-0 left-0 z-40 w-72 border-r flex flex-col transition-transform duration-300 transform
-        ${isOpen ? 'translate-x-0' : '-translate-x-full'}
-        lg:relative lg:translate-x-0
-        ${theme === 'dark' ? 'bg-slate-900 border-white/5' : 'bg-white border-slate-200'}
+        fixed lg:relative inset-y-0 left-0 z-40 sidebar-transition flex flex-col shrink-0 overflow-hidden
+        ${isOpen ? 'w-72 opacity-100 translate-x-0' : 'w-0 opacity-0 -translate-x-full lg:translate-x-0'}
+        ${theme === 'dark' ? 'bg-[#0f172a] border-r border-white/5' : 'bg-[#ffffff] border-r border-slate-200'}
+        ${isOpen && window.innerWidth < 1024 ? 'shadow-[0_0_40px_rgba(0,0,0,0.5)]' : ''}
       `}>
-        <div className="p-4 border-b border-white/5 shrink-0">
-          <button 
-            onClick={onNewChat}
-            className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 text-white font-semibold py-3 px-4 rounded-xl transition-all shadow-lg shadow-blue-500/10 active:scale-95"
-          >
-            <i className="fas fa-plus"></i>
-            New Conversation
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-2">
-          <h2 className="px-3 text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">Recent Chats</h2>
-          {sessions.length === 0 ? (
-            <div className="text-center py-8 text-slate-500 text-xs italic">
-              No chat history yet
-            </div>
-          ) : (
-            sessions.sort((a, b) => b.updatedAt - a.updatedAt).map(session => (
-              <div 
-                key={session.id}
-                className={`group flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-all ${
-                  currentSessionId === session.id 
-                  ? 'bg-blue-600/10 text-blue-500 border border-blue-600/20' 
-                  : theme === 'dark' 
-                    ? 'text-slate-400 hover:bg-slate-800 hover:text-slate-200 border border-transparent'
-                    : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 border border-transparent'
-                }`}
-                onClick={() => {
-                  onSelectSession(session.id);
-                  if (window.innerWidth < 1024) onClose();
-                }}
-              >
-                <i className={`fas ${currentSessionId === session.id ? 'fa-comment-dots' : 'fa-comment'} shrink-0 text-sm opacity-70`}></i>
-                <span className="flex-1 text-sm truncate font-medium">{session.title}</span>
-                <button 
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onDeleteSession(session.id);
-                  }}
-                  className="opacity-0 group-hover:opacity-100 p-1.5 text-slate-600 hover:text-red-400 transition-all"
-                >
-                  <i className="fas fa-trash-alt text-[10px]"></i>
-                </button>
-              </div>
-            ))
-          )}
-        </div>
-
-        <div className="p-4 border-t border-white/5">
-          {user ? (
+        {/* Fixed width inner container to prevent content compression */}
+        <div className="w-72 h-full flex flex-col shrink-0">
+          <div className="p-6 flex flex-col gap-6 shrink-0">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3 min-w-0">
-                <div className="w-8 h-8 rounded-lg bg-blue-600/20 border border-blue-600/30 flex items-center justify-center shrink-0">
-                  {user.photoURL ? (
-                    <img src={user.photoURL} alt="" className="w-full h-full rounded-lg object-cover" />
-                  ) : (
-                    <i className="fas fa-user text-blue-400 text-xs"></i>
-                  )}
-                </div>
-                <div className="min-w-0">
-                  <p className={`text-[10px] font-bold truncate ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{user.displayName || user.email?.split('@')[0] || 'User'}</p>
-                  <p className="text-[9px] text-slate-500 uppercase font-bold tracking-widest">Active Now</p>
-                </div>
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></div>
+                <h2 className="text-[10px] font-black uppercase tracking-[0.25em] text-slate-500">History</h2>
               </div>
               <button 
-                onClick={() => signOut(auth)}
-                className="p-2 text-slate-500 hover:text-red-400 transition-colors"
-                title="Sign Out"
+                onClick={onClose}
+                className="lg:hidden w-8 h-8 flex items-center justify-center rounded-xl hover:bg-slate-800/50 text-slate-500 transition-all"
               >
-                <i className="fas fa-sign-out-alt text-xs"></i>
+                <i className="fas fa-times text-xs"></i>
               </button>
             </div>
-          ) : (
-            <div className="flex flex-col gap-2">
-              <div className="flex gap-2">
+            
+            <button 
+              onClick={onNewChat}
+              className="group relative w-full overflow-hidden flex items-center justify-center gap-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold py-4 px-6 rounded-2xl transition-all shadow-xl shadow-blue-500/20 active:scale-95"
+            >
+              <i className="fas fa-plus-circle text-lg opacity-80 group-hover:scale-110 transition-transform"></i>
+              <span>New Thread</span>
+            </button>
+          </div>
+
+          <div className="flex-1 overflow-y-auto custom-scrollbar px-4 py-2 space-y-2">
+            {sessions.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-20 text-center opacity-30 select-none">
+                <i className="fas fa-feather-alt text-3xl mb-4"></i>
+                <p className="text-[10px] uppercase font-bold tracking-[0.2em]">Start a new conversation</p>
+              </div>
+            ) : (
+              sessions.sort((a, b) => b.updatedAt - a.updatedAt).map((session, index) => (
+                <div 
+                  key={session.id}
+                  style={{ animationDelay: `${index * 40}ms` }}
+                  className={`group relative flex items-center gap-3 p-3.5 rounded-2xl cursor-pointer transition-all duration-300 border animate-slide-in
+                    ${currentSessionId === session.id 
+                      ? 'bg-blue-600/10 text-blue-500 border-blue-500/30' 
+                      : theme === 'dark' 
+                        ? 'text-slate-400 hover:bg-slate-800/40 hover:text-slate-100 border-transparent'
+                        : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900 border-transparent'}`}
+                  onClick={() => {
+                    if (editingId !== session.id) {
+                      onSelectSession(session.id);
+                      if (window.innerWidth < 1024) onClose();
+                    }
+                  }}
+                >
+                  <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 transition-all ${currentSessionId === session.id ? 'bg-blue-500/20 rotate-12' : 'bg-slate-800/30 group-hover:scale-110'}`}>
+                     <i className={`fas ${currentSessionId === session.id ? 'fa-comment-dots text-blue-400' : 'fa-comment opacity-30 text-xs'}`}></i>
+                  </div>
+
+                  {editingId === session.id ? (
+                    <input
+                      autoFocus
+                      value={editValue}
+                      onChange={(e) => setEditValue(e.target.value)}
+                      onBlur={() => handleSaveEdit(session.id)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleSaveEdit(session.id)}
+                      className="flex-1 bg-transparent border-none outline-none text-[13px] font-semibold text-white p-0"
+                    />
+                  ) : (
+                    <span className="flex-1 text-[13px] truncate font-semibold tracking-tight">{session.title}</span>
+                  )}
+
+                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all translate-x-2 group-hover:translate-x-0">
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); handleStartEdit(session); }}
+                      className="p-1.5 text-slate-500 hover:text-blue-400 transition-colors"
+                    >
+                      <i className="fas fa-pen text-[10px]"></i>
+                    </button>
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); onDeleteSession(session.id); }}
+                      className="p-1.5 text-slate-500 hover:text-red-400 transition-colors"
+                    >
+                      <i className="fas fa-trash-alt text-[10px]"></i>
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+
+          <div className="p-6 border-t border-white/5 bg-black/5">
+            {user ? (
+              <div className="flex items-center justify-between p-3 rounded-2xl bg-slate-800/20 border border-white/5 hover:bg-slate-800/40 transition-all cursor-default">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600/20 to-indigo-600/20 border border-blue-500/30 flex items-center justify-center shrink-0">
+                    {user.photoURL ? (
+                      <img src={user.photoURL} alt="" className="w-full h-full rounded-xl object-cover" />
+                    ) : (
+                      <i className="fas fa-user-astronaut text-blue-400"></i>
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <p className={`text-[11px] font-black truncate leading-tight ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{user.displayName || user.email?.split('@')[0]}</p>
+                    <p className="text-[9px] text-emerald-500 font-bold uppercase tracking-widest leading-none mt-1">Online</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => signOut(auth)}
+                  className="w-8 h-8 flex items-center justify-center text-slate-500 hover:text-red-400 transition-all"
+                  title="Secure Logout"
+                >
+                  <i className="fas fa-power-off text-xs"></i>
+                </button>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-3">
                 <button 
                   onClick={() => onAuthClick('signin')}
-                  className="flex-1 px-3 py-2 bg-slate-800 hover:bg-slate-750 text-white rounded-lg text-[10px] font-bold transition-all border border-white/5 active:scale-95"
+                  className="w-full py-3 bg-slate-800/50 hover:bg-slate-800 text-white rounded-xl text-[10px] font-black tracking-widest border border-white/5 transition-all active:scale-95"
                 >
                   SIGN IN
                 </button>
                 <button 
                   onClick={() => onAuthClick('signup')}
-                  className="flex-1 px-3 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-[10px] font-bold transition-all shadow-lg shadow-blue-500/10 active:scale-95"
+                  className="w-full py-3 bg-white text-slate-900 hover:bg-slate-100 rounded-xl text-[10px] font-black tracking-widest transition-all shadow-xl active:scale-95"
                 >
-                  SIGN UP
+                  GET STARTED
                 </button>
               </div>
-              <p className="text-center text-[9px] text-slate-600 font-bold uppercase tracking-[0.2em] mt-1">Smart Chat & Studio</p>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </aside>
     </>
   );
 };
-
 
 export default Sidebar;

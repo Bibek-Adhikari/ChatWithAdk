@@ -25,12 +25,12 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = ({ message, onImageClick
             <div key={idx} className="w-full">
               {part.type === 'text' ? (
                 <div 
-                  className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed shadow-sm
+                  className={`px-5 py-3.5 rounded-2xl text-[14.5px] leading-relaxed chat-shadow
                     ${isUser 
-                      ? 'bg-blue-600 text-white rounded-br-none' 
+                      ? 'bg-gradient-to-br from-blue-600 to-blue-700 text-white rounded-br-none shadow-blue-500/20' 
                       : theme === 'dark'
-                        ? 'bg-slate-800 text-slate-100 rounded-bl-none border border-slate-700'
-                        : 'bg-white text-slate-800 rounded-bl-none border border-slate-200 shadow-sm'}`}
+                        ? 'bg-slate-800 text-slate-100 rounded-bl-none border border-white/5'
+                        : 'bg-white text-slate-800 rounded-bl-none border border-slate-200'}`}
                 >
                   {part.content}
                 </div>

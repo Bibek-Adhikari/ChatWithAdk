@@ -15,16 +15,20 @@ const getEnv = (key: string): string => {
 };
 
 function getAI() {
-  const key = getEnv('VITE_GEMINI_API_KEY') || getEnv('GEMINI_API_KEY');
+  // Use Vite's standard env loading
+  const key = import.meta.env.VITE_GEMINI_API_KEY || "";
   
-  console.log("AI Init - Key length:", key ? key.length : 0);
+  if (key) {
+    const masked = key.substring(0, 6) + "..." + key.substring(key.length - 4);
+    console.log(`AI Init - Key: ${masked}`);
+  }
 
-  if (!key || key === 'undefined' || key === 'null') {
-    throw new Error("An API Key must be set. Please check your .env.local file and ensure VITE_GEMINI_API_KEY is defined.");
+  if (!key || key.length < 10) {
+    throw new Error("Invalid or missing API Key. Please check your .env.local file.");
   }
   
-  // The @google/genai SDK expects an options object with apiKey
-  return new GoogleGenAI({ apiKey: key });
+  // Use v1 for maximum stability with 1.5 models
+  return new GoogleGenAI({ apiKey: key, apiVersion: 'v1' });
 }
 
 let aiInstance: GoogleGenAI | null = null;
@@ -38,7 +42,11 @@ export interface ChatHistoryEntry {
   parts: { text: string }[];
 }
 
-const FALLBACK_MODELS = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'];
+const FALLBACK_MODELS = [
+  'gemini-1.5-flash',
+  'gemini-2.0-flash',
+  'gemini-1.5-pro'
+];
 
 export async function generateTextResponse(prompt: string, history: ChatHistoryEntry[]): Promise<string> {
   const ai = getAiInstance();
@@ -46,9 +54,8 @@ export async function generateTextResponse(prompt: string, history: ChatHistoryE
 
   for (const modelName of FALLBACK_MODELS) {
     try {
-      console.log(`Using model: ${modelName}`);
+      console.log(`Trying model: ${modelName}`);
       
-      // In @google/genai SDK, we use ai.models.generateContent
       const result = await ai.models.generateContent({
         model: modelName,
         contents: [
@@ -64,18 +71,29 @@ export async function generateTextResponse(prompt: string, history: ChatHistoryE
       });
 
       const text = result.text;
-      
       if (text) return text;
     } catch (err: any) {
       lastError = err;
-      console.error(`Error with ${modelName}:`, err.message || err);
-      if (err.message?.includes("429")) {
-        // Simple backoff
-        await new Promise(r => setTimeout(r, 2000));
+      const errorMsg = err.message || JSON.stringify(err);
+      console.error(`Error with ${modelName}:`, errorMsg);
+
+      // If key is definitely bad, stop immediately
+      if (errorMsg.includes("expired") || errorMsg.includes("API_KEY_INVALID") || errorMsg.includes("PERMISSION_DENIED")) {
+        throw new Error("The API key provided is invalid or expired. Please get a fresh key from AI Studio.");
       }
-      continue;
+
+      // If it's a 404, we'll try the next model in the list
+      if (errorMsg.includes("404") || errorMsg.includes("not found")) {
+        continue;
+      }
+
+      // For rate limits, wait a bit and try next
+      if (errorMsg.includes("429")) {
+        await new Promise(r => setTimeout(r, 1000));
+        continue;
+      }
     }
   }
 
-  throw new Error(lastError?.message || "All models failed. Check your connection or quota.");
+  throw new Error(lastError?.message || "Failed to connect to Gemini. Check your API key and quota.");
 }

@@ -32,7 +32,7 @@ const App: React.FC = () => {
     isTyping: false,
     error: null,
   });
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth >= 1024);
   const [user, setUser] = useState<User | null>(null);
   const [authModal, setAuthModal] = useState<{ open: boolean; mode: 'signin' | 'signup' }>({
     open: false,
@@ -100,6 +100,10 @@ const App: React.FC = () => {
     if (currentSessionId === id) {
       setCurrentSessionId(updated.length > 0 ? updated[0].id : '');
     }
+  };
+
+  const handleRenameSession = (id: string, newTitle: string) => {
+    setSessions(prev => prev.map(s => s.id === id ? { ...s, title: newTitle } : s));
   };
 
   const handleSend = async (e?: React.FormEvent) => {
@@ -193,6 +197,7 @@ const App: React.FC = () => {
         onSelectSession={setCurrentSessionId}
         onNewChat={handleNewChat}
         onDeleteSession={handleDeleteSession}
+        onRenameSession={handleRenameSession}
         isOpen={isSidebarOpen}
         onClose={() => setIsSidebarOpen(false)}
         user={user}
@@ -200,26 +205,33 @@ const App: React.FC = () => {
         theme={theme}
       />
 
-      <div className={`flex-1 flex flex-col min-w-0 ${theme === 'dark' ? 'bg-slate-950/20' : 'bg-slate-50'}`}>
+      <div className={`flex-1 flex flex-col min-w-0 transition-all duration-500 ${theme === 'dark' ? 'bg-slate-950/20' : 'bg-slate-50'}`}>
         {/* Header */}
         <header className="px-6 py-4 glass border-b border-white/5 flex items-center justify-between shrink-0 z-10">
           <div className="flex items-center gap-3">
-            <button 
-              onClick={() => setIsSidebarOpen(true)}
-              className="lg:hidden w-10 h-10 flex items-center justify-center text-slate-400 hover:text-white"
-            >
-              <i className="fas fa-bars"></i>
-            </button>
-            <div className="w-10 h-10 bg-gradient-to-tr from-blue-600 to-cyan-400 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/20">
-              <i className="fas fa-bolt text-white text-xl"></i>
-            </div>
-            <div>
-              <h1 className="font-bold text-lg tracking-tight">ChatWithAdk</h1>
-              <div className="flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                <span className="text-[10px] uppercase font-bold text-slate-500 tracking-widest">
-                  {currentSession?.title || 'Stable Connection'}
-                </span>
+            <div className="flex items-center gap-3">
+              <button 
+                onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+                className="w-10 h-10 flex flex-col items-center justify-center gap-[5px] text-slate-400 hover:text-white transition-all hover:bg-white/5 rounded-xl active:scale-90"
+                title={isSidebarOpen ? "Hide History" : "Show History"}
+              >
+                <div className={`w-5 h-[2px] bg-current rounded-full transition-all duration-300 ${isSidebarOpen ? 'rotate-45 translate-y-[7px]' : ''}`}></div>
+                <div className={`w-5 h-[2px] bg-current rounded-full transition-all duration-300 ${isSidebarOpen ? 'opacity-0 scale-0' : ''}`}></div>
+                <div className={`w-5 h-[2px] bg-current rounded-full transition-all duration-300 ${isSidebarOpen ? '-rotate-45 -translate-y-[7px]' : ''}`}></div>
+              </button>
+              <div className="h-6 w-px bg-white/5 hidden lg:block mx-1"></div>
+              <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/20 group relative overflow-hidden">
+                <div className="absolute inset-0 bg-white/20 translate-y-full hover:translate-y-0 transition-transform"></div>
+                <i className="fas fa-brain text-white text-lg relative z-10"></i>
+              </div>
+              <div className="hidden sm:block">
+                <h1 className="font-black text-xs uppercase tracking-[0.3em] leading-none mb-1">ChatWithAdk</h1>
+                <div className="flex items-center gap-1.5 opacity-60">
+                  <span className="w-1 h-1 rounded-full bg-blue-500"></span>
+                  <span className="text-[8px] font-bold uppercase tracking-widest text-slate-500">
+                    {currentSession?.title || 'Creative Assistant'}
+                  </span>
+                </div>
               </div>
             </div>
           </div>
@@ -301,10 +313,21 @@ const App: React.FC = () => {
             )}
 
             {status.error && (
-              <div className="flex justify-center my-4">
-                <div className="bg-red-500/10 border border-red-500/20 text-red-400 px-4 py-2 rounded-lg text-xs flex items-center gap-2">
-                  <i className="fas fa-exclamation-triangle"></i>
-                  {status.error}
+              <div className="max-w-xl mx-auto mb-8 animate-in slide-in-from-top-4 duration-500">
+                <div className="bg-red-500/10 border border-red-500/20 rounded-2xl p-4 flex items-center gap-4">
+                  <div className="w-10 h-10 rounded-xl bg-red-500/20 flex items-center justify-center text-red-500 shrink-0">
+                    <i className="fas fa-exclamation-circle text-lg"></i>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[10px] uppercase font-black tracking-widest text-red-500 opacity-60 mb-0.5">Application Error</p>
+                    <p className="text-xs font-bold text-red-100/80 leading-relaxed truncate">{status.error}</p>
+                  </div>
+                  <button 
+                    onClick={() => setStatus(prev => ({ ...prev, error: null }))}
+                    className="p-2 text-red-500/50 hover:text-red-500 transition-colors"
+                  >
+                    <i className="fas fa-times"></i>
+                  </button>
                 </div>
               </div>
             )}
@@ -312,33 +335,52 @@ const App: React.FC = () => {
         </main>
 
         {/* Input Section */}
-        <footer className={`p-4 sm:p-6 shrink-0 ${theme === 'dark' ? 'bg-gradient-to-t from-slate-950 to-transparent' : 'bg-white border-t border-slate-100'}`}>
-          <div className="max-w-3xl mx-auto relative">
-            <form onSubmit={handleSend} className="relative group">
-              <div className="absolute -inset-0.5 bg-gradient-to-r from-blue-600 to-cyan-500 rounded-2xl blur opacity-20 group-focus-within:opacity-40 transition duration-500"></div>
+        <footer className={`p-6 shrink-0 z-10 ${theme === 'dark' ? 'bg-transparent' : 'bg-transparent'}`}>
+          <div className="max-w-3xl mx-auto">
+            <form onSubmit={handleSend} className="relative group transition-all duration-300">
+              {/* Outer Glow */}
+              <div className="absolute -inset-1 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-[22px] blur-sm opacity-10 group-focus-within:opacity-25 transition duration-500"></div>
               
-              <div className={`relative glass rounded-2xl p-1 flex items-center shadow-2xl ${theme === 'light' ? 'bg-white/80' : ''}`}>
-                <input 
-                  type="text"
+              <div className={`relative flex items-end gap-2 p-2 rounded-[20px] shadow-2xl transition-all border
+                ${theme === 'dark' 
+                  ? 'bg-slate-900/80 border-white/5 backdrop-blur-xl' 
+                  : 'bg-white/90 border-slate-200 backdrop-blur-xl'}`}>
+                
+                <textarea 
+                  rows={1}
                   value={inputValue}
-                  onChange={(e) => setInputValue(e.target.value)}
-                  placeholder="Ask anything..."
-                  className={`flex-1 bg-transparent border-none outline-none px-6 py-3 text-sm placeholder:text-slate-500 ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}
+                  onChange={(e) => {
+                    setInputValue(e.target.value);
+                    e.target.style.height = 'auto';
+                    e.target.style.height = `${Math.min(e.target.scrollHeight, 200)}px`;
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      handleSend();
+                    }
+                  }}
+                  placeholder="Type a message..."
+                  className={`flex-1 bg-transparent border-none outline-none px-4 py-3 text-[14.5px] leading-relaxed resize-none overflow-y-auto max-h-[200px] placeholder:text-slate-500/60
+                    ${theme === 'dark' ? 'text-slate-100' : 'text-slate-900'}`}
                   disabled={status.isTyping}
                 />
 
                 <button 
                   type="submit"
                   disabled={!inputValue.trim() || status.isTyping}
-                  className="w-12 h-12 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800 disabled:text-slate-600 text-white flex items-center justify-center transition-all active:scale-95 shadow-lg shadow-blue-500/20 mr-1"
+                  className="w-11 h-11 shrink-0 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800 disabled:opacity-30 text-white flex items-center justify-center transition-all hover:scale-105 active:scale-95 shadow-lg shadow-blue-500/20"
                 >
-                  <i className={`fas ${status.isTyping ? 'fa-circle-notch fa-spin' : 'fa-paper-plane'}`}></i>
+                  <i className={`fas ${status.isTyping ? 'fa-spinner fa-spin' : 'fa-arrow-up'} text-sm`}></i>
                 </button>
               </div>
             </form>
             
-            <div className="flex justify-center gap-6 mt-4 text-[10px] font-bold text-slate-500 tracking-wider uppercase">
-               <span className="flex items-center gap-1.5"><i className="fas fa-exclamation-triangle text-amber-500"></i> chatWithAdk can make mistakes, so double check the output</span>
+            <div className={`mt-4 text-center select-none transition-opacity duration-500 ${status.isTyping ? 'opacity-40' : 'opacity-100'}`}>
+              <p className="text-[9px] font-black uppercase tracking-[0.3em] text-slate-500">
+                <i className="fas fa-shield-alt mr-2 text-blue-500/50"></i>
+                chatWithAdk may produce inaccurate data. verify critical info.
+              </p>
             </div>
           </div>
         </footer>
