@@ -9,6 +9,7 @@ import { generateTextResponse } from './services/geminiService';
 import { generateGroqResponse } from './services/groqService';
 import { generateResearchResponse } from './services/openRouterService';
 import { generateImageResponse } from './services/imageService';
+import { searchYouTubeVideo } from './services/youtubeService';
 import { auth } from './services/firebase';
 import { onAuthStateChanged, signOut, User } from 'firebase/auth';
 
@@ -36,7 +37,7 @@ const App: React.FC = () => {
     isTyping: false,
     error: null,
   });
-  const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth >= 1024);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [authModal, setAuthModal] = useState<{ open: boolean; mode: 'signin' | 'signup' }>({
     open: false,
@@ -44,7 +45,7 @@ const App: React.FC = () => {
   });
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [selectedImage, setSelectedImage] = useState<{ data: string; mimeType: string } | null>(null);
-  const [aiModel, setAiModel] = useState<'gemini' | 'groq' | 'research' | 'imagine'>('gemini');
+  const [aiModel, setAiModel] = useState<'gemini' | 'groq' | 'research' | 'imagine'>('groq');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -70,6 +71,10 @@ const App: React.FC = () => {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
+      // Reset to Groq if user logs out and was on a restricted model
+      if (!currentUser) {
+        setAiModel('groq');
+      }
     });
     return () => unsubscribe();
   }, []);
@@ -204,15 +209,20 @@ const App: React.FC = () => {
       let generatedImageUrl = '';
 
       if (aiModel === 'imagine' || currentInput.toLowerCase().startsWith('/image')) {
-        const imagePrompt = currentInput.toLowerCase().startsWith('/image') 
-          ? currentInput.substring(6).trim() 
-          : currentInput;
-        
-        generatedImageUrl = await generateImageResponse(imagePrompt);
-        addAssistantMessage(sessionId, [
-          { type: 'text', content: `Here is the image I generated for: "${imagePrompt}"` },
-          { type: 'image', content: generatedImageUrl }
-        ]);
+        if (!user) {
+          addAssistantMessage(sessionId, [{ type: 'text', content: "Please sign in to ChatADK to generate images and access premium features." }]);
+          handleAuthClick('signup');
+        } else {
+          const imagePrompt = currentInput.toLowerCase().startsWith('/image') 
+            ? currentInput.substring(6).trim() 
+            : currentInput;
+          
+          generatedImageUrl = await generateImageResponse(imagePrompt);
+          addAssistantMessage(sessionId, [
+            { type: 'text', content: `Here is the image I generated for: "${imagePrompt}"` },
+            { type: 'image', content: generatedImageUrl }
+          ]);
+        }
       } else {
         if (aiModel === 'groq') {
           const textOnlyHistory = history.map(h => ({
@@ -231,16 +241,40 @@ const App: React.FC = () => {
         }
 
         // Check if AI suggested an image generation via /image trigger
-        if (responseText.toLowerCase().includes('/image')) {
-          const parts = responseText.split(/(\/image\s+.*)/i);
+        if (responseText.toLowerCase().includes('/image') || responseText.toLowerCase().includes('/youtube')) {
+          const parts = responseText.split(/(\/image\s+[^\s]+|\/youtube\s+[^\s]+)/i);
           const finalParts: MessagePart[] = [];
           
           for (const segment of parts) {
             if (segment.toLowerCase().startsWith('/image')) {
               const imgPrompt = segment.substring(6).trim();
+              if (user) {
+                try {
+                  const imgUrl = await generateImageResponse(imgPrompt);
+                  finalParts.push({ type: 'image', content: imgUrl });
+                } catch (e) {
+                  finalParts.push({ type: 'text', content: segment });
+                }
+              } else {
+                finalParts.push({ type: 'text', content: " [Image generation requires sign-in] " });
+              }
+            } else if (segment.toLowerCase().startsWith('/youtube')) {
+              const query = segment.substring(8).trim();
               try {
-                const imgUrl = await generateImageResponse(imgPrompt);
-                finalParts.push({ type: 'image', content: imgUrl });
+                const video = await searchYouTubeVideo(query);
+                if (video) {
+                  finalParts.push({ 
+                    type: 'youtube', 
+                    content: video.id,
+                    metadata: {
+                      title: video.title,
+                      thumbnail: video.thumbnail,
+                      channelTitle: video.channelTitle
+                    }
+                  });
+                } else {
+                  finalParts.push({ type: 'text', content: segment });
+                }
               } catch (e) {
                 finalParts.push({ type: 'text', content: segment });
               }
@@ -311,75 +345,58 @@ const App: React.FC = () => {
         user={user}
         onAuthClick={handleAuthClick}
         theme={theme}
+        onOpenSettings={() => setIsSettingsOpen(true)}
       />
 
       <div className={`flex-1 flex flex-col min-w-0 transition-all duration-500 ${theme === 'dark' ? 'bg-slate-950/20' : 'bg-slate-50'}`}>
-        {/* Header */}
-        <header className="px-4 sm:px-6 py-4 glass border-b border-white/5 flex items-center justify-between shrink-0 z-20">
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-3">
+
+        {/* Floating Header Items (Relative to Chat Area) */}
+        <div className="sticky top-0 left-0 right-0 z-30 pointer-events-none flex items-center justify-between p-4 sm:p-6">
+          <div className="flex items-center gap-3 pointer-events-auto">
+            {!isSidebarOpen && (
               <button 
-                onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-                className="w-10 h-10 flex flex-col items-center justify-center gap-[5px] text-slate-400 hover:text-white transition-all hover:bg-white/5 rounded-xl active:scale-90"
-                title={isSidebarOpen ? "Hide History" : "Show History"}
+                onClick={() => setIsSidebarOpen(true)}
+                className={`w-11 h-11 flex items-center justify-center rounded-2xl shadow-2xl transition-all active:scale-90 group
+                  ${theme === 'dark' ? 'bg-slate-900/80 text-slate-400 hover:text-white border border-white/5 backdrop-blur-xl' : 'bg-white/90 text-slate-500 hover:text-slate-900 border border-slate-200 backdrop-blur-xl'}`}
               >
-                <div className={`w-5 h-[2px] bg-current rounded-full transition-all duration-300 ${isSidebarOpen ? 'rotate-45 translate-y-[7px]' : ''}`}></div>
-                <div className={`w-5 h-[2px] bg-current rounded-full transition-all duration-300 ${isSidebarOpen ? 'opacity-0 scale-0' : ''}`}></div>
-                <div className={`w-5 h-[2px] bg-current rounded-full transition-all duration-300 ${isSidebarOpen ? '-rotate-45 -translate-y-[7px]' : ''}`}></div>
+                <i className="fas fa-bars-staggered group-hover:scale-110 transition-transform"></i>
               </button>
-              <div className="h-6 w-px bg-white/5 hidden lg:block mx-1"></div>
-              <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/20 group relative overflow-hidden">
-                <div className="absolute inset-0 bg-white/20 translate-y-full hover:translate-y-0 transition-transform"></div>
-                <i className="fas fa-brain text-white text-lg relative z-10"></i>
+            )}
+            <div className={`flex items-center gap-3 px-4 py-2 rounded-2xl transition-all
+              ${theme === 'dark' ? 'bg-slate-900/40 text-white' : 'bg-white/40 text-slate-900'} backdrop-blur-md`}>
+              <div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-lg flex items-center justify-center shadow-lg">
+                <i className="fas fa-brain text-white text-sm"></i>
               </div>
-              <div className="hidden sm:block">
-                <h1 className="font-black text-xs uppercase tracking-[0.3em] leading-none mb-1">ChatADK</h1>
-                <div className="flex items-center gap-1.5 opacity-60">
-                  <span className="w-1 h-1 rounded-full bg-blue-500"></span>
-                  <span className="text-[8px] font-bold uppercase tracking-widest text-slate-500">
-                    {currentSession?.title || 'Creative Assistant'}
-                  </span>
-                </div>
+              <div className="hidden xs:block">
+                <h1 className="font-black text-[10px] uppercase tracking-[0.3em] leading-none mb-0.5">ChatADK</h1>
+                <p className="text-[7px] font-bold uppercase tracking-widest text-slate-500 opacity-60">Creative AI</p>
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-2 sm:gap-4 text-slate-400">
+
+          <div className="flex items-center gap-3 pointer-events-auto">
             {user ? (
-              <div className="flex items-center gap-3">
-                <div className="hidden sm:block text-right">
-                  <p className={`text-[10px] font-bold leading-none ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{user.displayName || 'User'}</p>
-                  <p className="text-[9px] text-slate-500 leading-tight">Pro Member</p>
-                </div>
-                <button 
-                  className={`w-10 h-10 rounded-xl border border-white/5 flex items-center justify-center transition-all overflow-hidden ${theme === 'dark' ? 'bg-slate-900 hover:bg-slate-800' : 'bg-white hover:bg-slate-50'}`}
-                  title="Profile"
-                >
-                  {user.photoURL ? (
-                    <img src={user.photoURL} alt="Avatar" className="w-full h-full object-cover" />
-                  ) : (
-                    <i className="fas fa-user-circle text-2xl text-blue-500"></i>
-                  )}
-                </button>
-              </div>
+              <button 
+                className={`w-11 h-11 rounded-2xl border border-white/5 flex items-center justify-center transition-all overflow-hidden shadow-2xl ${theme === 'dark' ? 'bg-slate-900/80 hover:bg-slate-800' : 'bg-white/90 hover:bg-slate-50'}`}
+                title="Profile"
+              >
+                {user.photoURL ? (
+                  <img src={user.photoURL} alt="Avatar" className="w-full h-full object-cover" />
+                ) : (
+                  <i className="fas fa-user-circle text-xl text-blue-500"></i>
+                )}
+              </button>
             ) : (
               <button 
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600/10 hover:bg-blue-600/20 text-blue-400 border border-blue-600/20 rounded-xl text-xs font-bold transition-all active:scale-95"
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl text-[10px] font-black tracking-widest transition-all shadow-2xl active:scale-95"
                 onClick={() => handleAuthClick('signin')}
               >
                 <i className="fas fa-sign-in-alt"></i>
-                <span>Sign In</span>
+                <span className="hidden sm:inline">SIGN IN</span>
               </button>
             )}
-            
-            <button 
-              onClick={() => setIsSettingsOpen(true)}
-              className={`hover:text-blue-500 transition-all p-2 w-10 h-10 rounded-xl flex items-center justify-center active:scale-90 ${theme === 'dark' ? 'hover:bg-white/5' : 'hover:bg-slate-200 text-slate-600'}`}
-              title="Settings & Tools"
-            >
-              <i className="fas fa-cog text-lg"></i>
-            </button>
           </div>
-        </header>
+        </div>
 
         {/* Main Chat Area */}
         <main className="flex-1 overflow-y-auto px-3 sm:px-8 py-6 custom-scrollbar relative" ref={scrollRef}>
@@ -467,34 +484,58 @@ const App: React.FC = () => {
                   </button>
                   <button 
                     type="button"
-                    onClick={() => setAiModel('research')}
-                    className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-2
+                    onClick={() => {
+                      if (!user) {
+                        handleAuthClick('signup');
+                        return;
+                      }
+                      setAiModel('research');
+                    }}
+                    className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-2 relative group-tooltip
                       ${aiModel === 'research' 
                         ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-500/10' 
                         : 'text-slate-500 hover:text-emerald-400'}`}
+                    title={!user ? "Please sign up with ChatADK to access Research Mode" : "Research Mode (DeepSeek R1)"}
                   >
+                    {!user && <i className="fas fa-lock text-[8px] absolute -top-1 -right-1 text-emerald-500 bg-slate-900 rounded-full p-0.5"></i>}
                     <i className="fas fa-microscope"></i>
                     <span>Research</span>
                   </button>
                   <button 
                     type="button"
-                    onClick={() => setAiModel('imagine')}
-                    className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-2
+                    onClick={() => {
+                      if (!user) {
+                        handleAuthClick('signup');
+                        return;
+                      }
+                      setAiModel('imagine');
+                    }}
+                    className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-2 relative
                       ${aiModel === 'imagine' 
                         ? 'bg-pink-600 text-white shadow-lg shadow-pink-500/10' 
                         : 'text-slate-500 hover:text-pink-400'}`}
+                    title={!user ? "Please sign up with ChatADK to access Image Generation" : "Imagine (Image Generation)"}
                   >
+                    {!user && <i className="fas fa-lock text-[8px] absolute -top-1 -right-1 text-pink-500 bg-slate-900 rounded-full p-0.5"></i>}
                     <i className="fas fa-magic"></i>
                     <span>Imagine</span>
                   </button>
                   <button 
                     type="button"
-                    onClick={() => setAiModel('gemini')}
-                    className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-2
+                    onClick={() => {
+                      if (!user) {
+                        handleAuthClick('signup');
+                        return;
+                      }
+                      setAiModel('gemini');
+                    }}
+                    className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-2 relative
                       ${aiModel === 'gemini' 
                         ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/10' 
                         : 'text-slate-500 hover:text-indigo-400'}`}
+                    title={!user ? "Please sign up with ChatADK to access Detail Analysis" : "Detail Analysis (Gemini)"}
                   >
+                    {!user && <i className="fas fa-lock text-[8px] absolute -top-1 -right-1 text-indigo-500 bg-slate-900 rounded-full p-0.5"></i>}
                     <i className="fas fa-brain"></i>
                     <span>Detail</span>
                   </button>
@@ -574,14 +615,12 @@ const App: React.FC = () => {
             <div className={`mt-4 text-center select-none transition-opacity duration-500 ${status.isTyping ? 'opacity-40' : 'opacity-100'}`}>
               <p className="text-[9px] font-black uppercase tracking-[0.3em] text-slate-500">
                 <i className="fas fa-shield-alt mr-2 text-blue-500/50"></i>
-                chatWithAdk may produce inaccurate data. verify critical info.
+                chatAdk may produce inaccurate data. verify critical info.
               </p>
             </div>
           </div>
         </footer>
-
       </div>
-
       <AuthModal 
         isOpen={authModal.open}
         onClose={() => setAuthModal(prev => ({ ...prev, open: false }))}

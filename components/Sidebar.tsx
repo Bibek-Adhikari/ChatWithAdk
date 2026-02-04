@@ -16,6 +16,7 @@ interface SidebarProps {
   user: User | null;
   onAuthClick: (mode: 'signin' | 'signup') => void;
   theme: 'light' | 'dark';
+  onOpenSettings: () => void;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ 
@@ -29,7 +30,8 @@ const Sidebar: React.FC<SidebarProps> = ({
   onClose,
   user,
   onAuthClick,
-  theme
+  theme,
+  onOpenSettings
 }) => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
@@ -48,10 +50,10 @@ const Sidebar: React.FC<SidebarProps> = ({
 
   return (
     <>
-      {/* Mobile Backdrop */}
+      {/* Desktop/Mobile Backdrop - Hidden on LG to allow interaction */}
       {isOpen && (
         <div 
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-30 lg:hidden transition-all duration-500" 
+          className="fixed inset-0 bg-black/20 backdrop-blur-[2px] z-30 transition-all duration-300 cursor-pointer lg:hidden" 
           onClick={onClose}
         />
       )}
@@ -70,12 +72,21 @@ const Sidebar: React.FC<SidebarProps> = ({
                 <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></div>
                 <h2 className="text-[10px] font-black uppercase tracking-[0.25em] text-slate-500">History</h2>
               </div>
-              <button 
-                onClick={onClose}
-                className="lg:hidden w-8 h-8 flex items-center justify-center rounded-xl hover:bg-slate-800/50 text-slate-500 transition-all"
-              >
-                <i className="fas fa-times text-xs"></i>
-              </button>
+              <div className="flex items-center gap-1">
+                <button 
+                  onClick={onOpenSettings}
+                  className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-slate-800/50 text-slate-500 transition-all"
+                  title="Settings"
+                >
+                  <i className="fas fa-cog text-xs"></i>
+                </button>
+                <button 
+                  onClick={onClose}
+                  className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-slate-800/50 text-slate-500 transition-all"
+                >
+                  <i className="fas fa-times text-xs"></i>
+                </button>
+              </div>
             </div>
             
             <button 

@@ -59,7 +59,10 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode, the
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+    <div 
+      className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/40 backdrop-blur-[4px] cursor-pointer"
+      onClick={onClose}
+    >
       <div 
         className={`glass w-full max-w-md rounded-3xl overflow-hidden shadow-2xl border ${theme === 'dark' ? 'border-white/10' : 'border-slate-200 bg-white'}`}
         onClick={(e) => e.stopPropagation()}

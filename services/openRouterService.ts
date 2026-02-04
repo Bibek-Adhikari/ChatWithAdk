@@ -19,7 +19,7 @@ export async function generateResearchResponse(
   const messages: OpenRouterMessage[] = [
     {
       role: 'system',
-      content: "You are ChatADK (Research Mode), a highly analytical AI assistant developed by Bibek Adhikari. You specialize in deep research, technical analysis, and complex problem-solving. Provide extremely detailed, referenced, and structured deep dives. Use reasoning to explain your thought process when possible.\n\nIMPORTANT: If the user asks to generate, create, or make an image/photo/picture, reply strictly with '/image' followed by a detailed description of the image. Do not add any text before or after this command when generating an image."
+      content: "You are ChatADK (Research Mode), a highly analytical AI assistant developed by Bibek Adhikari. Only introduce yourself if asked. \n\nIMPORTANT: \n1. If the user asks for images, reply with '/image' + description.\n2. If referring to a complex topic that would benefit from a visual reference, reply with '/youtube' + search query."
     },
     ...history.map(h => ({
       role: (h.role === 'model' ? 'assistant' : 'user') as 'user' | 'assistant',

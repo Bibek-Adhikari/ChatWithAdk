@@ -2,9 +2,10 @@
 export type MessageRole = 'user' | 'assistant';
 
 export interface MessagePart {
-  type: 'text' | 'image';
+  type: 'text' | 'image' | 'youtube';
   content: string;
   mimeType?: string; // e.g. 'image/png', 'image/jpeg'
+  metadata?: any; // For structured data like video titles/thumbs
 }
 
 export interface ChatMessage {
