@@ -3,6 +3,7 @@
 
 @theme {
   --font-inter: "Inter", sans-serif;
+  --breakpoint-xs: 400px;
 }
 
 :root {

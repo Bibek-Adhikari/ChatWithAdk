@@ -6,6 +6,8 @@ import Sidebar from './components/Sidebar';
 import AuthModal from './components/AuthModal';
 import SettingsModal from './components/SettingsModal';
 import { generateTextResponse } from './services/geminiService';
+import { generateGroqResponse } from './services/groqService';
+import { generateResearchResponse } from './services/openRouterService';
 import { auth } from './services/firebase';
 import { onAuthStateChanged, signOut, User } from 'firebase/auth';
 
@@ -41,6 +43,7 @@ const App: React.FC = () => {
   });
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [selectedImage, setSelectedImage] = useState<{ data: string; mimeType: string } | null>(null);
+  const [aiModel, setAiModel] = useState<'gemini' | 'groq' | 'research'>('gemini');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -102,7 +105,7 @@ const App: React.FC = () => {
       messages: [{
         id: 'welcome',
         role: 'assistant',
-        parts: [{ type: 'text', content: 'Hello! I am ChatWithAdk. How can I help you today?' }],
+        parts: [{ type: 'text', content: 'Hello! I am ChatAdk. How can I help you today?' }],
         timestamp: new Date().toISOString(),
       }],
       updatedAt: Date.now(),
@@ -188,15 +191,31 @@ const App: React.FC = () => {
     try {
       const history = (currentSession?.messages || []).map(m => ({
         role: (m.role === 'assistant' ? 'model' : 'user') as 'user' | 'model',
-        parts: m.parts.map(p => {
+        parts: (m.parts || []).filter(p => p && p.content).map(p => {
           if (p.type === 'text') return { text: p.content };
           return { inlineData: { data: p.content, mimeType: p.mimeType || 'image/jpeg' } };
         })
       }));
       
-      console.log("Sending prompt with history:", { prompt: currentInput, historyLength: history.length, hasImage: !!selectedImage });
+      console.log("Sending prompt with history:", { prompt: currentInput, historyLength: history.length, hasImage: !!selectedImage, model: aiModel });
       
-      const responseText = await generateTextResponse(currentInput, history, selectedImage || undefined);
+      let responseText = '';
+      if (aiModel === 'groq') {
+        const textOnlyHistory = history.map(h => ({
+          ...h,
+          parts: h.parts.filter(p => 'text' in p) as { text: string }[]
+        }));
+        responseText = await generateGroqResponse(currentInput, textOnlyHistory);
+      } else if (aiModel === 'research') {
+        const textOnlyHistory = history.map(h => ({
+          ...h,
+          parts: h.parts.filter(p => 'text' in p) as { text: string }[]
+        }));
+        responseText = await generateResearchResponse(currentInput, textOnlyHistory);
+      } else {
+        responseText = await generateTextResponse(currentInput, history, selectedImage || undefined);
+      }
+      
       addAssistantMessage(sessionId, [{ type: 'text', content: responseText }]);
     } catch (err: any) {
       console.error("Chat error:", err);
@@ -260,7 +279,7 @@ const App: React.FC = () => {
 
       <div className={`flex-1 flex flex-col min-w-0 transition-all duration-500 ${theme === 'dark' ? 'bg-slate-950/20' : 'bg-slate-50'}`}>
         {/* Header */}
-        <header className="px-6 py-4 glass border-b border-white/5 flex items-center justify-between shrink-0 z-10">
+        <header className="px-4 sm:px-6 py-4 glass border-b border-white/5 flex items-center justify-between shrink-0 z-20">
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-3">
               <button 
@@ -327,7 +346,7 @@ const App: React.FC = () => {
         </header>
 
         {/* Main Chat Area */}
-        <main className="flex-1 overflow-y-auto px-4 sm:px-8 py-6 custom-scrollbar relative" ref={scrollRef}>
+        <main className="flex-1 overflow-y-auto px-3 sm:px-8 py-6 custom-scrollbar relative" ref={scrollRef}>
           <div className="max-w-3xl mx-auto space-y-2">
             {!currentSession && (
               <div className="flex flex-col items-center justify-center h-full text-center space-y-4 py-20 opacity-50">
@@ -385,83 +404,123 @@ const App: React.FC = () => {
         </main>
 
         {/* Input Section */}
-        <footer className={`p-6 shrink-0 z-10 ${theme === 'dark' ? 'bg-transparent' : 'bg-transparent'}`}>
+        <footer className={`p-4 sm:p-6 shrink-0 z-10 ${theme === 'dark' ? 'bg-transparent' : 'bg-transparent'}`}>
           <div className="max-w-3xl mx-auto">
             <form onSubmit={handleSend} className="relative group transition-all duration-300">
               {/* Outer Glow */}
               <div className="absolute -inset-1 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-[22px] blur-sm opacity-10 group-focus-within:opacity-25 transition duration-500"></div>
               
-              <div className={`relative flex items-end gap-2 p-2 rounded-[20px] shadow-2xl transition-all border
+              <div className={`relative flex flex-col p-2 rounded-[24px] shadow-2xl transition-all border
                 ${theme === 'dark' 
                   ? 'bg-slate-900/80 border-white/5 backdrop-blur-xl' 
                   : 'bg-white/90 border-slate-200 backdrop-blur-xl'}`}>
                 
-                <div className="flex flex-col flex-1">
-                  {selectedImage && (
-                    <div className="px-4 pt-2 flex items-center gap-2">
-                      <div className="relative group/img overflow-hidden rounded-lg">
-                        <img 
-                          src={`data:${selectedImage.mimeType};base64,${selectedImage.data}`} 
-                          alt="Selected" 
-                          className="h-20 w-auto object-cover border border-white/10"
-                        />
-                        <button 
-                          type="button"
-                          onClick={removeSelectedImage}
-                          className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/50 text-white flex items-center justify-center opacity-0 group-hover/img:opacity-100 transition-opacity"
-                        >
-                          <i className="fas fa-times text-[10px]"></i>
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                  
-                  <div className="flex items-end">
-                    <input 
-                      type="file"
-                      ref={fileInputRef}
-                      onChange={handleImageSelect}
-                      accept="image/*"
-                      className="hidden"
-                    />
-                    <button 
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      className={`w-11 h-11 shrink-0 flex items-center justify-center transition-all hover:scale-105 active:scale-95 ${theme === 'dark' ? 'text-slate-500 hover:text-white' : 'text-slate-400 hover:text-slate-600'}`}
-                      title="Attach Image"
-                    >
-                      <i className="fas fa-image text-xl"></i>
-                    </button>
-
-                    <textarea 
-                      rows={1}
-                      value={inputValue}
-                      onChange={(e) => {
-                        setInputValue(e.target.value);
-                        e.target.style.height = 'auto';
-                        e.target.style.height = `${Math.min(e.target.scrollHeight, 200)}px`;
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && !e.shiftKey) {
-                          e.preventDefault();
-                          handleSend();
-                        }
-                      }}
-                      placeholder="Type a message..."
-                      className={`flex-1 bg-transparent border-none outline-none px-4 py-3 text-[14.5px] leading-relaxed resize-none overflow-y-auto max-h-[200px] placeholder:text-slate-500/60
-                        ${theme === 'dark' ? 'text-slate-100' : 'text-slate-900'}`}
-                      disabled={status.isTyping}
-                    />
-                  </div>
+                {/* Integrated Model Selector */}
+                <div className={`flex items-center gap-1.5 p-1 px-1.5 mb-2 w-fit rounded-xl border
+                  ${theme === 'dark' ? 'bg-black/20 border-white/5' : 'bg-slate-50 border-slate-200'}`}>
+                  <button 
+                    type="button"
+                    onClick={() => setAiModel('groq')}
+                    className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-2
+                      ${aiModel === 'groq' 
+                        ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/10' 
+                        : 'text-slate-500 hover:text-blue-400'}`}
+                  >
+                    <i className={`fas fa-bolt ${aiModel === 'groq' ? 'animate-pulse' : ''}`}></i>
+                    <span>Fast</span>
+                  </button>
+                  <button 
+                    type="button"
+                    onClick={() => setAiModel('research')}
+                    className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-2
+                      ${aiModel === 'research' 
+                        ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-500/10' 
+                        : 'text-slate-500 hover:text-emerald-400'}`}
+                  >
+                    <i className="fas fa-microscope"></i>
+                    <span>Research</span>
+                  </button>
+                  <button 
+                    type="button"
+                    onClick={() => setAiModel('gemini')}
+                    className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-2
+                      ${aiModel === 'gemini' 
+                        ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/10' 
+                        : 'text-slate-500 hover:text-indigo-400'}`}
+                  >
+                    <i className="fas fa-brain"></i>
+                    <span>Detail</span>
+                  </button>
                 </div>
 
-                <button 
-                  type="submit"
-                  disabled={!inputValue.trim() || status.isTyping}
-                  className="w-11 h-11 shrink-0 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800 disabled:opacity-30 text-white flex items-center justify-center transition-all hover:scale-105 active:scale-95 shadow-lg shadow-blue-500/20"
-                >
-                  <i className={`fas ${status.isTyping ? 'fa-spinner fa-spin' : 'fa-arrow-up'} text-sm`}></i>
-                </button>
+                <div className="flex items-end gap-2">
+                  <div className="flex flex-col flex-1 pl-1">
+                    {selectedImage && (
+                      <div className="pb-2 flex items-center gap-2">
+                        <div className="relative group/img overflow-hidden rounded-lg">
+                          <img 
+                            src={`data:${selectedImage.mimeType};base64,${selectedImage.data}`} 
+                            alt="Selected" 
+                            className="h-20 w-auto object-cover border border-white/10"
+                          />
+                          <button 
+                            type="button"
+                            onClick={removeSelectedImage}
+                            className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/50 text-white flex items-center justify-center opacity-0 group-hover/img:opacity-100 transition-opacity"
+                          >
+                            <i className="fas fa-times text-[10px]"></i>
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                    
+                    <div className="flex items-end">
+                      <input 
+                        type="file"
+                        ref={fileInputRef}
+                        onChange={handleImageSelect}
+                        accept="image/*"
+                        className="hidden"
+                      />
+                      <button 
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className={`w-11 h-11 shrink-0 flex items-center justify-center transition-all hover:scale-105 active:scale-95 ${theme === 'dark' ? 'text-slate-500 hover:text-white' : 'text-slate-400 hover:text-slate-600'}`}
+                        title="Attach Image"
+                      >
+                        <i className="fas fa-image text-xl"></i>
+                      </button>
+
+                      <textarea 
+                        rows={1}
+                        value={inputValue}
+                        onChange={(e) => {
+                          setInputValue(e.target.value);
+                          e.target.style.height = 'auto';
+                          e.target.style.height = `${Math.min(e.target.scrollHeight, 200)}px`;
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault();
+                            handleSend();
+                          }
+                        }}
+                        placeholder="Type a message..."
+                        className={`flex-1 bg-transparent border-none outline-none px-4 py-3 text-[14.5px] leading-relaxed resize-none overflow-y-auto max-h-[200px] placeholder:text-slate-500/60
+                          ${theme === 'dark' ? 'text-slate-100' : 'text-slate-900'}`}
+                        disabled={status.isTyping}
+                      />
+                    </div>
+                  </div>
+
+                  <button 
+                    type="submit"
+                    disabled={!inputValue.trim() || status.isTyping}
+                    className="w-11 h-11 shrink-0 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800 disabled:opacity-30 text-white flex items-center justify-center transition-all hover:scale-105 active:scale-95 shadow-lg shadow-blue-500/20"
+                  >
+                    <i className={`fas ${status.isTyping ? 'fa-spinner fa-spin' : 'fa-arrow-up'} text-sm`}></i>
+                  </button>
+                </div>
               </div>
             </form>
             

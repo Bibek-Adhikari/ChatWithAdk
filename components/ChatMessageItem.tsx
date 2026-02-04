@@ -60,6 +60,7 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = ({ message, onImageClick
               fontSize: '13.5px',
               backgroundColor: theme === 'dark' ? '#011627' : '#fafafa',
               lineHeight: '1.5',
+              overflowX: 'auto',
             }}
             {...props}
           >
@@ -85,11 +86,11 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = ({ message, onImageClick
         )}
         
         <div className="flex flex-col gap-2">
-          {message.parts.map((part, idx) => (
+          {(message.parts || []).map((part, idx) => (
             <div key={idx} className="w-full relative group/message">
               {part.type === 'text' ? (
                 <div 
-                  className={`px-6 py-4 rounded-[24px] text-[15px] leading-[1.6] chat-shadow markdown-content relative
+                  className={`px-4 sm:px-6 py-4 rounded-[24px] text-[15px] leading-[1.6] chat-shadow markdown-content relative break-words overflow-hidden
                     ${isUser 
                       ? 'bg-gradient-to-br from-blue-600 to-blue-700 text-white rounded-tr-none shadow-blue-500/20' 
                       : theme === 'dark'
@@ -97,16 +98,17 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = ({ message, onImageClick
                         : 'bg-white text-slate-800 rounded-tl-none border border-slate-200'}`}
                 >
                   {/* Global Message Copy Button */}
-                  {!isUser && (
                     <button
                       onClick={() => handleCopy(part.content)}
-                      className={`absolute top-4 right-4 p-2 rounded-lg opacity-0 group-hover/message:opacity-100 transition-all active:scale-90
-                        ${theme === 'dark' ? 'hover:bg-white/10 text-slate-400' : 'hover:bg-slate-100 text-slate-500'}`}
-                      title="Copy full response"
+                      className={`absolute top-2 right-2 p-2 rounded-lg sm:opacity-0 group-hover/message:opacity-100 transition-all active:scale-90 z-20
+                        ${isUser 
+                          ? 'hover:bg-black/10 text-white/70' 
+                          : theme === 'dark' ? 'hover:bg-white/10 text-slate-400' : 'hover:bg-slate-100 text-slate-500'}
+                        ${copiedCode === part.content ? 'opacity-100' : 'opacity-100 sm:opacity-0'}`}
+                      title="Copy message"
                     >
-                      {copiedCode === part.content ? <Check size={14} className="text-emerald-500" /> : <Copy size={14} />}
+                      {copiedCode === part.content ? <Check size={14} className={isUser ? "text-white" : "text-emerald-500"} /> : <Copy size={14} />}
                     </button>
-                  )}
                   
                   <ReactMarkdown
                     components={{
