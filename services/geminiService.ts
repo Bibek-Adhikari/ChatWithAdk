@@ -38,7 +38,10 @@ const getAiInstance = () => {
 
 export interface ChatHistoryEntry {
   role: 'user' | 'model';
-  parts: { text: string }[];
+  parts: (
+    | { text: string }
+    | { inlineData: { data: string; mimeType: string } }
+  )[];
 }
 
 // Updated fallback list based on actual models available to this specific key
@@ -49,7 +52,11 @@ const FALLBACK_MODELS = [
   'gemini-flash-lite-latest'
 ];
 
-export async function generateTextResponse(prompt: string, history: ChatHistoryEntry[]): Promise<string> {
+export async function generateTextResponse(
+  prompt: string, 
+  history: ChatHistoryEntry[],
+  image?: { data: string; mimeType: string }
+): Promise<string> {
   const ai = getAiInstance();
   let lastError: any = null;
 
@@ -57,14 +64,23 @@ export async function generateTextResponse(prompt: string, history: ChatHistoryE
     try {
       console.log(`Trying model: ${modelName}`);
       
+      const parts: any[] = [{ text: prompt }];
+      if (image) {
+        parts.push({ inlineData: image });
+      }
+
       const result = await ai.models.generateContent({
         model: modelName,
         contents: [
           ...history.map(h => ({
             role: h.role,
-            parts: h.parts.map(p => ({ text: p.text }))
+            parts: h.parts.map(p => {
+              if ('text' in p) return { text: p.text };
+              if ('inlineData' in p) return { inlineData: p.inlineData };
+              return { text: '' };
+            })
           })),
-          { role: 'user', parts: [{ text: prompt }] }
+          { role: 'user', parts }
         ],
         config: {
           temperature: 0.7,

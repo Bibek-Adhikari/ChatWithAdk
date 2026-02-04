@@ -128,12 +128,12 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = ({ message, onImageClick
               ) : (
                 <div 
                   className={`group relative overflow-hidden rounded-[24px] border border-white/5 shadow-2xl transition-all ${onImageClick ? 'cursor-pointer hover:scale-[1.01]' : ''}`}
-                  onClick={() => onImageClick?.(part.content)}
+                  onClick={() => onImageClick?.(`data:${part.mimeType || 'image/jpeg'};base64,${part.content}`)}
                 >
                   <img 
-                    src={part.content} 
+                    src={`data:${part.mimeType || 'image/jpeg'};base64,${part.content}`} 
                     alt="Process" 
-                    className="w-full h-auto max-w-md object-cover"
+                    className="w-full h-auto max-w-md object-cover rounded-[24px]"
                   />
                   {onImageClick && (
                     <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity backdrop-blur-[2px]">

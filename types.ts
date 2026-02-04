@@ -4,6 +4,7 @@ export type MessageRole = 'user' | 'assistant';
 export interface MessagePart {
   type: 'text' | 'image';
   content: string;
+  mimeType?: string; // e.g. 'image/png', 'image/jpeg'
 }
 
 export interface ChatMessage {

@@ -40,6 +40,8 @@ const App: React.FC = () => {
     mode: 'signin'
   });
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [selectedImage, setSelectedImage] = useState<{ data: string; mimeType: string } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -126,6 +128,29 @@ const App: React.FC = () => {
     setSessions(prev => prev.map(s => s.id === id ? { ...s, title: newTitle } : s));
   };
 
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      setStatus(prev => ({ ...prev, error: "Please select an image file." }));
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const base64 = event.target?.result as string;
+      const data = base64.split(',')[1];
+      setSelectedImage({ data, mimeType: file.type });
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const removeSelectedImage = () => {
+    setSelectedImage(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
   const handleSend = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!inputValue.trim() || status.isTyping) return;
@@ -147,7 +172,10 @@ const App: React.FC = () => {
     const userMessage: ChatMessage = {
       id: Date.now().toString(),
       role: 'user',
-      parts: [{ type: 'text', content: inputValue.trim() }],
+      parts: [
+        { type: 'text', content: inputValue.trim() },
+        ...(selectedImage ? [{ type: 'image' as const, content: selectedImage.data, mimeType: selectedImage.mimeType }] : [])
+      ],
       timestamp: new Date().toISOString(),
     };
 
@@ -160,18 +188,23 @@ const App: React.FC = () => {
     try {
       const history = (currentSession?.messages || []).map(m => ({
         role: (m.role === 'assistant' ? 'model' : 'user') as 'user' | 'model',
-        parts: [{ text: m.parts.map(p => p.content).join(' ') }]
+        parts: m.parts.map(p => {
+          if (p.type === 'text') return { text: p.content };
+          return { inlineData: { data: p.content, mimeType: p.mimeType || 'image/jpeg' } };
+        })
       }));
       
-      console.log("Sending prompt with history:", { prompt: currentInput, historyLength: history.length });
+      console.log("Sending prompt with history:", { prompt: currentInput, historyLength: history.length, hasImage: !!selectedImage });
       
-      const responseText = await generateTextResponse(currentInput, history);
+      const responseText = await generateTextResponse(currentInput, history, selectedImage || undefined);
       addAssistantMessage(sessionId, [{ type: 'text', content: responseText }]);
     } catch (err: any) {
       console.error("Chat error:", err);
       setStatus(prev => ({ ...prev, error: err.message || "Connection lost. Please try again." }));
     } finally {
       setStatus(prev => ({ ...prev, isTyping: false }));
+      setSelectedImage(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
 
@@ -363,25 +396,64 @@ const App: React.FC = () => {
                   ? 'bg-slate-900/80 border-white/5 backdrop-blur-xl' 
                   : 'bg-white/90 border-slate-200 backdrop-blur-xl'}`}>
                 
-                <textarea 
-                  rows={1}
-                  value={inputValue}
-                  onChange={(e) => {
-                    setInputValue(e.target.value);
-                    e.target.style.height = 'auto';
-                    e.target.style.height = `${Math.min(e.target.scrollHeight, 200)}px`;
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault();
-                      handleSend();
-                    }
-                  }}
-                  placeholder="Type a message..."
-                  className={`flex-1 bg-transparent border-none outline-none px-4 py-3 text-[14.5px] leading-relaxed resize-none overflow-y-auto max-h-[200px] placeholder:text-slate-500/60
-                    ${theme === 'dark' ? 'text-slate-100' : 'text-slate-900'}`}
-                  disabled={status.isTyping}
-                />
+                <div className="flex flex-col flex-1">
+                  {selectedImage && (
+                    <div className="px-4 pt-2 flex items-center gap-2">
+                      <div className="relative group/img overflow-hidden rounded-lg">
+                        <img 
+                          src={`data:${selectedImage.mimeType};base64,${selectedImage.data}`} 
+                          alt="Selected" 
+                          className="h-20 w-auto object-cover border border-white/10"
+                        />
+                        <button 
+                          type="button"
+                          onClick={removeSelectedImage}
+                          className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/50 text-white flex items-center justify-center opacity-0 group-hover/img:opacity-100 transition-opacity"
+                        >
+                          <i className="fas fa-times text-[10px]"></i>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  
+                  <div className="flex items-end">
+                    <input 
+                      type="file"
+                      ref={fileInputRef}
+                      onChange={handleImageSelect}
+                      accept="image/*"
+                      className="hidden"
+                    />
+                    <button 
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className={`w-11 h-11 shrink-0 flex items-center justify-center transition-all hover:scale-105 active:scale-95 ${theme === 'dark' ? 'text-slate-500 hover:text-white' : 'text-slate-400 hover:text-slate-600'}`}
+                      title="Attach Image"
+                    >
+                      <i className="fas fa-image text-xl"></i>
+                    </button>
+
+                    <textarea 
+                      rows={1}
+                      value={inputValue}
+                      onChange={(e) => {
+                        setInputValue(e.target.value);
+                        e.target.style.height = 'auto';
+                        e.target.style.height = `${Math.min(e.target.scrollHeight, 200)}px`;
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault();
+                          handleSend();
+                        }
+                      }}
+                      placeholder="Type a message..."
+                      className={`flex-1 bg-transparent border-none outline-none px-4 py-3 text-[14.5px] leading-relaxed resize-none overflow-y-auto max-h-[200px] placeholder:text-slate-500/60
+                        ${theme === 'dark' ? 'text-slate-100' : 'text-slate-900'}`}
+                      disabled={status.isTyping}
+                    />
+                  </div>
+                </div>
 
                 <button 
                   type="submit"
