@@ -2,7 +2,14 @@ import { initializeApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider } from "firebase/auth";
 
 const getEnv = (key: string) => {
-  return import.meta.env[key] || (window as any).process?.env?.[key] || "";
+  const val = import.meta.env[key];
+  if (val) return val;
+  
+  // Deployment check
+  if (typeof window !== 'undefined') {
+    return (window as any)._env_?.[key] || "";
+  }
+  return "";
 };
 
 const firebaseConfig = {
@@ -14,7 +21,11 @@ const firebaseConfig = {
   appId: getEnv('VITE_FIREBASE_APP_ID')
 };
 
-console.log("Firebase config check:", firebaseConfig.apiKey ? "API Key present" : "API Key MISSING");
+if (!firebaseConfig.apiKey) {
+  console.error("CRITICAL: Firebase API Key is MISSING. Ensure VITE_FIREBASE_API_KEY is set in Netlify Environment Variables.");
+} else {
+  console.log("Firebase initialized successfully.");
+}
 
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
