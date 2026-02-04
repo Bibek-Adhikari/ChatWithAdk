@@ -8,6 +8,7 @@ import SettingsModal from './components/SettingsModal';
 import { generateTextResponse } from './services/geminiService';
 import { generateGroqResponse } from './services/groqService';
 import { generateResearchResponse } from './services/openRouterService';
+import { generateImageResponse } from './services/imageService';
 import { auth } from './services/firebase';
 import { onAuthStateChanged, signOut, User } from 'firebase/auth';
 
@@ -43,7 +44,7 @@ const App: React.FC = () => {
   });
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [selectedImage, setSelectedImage] = useState<{ data: string; mimeType: string } | null>(null);
-  const [aiModel, setAiModel] = useState<'gemini' | 'groq' | 'research'>('gemini');
+  const [aiModel, setAiModel] = useState<'gemini' | 'groq' | 'research' | 'imagine'>('gemini');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -200,23 +201,58 @@ const App: React.FC = () => {
       console.log("Sending prompt with history:", { prompt: currentInput, historyLength: history.length, hasImage: !!selectedImage, model: aiModel });
       
       let responseText = '';
-      if (aiModel === 'groq') {
-        const textOnlyHistory = history.map(h => ({
-          ...h,
-          parts: h.parts.filter(p => 'text' in p) as { text: string }[]
-        }));
-        responseText = await generateGroqResponse(currentInput, textOnlyHistory);
-      } else if (aiModel === 'research') {
-        const textOnlyHistory = history.map(h => ({
-          ...h,
-          parts: h.parts.filter(p => 'text' in p) as { text: string }[]
-        }));
-        responseText = await generateResearchResponse(currentInput, textOnlyHistory);
+      let generatedImageUrl = '';
+
+      if (aiModel === 'imagine' || currentInput.toLowerCase().startsWith('/image')) {
+        const imagePrompt = currentInput.toLowerCase().startsWith('/image') 
+          ? currentInput.substring(6).trim() 
+          : currentInput;
+        
+        generatedImageUrl = await generateImageResponse(imagePrompt);
+        addAssistantMessage(sessionId, [
+          { type: 'text', content: `Here is the image I generated for: "${imagePrompt}"` },
+          { type: 'image', content: generatedImageUrl }
+        ]);
       } else {
-        responseText = await generateTextResponse(currentInput, history, selectedImage || undefined);
+        if (aiModel === 'groq') {
+          const textOnlyHistory = history.map(h => ({
+            ...h,
+            parts: h.parts.filter(p => 'text' in p) as { text: string }[]
+          }));
+          responseText = await generateGroqResponse(currentInput, textOnlyHistory);
+        } else if (aiModel === 'research') {
+          const textOnlyHistory = history.map(h => ({
+            ...h,
+            parts: h.parts.filter(p => 'text' in p) as { text: string }[]
+          }));
+          responseText = await generateResearchResponse(currentInput, textOnlyHistory);
+        } else {
+          responseText = await generateTextResponse(currentInput, history, selectedImage || undefined);
+        }
+
+        // Check if AI suggested an image generation via /image trigger
+        if (responseText.toLowerCase().includes('/image')) {
+          const parts = responseText.split(/(\/image\s+.*)/i);
+          const finalParts: MessagePart[] = [];
+          
+          for (const segment of parts) {
+            if (segment.toLowerCase().startsWith('/image')) {
+              const imgPrompt = segment.substring(6).trim();
+              try {
+                const imgUrl = await generateImageResponse(imgPrompt);
+                finalParts.push({ type: 'image', content: imgUrl });
+              } catch (e) {
+                finalParts.push({ type: 'text', content: segment });
+              }
+            } else if (segment.trim()) {
+              finalParts.push({ type: 'text', content: segment });
+            }
+          }
+          addAssistantMessage(sessionId, finalParts);
+        } else {
+          addAssistantMessage(sessionId, [{ type: 'text', content: responseText }]);
+        }
       }
-      
-      addAssistantMessage(sessionId, [{ type: 'text', content: responseText }]);
     } catch (err: any) {
       console.error("Chat error:", err);
       setStatus(prev => ({ ...prev, error: err.message || "Connection lost. Please try again." }));
@@ -439,6 +475,17 @@ const App: React.FC = () => {
                   >
                     <i className="fas fa-microscope"></i>
                     <span>Research</span>
+                  </button>
+                  <button 
+                    type="button"
+                    onClick={() => setAiModel('imagine')}
+                    className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-2
+                      ${aiModel === 'imagine' 
+                        ? 'bg-pink-600 text-white shadow-lg shadow-pink-500/10' 
+                        : 'text-slate-500 hover:text-pink-400'}`}
+                  >
+                    <i className="fas fa-magic"></i>
+                    <span>Imagine</span>
                   </button>
                   <button 
                     type="button"

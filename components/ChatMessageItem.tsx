@@ -130,16 +130,22 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = ({ message, onImageClick
               ) : (
                 <div 
                   className={`group relative overflow-hidden rounded-[24px] border border-white/5 shadow-2xl transition-all ${onImageClick ? 'cursor-pointer hover:scale-[1.01]' : ''}`}
-                  onClick={() => onImageClick?.(`data:${part.mimeType || 'image/jpeg'};base64,${part.content}`)}
+                  onClick={() => {
+                    const url = part.content.startsWith('http') ? part.content : `data:${part.mimeType || 'image/jpeg'};base64,${part.content}`;
+                    onImageClick?.(url);
+                  }}
                 >
                   <img 
-                    src={`data:${part.mimeType || 'image/jpeg'};base64,${part.content}`} 
+                    src={part.content.startsWith('http') ? part.content : `data:${part.mimeType || 'image/jpeg'};base64,${part.content}`} 
                     alt="Process" 
                     className="w-full h-auto max-w-md object-cover rounded-[24px]"
                   />
                   {onImageClick && (
                     <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity backdrop-blur-[2px]">
-                      <i className="fas fa-expand text-white text-xl"></i>
+                      <div className="flex flex-col items-center gap-2">
+                        <i className="fas fa-expand text-white text-xl"></i>
+                        <span className="text-[10px] text-white font-bold tracking-widest uppercase">Expand</span>
+                      </div>
                     </div>
                   )}
                 </div>
