@@ -245,7 +245,7 @@ const App: React.FC = () => {
                 <i className="fas fa-brain text-white text-lg relative z-10"></i>
               </div>
               <div className="hidden sm:block">
-                <h1 className="font-black text-xs uppercase tracking-[0.3em] leading-none mb-1">ChatWithAdk</h1>
+                <h1 className="font-black text-xs uppercase tracking-[0.3em] leading-none mb-1">ChatADK</h1>
                 <div className="flex items-center gap-1.5 opacity-60">
                   <span className="w-1 h-1 rounded-full bg-blue-500"></span>
                   <span className="text-[8px] font-bold uppercase tracking-widest text-slate-500">
