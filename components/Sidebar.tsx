@@ -18,6 +18,8 @@ interface SidebarProps {
   theme: 'light' | 'dark';
   onOpenSettings: () => void;
   onOpenProfile: () => void;
+  isAdmin?: boolean;
+  onOpenAdmin?: () => void;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ 
@@ -33,7 +35,9 @@ const Sidebar: React.FC<SidebarProps> = ({
   onAuthClick,
   theme,
   onOpenSettings,
-  onOpenProfile
+  onOpenProfile,
+  isAdmin,
+  onOpenAdmin
 }) => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
@@ -212,7 +216,18 @@ const Sidebar: React.FC<SidebarProps> = ({
                 </button>
               </div>
             )}
+            
+            {isAdmin && (
+              <button 
+                onClick={onOpenAdmin}
+                className="w-full mt-4 py-3 bg-indigo-600/10 hover:bg-indigo-600/20 text-indigo-400 rounded-xl text-[10px] font-black tracking-widest border border-indigo-600/20 transition-all active:scale-95 flex items-center justify-center gap-2"
+              >
+                <i className="fas fa-shield-alt"></i>
+                ADMIN DASHBOARD
+              </button>
+            )}
           </div>
+
         </div>
       </aside>
     </>

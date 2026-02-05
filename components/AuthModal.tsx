@@ -7,6 +7,8 @@ import {
   updateProfile
 } from 'firebase/auth';
 import { auth, googleProvider } from '../services/firebase';
+import { adminService } from '../services/adminService';
+
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -32,8 +34,11 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode, the
 
     try {
       if (mode === 'signin') {
-        await signInWithEmailAndPassword(auth, email, password);
+        const userCredential = await signInWithEmailAndPassword(auth, email, password);
+        // Sync user to Firestore on login
+        await adminService.syncUser(userCredential.user);
       } else {
+
         // Create user with email/password
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
         
@@ -45,7 +50,11 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode, the
           // Force a reload to sync the profile changes
           await userCredential.user.reload();
         }
+
+        // Sync user to Firestore
+        await adminService.syncUser(auth.currentUser || userCredential.user);
       }
+
       onClose();
     } catch (err: any) {
       console.error("Auth error:", err);
@@ -59,9 +68,12 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode, the
     setError(null);
     setLoading(true);
     try {
-      await signInWithPopup(auth, googleProvider);
+      const result = await signInWithPopup(auth, googleProvider);
+      // Sync user to Firestore
+      await adminService.syncUser(result.user);
       onClose();
     } catch (err: any) {
+
       console.error("Google Auth error:", err);
       setError(err.message || "Failed to sign in with Google.");
     } finally {

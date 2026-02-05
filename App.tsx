@@ -11,8 +11,16 @@ import { generateGroqResponse } from './services/groqService';
 import { generateResearchResponse } from './services/openRouterService';
 import { generateImageResponse } from './services/imageService';
 import { searchYouTubeVideo } from './services/youtubeService';
-import { auth } from './services/firebase';
+import { auth, db } from './services/firebase';
 import { onAuthStateChanged, signOut, User } from 'firebase/auth';
+import { chatStorageService } from './services/chatStorageService';
+import AdminDashboardModal from './components/AdminDashboardModal';
+
+const ADMIN_EMAILS = [
+  "crazybibek4444@gmail.com",
+  "geniusbibek4444@gmail.com"
+];
+
 
 const STORAGE_KEY = 'chat_with_adk_history';
 
@@ -22,16 +30,8 @@ const App: React.FC = () => {
     return (saved as 'light' | 'dark') || 'dark';
   });
 
-  const [sessions, setSessions] = useState<ChatSession[]>(() => {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    return saved ? JSON.parse(saved) : [];
-  });
-  
-  const [currentSessionId, setCurrentSessionId] = useState<string>(() => {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    const parsed = saved ? JSON.parse(saved) : [];
-    return parsed.length > 0 ? parsed[0].id : '';
-  });
+  const [sessions, setSessions] = useState<ChatSession[]>([]);
+  const [currentSessionId, setCurrentSessionId] = useState<string>('');
 
   const [inputValue, setInputValue] = useState('');
   const [status, setStatus] = useState<GenerationState>({
@@ -46,7 +46,9 @@ const App: React.FC = () => {
   });
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [isAdminDashboardOpen, setIsAdminDashboardOpen] = useState(false);
   const [imageError, setImageError] = useState(false);
+
   const [selectedVoiceURI, setSelectedVoiceURI] = useState<string>(() => {
     return localStorage.getItem('selectedVoiceURI') || '';
   });
@@ -76,9 +78,44 @@ const App: React.FC = () => {
     [sessions, currentSessionId]
   );
 
+  // Get storage key for current user
+  const getUserStorageKey = () => {
+    return user ? `${STORAGE_KEY}_${user.uid}` : `${STORAGE_KEY}_guest`;
+  };
+
+  // Load user sessions when user changes
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions));
-  }, [sessions]);
+    const loadSessions = async () => {
+      if (user) {
+        // Load from Firestore for authenticated users
+        const cloudSessions = await chatStorageService.getUserSessions(user.uid);
+        if (cloudSessions.length > 0) {
+          setSessions(cloudSessions);
+          setCurrentSessionId(cloudSessions[0].id);
+          // Also update local storage cache
+          localStorage.setItem(getUserStorageKey(), JSON.stringify(cloudSessions));
+          return;
+        }
+      }
+      
+      // Fallback to local storage
+      const key = getUserStorageKey();
+      const saved = localStorage.getItem(key);
+      const loadedSessions = saved ? JSON.parse(saved) : [];
+      setSessions(loadedSessions);
+      setCurrentSessionId(loadedSessions.length > 0 ? loadedSessions[0].id : '');
+    };
+
+    loadSessions();
+  }, [user?.uid]);
+
+  // Save sessions when they change
+  useEffect(() => {
+    const key = getUserStorageKey();
+    if (key) {
+      localStorage.setItem(key, JSON.stringify(sessions));
+    }
+  }, [sessions, user?.uid]);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -91,7 +128,12 @@ const App: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
+  const isAdmin = useMemo(() => {
+    return user && user.email && ADMIN_EMAILS.includes(user.email);
+  }, [user]);
+
   useEffect(() => {
+
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
@@ -110,8 +152,10 @@ const App: React.FC = () => {
         setAuthModal(prev => ({ ...prev, open: false }));
         setIsSettingsOpen(false);
         setIsProfileOpen(false);
+        setIsAdminDashboardOpen(false);
         setIsModelMenuOpen(false);
       }
+
     };
 
     const handleClickOutside = (e: MouseEvent) => {
@@ -161,16 +205,37 @@ const App: React.FC = () => {
     setAuthModal({ open: true, mode });
   };
 
-  const handleDeleteSession = (id: string) => {
+  const handleDeleteSession = async (id: string) => {
     const updated = sessions.filter(s => s.id !== id);
     setSessions(updated);
     if (currentSessionId === id) {
       setCurrentSessionId(updated.length > 0 ? updated[0].id : '');
     }
+    
+    // Sync with Firestore if authenticated
+    if (user) {
+      try {
+        await chatStorageService.deleteSession(id);
+      } catch (err) {
+        console.error("Failed to delete session from cloud:", err);
+      }
+    }
   };
 
-  const handleRenameSession = (id: string, newTitle: string) => {
+  const handleRenameSession = async (id: string, newTitle: string) => {
     setSessions(prev => prev.map(s => s.id === id ? { ...s, title: newTitle } : s));
+    
+    // Sync with Firestore if authenticated
+    if (user) {
+      const session = sessions.find(s => s.id === id);
+      if (session) {
+        try {
+          await chatStorageService.saveSession(user.uid, { ...session, title: newTitle });
+        } catch (err) {
+          console.error("Failed to rename session in cloud:", err);
+        }
+      }
+    }
   };
 
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -395,19 +460,32 @@ const App: React.FC = () => {
     }
   };
 
-  const updateSessionMessages = (sessionId: string, updater: (prev: ChatMessage[]) => ChatMessage[], firstInput?: string) => {
+  const updateSessionMessages = async (sessionId: string, updater: (prev: ChatMessage[]) => ChatMessage[], firstInput?: string) => {
+    let updatedSession: ChatSession | null = null;
+    
     setSessions(prev => prev.map(s => {
       if (s.id === sessionId) {
         const newMessages = updater(s.messages);
-        return { 
+        const newTitle = (s.title === 'New Conversation' && firstInput) ? (firstInput.slice(0, 30) + (firstInput.length > 30 ? '...' : '')) : s.title;
+        updatedSession = { 
           ...s, 
           messages: newMessages, 
           updatedAt: Date.now(),
-          title: (s.title === 'New Conversation' && firstInput) ? (firstInput.slice(0, 30) + (firstInput.length > 30 ? '...' : '')) : s.title
+          title: newTitle
         };
+        return updatedSession;
       }
       return s;
     }));
+
+    // Sync with Firestore if authenticated
+    if (user && updatedSession) {
+      try {
+        await chatStorageService.saveSession(user.uid, updatedSession);
+      } catch (err) {
+        console.error("Failed to sync message to cloud:", err);
+      }
+    }
   };
 
   const addAssistantMessage = (sessionId: string, parts: MessagePart[]) => {
@@ -445,7 +523,10 @@ const App: React.FC = () => {
         theme={theme}
         onOpenSettings={() => setIsSettingsOpen(true)}
         onOpenProfile={() => setIsProfileOpen(true)}
+        isAdmin={isAdmin}
+        onOpenAdmin={() => setIsAdminDashboardOpen(true)}
       />
+
 
       <div className={`flex-1 flex flex-col min-w-0 transition-all duration-500 ${theme === 'dark' ? 'bg-slate-950/20' : 'bg-slate-50'}`}>
 
@@ -877,8 +958,14 @@ const App: React.FC = () => {
         user={user}
         theme={theme}
       />
+      <AdminDashboardModal 
+        isOpen={isAdminDashboardOpen}
+        onClose={() => setIsAdminDashboardOpen(false)}
+        theme={theme}
+      />
     </div>
   );
 };
+
 
 export default App;
