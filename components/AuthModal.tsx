@@ -1,10 +1,10 @@
-
 import React, { useState } from 'react';
 import { 
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword,
   signInWithPopup,
-  GoogleAuthProvider
+  GoogleAuthProvider,
+  updateProfile
 } from 'firebase/auth';
 import { auth, googleProvider } from '../services/firebase';
 
@@ -19,6 +19,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode, the
   const [mode, setMode] = useState<'signin' | 'signup'>(initialMode);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [fullName, setFullName] = useState(''); // New state for full name
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -33,7 +34,17 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode, the
       if (mode === 'signin') {
         await signInWithEmailAndPassword(auth, email, password);
       } else {
-        await createUserWithEmailAndPassword(auth, email, password);
+        // Create user with email/password
+        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+        
+        // Update profile with fullName if provided
+        if (fullName.trim()) {
+          await updateProfile(userCredential.user, {
+            displayName: fullName.trim()
+          });
+          // Force a reload to sync the profile changes
+          await userCredential.user.reload();
+        }
       }
       onClose();
     } catch (err: any) {
@@ -56,6 +67,13 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode, the
     } finally {
       setLoading(false);
     }
+  };
+
+  // Reset fullName when switching modes
+  const handleModeSwitch = () => {
+    setMode(mode === 'signin' ? 'signup' : 'signin');
+    setFullName(''); // Clear fullName when switching to signin
+    setError(null);
   };
 
   return (
@@ -81,6 +99,26 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode, the
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
+            {/* Full Name Field - Only shown in signup mode */}
+            {mode === 'signup' && (
+              <div className="animate-fadeIn">
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 px-1">Full Name</label>
+                <div className="relative group">
+                  <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-500 group-focus-within:text-blue-400 transition-colors">
+                    <i className="fas fa-user"></i>
+                  </div>
+                  <input 
+                    type="text"
+                    required={mode === 'signup'}
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    className={`w-full border rounded-2xl py-3 pl-11 pr-4 text-sm transition-all focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/50 ${theme === 'dark' ? 'bg-slate-900/50 border-white/10 text-white placeholder:text-slate-600' : 'bg-slate-50 border-slate-200 text-slate-900 placeholder:text-slate-400'}`}
+                    placeholder="Bibek Adhikari"
+                  />
+                </div>
+              </div>
+            )}
+
             <div>
               <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 px-1">Email Address</label>
               <div className="relative group">
@@ -132,7 +170,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode, the
               ) : (
                 <>
                   <i className={`fas ${mode === 'signin' ? 'fa-sign-in-alt' : 'fa-user-plus'}`}></i>
-                  <span>{mode === 'signin' ? 'Sign In' : 'Sign Up'}</span>
+                  <span>{mode === 'signin' ? 'Sign In' : 'Create Account'}</span>
                 </>
               )}
             </button>
@@ -159,7 +197,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode, the
           <p className="mt-8 text-center text-xs text-slate-500">
             {mode === 'signin' ? "Don't have an account?" : "Already have an account?"}
             <button 
-              onClick={() => setMode(mode === 'signin' ? 'signup' : 'signin')}
+              onClick={handleModeSwitch}
               className="ml-1.5 text-blue-400 font-bold hover:text-blue-300 transition-colors"
             >
               {mode === 'signin' ? 'Create one' : 'Sign In'}

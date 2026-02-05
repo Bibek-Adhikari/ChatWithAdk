@@ -17,6 +17,7 @@ interface SidebarProps {
   onAuthClick: (mode: 'signin' | 'signup') => void;
   theme: 'light' | 'dark';
   onOpenSettings: () => void;
+  onOpenProfile: () => void;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ 
@@ -31,10 +32,12 @@ const Sidebar: React.FC<SidebarProps> = ({
   user,
   onAuthClick,
   theme,
-  onOpenSettings
+  onOpenSettings,
+  onOpenProfile
 }) => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
+  const [imageError, setImageError] = useState(false);
 
   const handleStartEdit = (session: ChatSession) => {
     setEditingId(session.id);
@@ -166,11 +169,20 @@ const Sidebar: React.FC<SidebarProps> = ({
 
           <div className="p-6 border-t border-white/5 bg-black/5">
             {user ? (
-              <div className="flex items-center justify-between p-3 rounded-2xl bg-slate-800/20 border border-white/5 hover:bg-slate-800/40 transition-all cursor-default">
+              <div 
+                className="flex items-center justify-between p-3 rounded-2xl bg-slate-800/20 border border-white/5 hover:bg-slate-800/40 transition-all cursor-pointer group/user"
+                onClick={onOpenProfile}
+              >
                 <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600/20 to-indigo-600/20 border border-blue-500/30 flex items-center justify-center shrink-0">
-                    {user.photoURL ? (
-                      <img src={user.photoURL} alt="" className="w-full h-full rounded-xl object-cover" />
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600/20 to-indigo-600/20 border border-blue-500/30 flex items-center justify-center shrink-0 group-hover/user:scale-105 transition-transform">
+                    {user.photoURL && !imageError ? (
+                      <img 
+                        src={user.photoURL} 
+                        alt="" 
+                        className="w-full h-full rounded-xl object-cover" 
+                        referrerPolicy="no-referrer"
+                        onError={() => setImageError(true)}
+                      />
                     ) : (
                       <i className="fas fa-user-astronaut text-blue-400"></i>
                     )}
@@ -180,13 +192,9 @@ const Sidebar: React.FC<SidebarProps> = ({
                     <p className="text-[9px] text-emerald-500 font-bold uppercase tracking-widest leading-none mt-1">Online</p>
                   </div>
                 </div>
-                <button 
-                  onClick={() => signOut(auth)}
-                  className="w-8 h-8 flex items-center justify-center text-slate-500 hover:text-red-400 transition-all"
-                  title="Secure Logout"
-                >
-                  <i className="fas fa-power-off text-xs"></i>
-                </button>
+                <div className="w-8 h-8 flex items-center justify-center text-slate-500 group-hover/user:text-blue-400 transition-all">
+                  <i className="fas fa-chevron-right text-[10px]"></i>
+                </div>
               </div>
             ) : (
               <div className="flex flex-col gap-3">

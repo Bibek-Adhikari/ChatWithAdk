@@ -5,6 +5,7 @@ import ChatMessageItem from './components/ChatMessageItem';
 import Sidebar from './components/Sidebar';
 import AuthModal from './components/AuthModal';
 import SettingsModal from './components/SettingsModal';
+import UserProfileModal from './components/UserProfileModal';
 import { generateTextResponse } from './services/geminiService';
 import { generateGroqResponse } from './services/groqService';
 import { generateResearchResponse } from './services/openRouterService';
@@ -44,6 +45,8 @@ const App: React.FC = () => {
     mode: 'signin'
   });
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [imageError, setImageError] = useState(false);
   const [selectedImage, setSelectedImage] = useState<{ data: string; mimeType: string } | null>(null);
   const [aiModel, setAiModel] = useState<'gemini' | 'groq' | 'research' | 'imagine' | 'motion'>('groq');
   const [isModelMenuOpen, setIsModelMenuOpen] = useState(false);
@@ -51,6 +54,7 @@ const App: React.FC = () => {
   const modelMenuRef = useRef<HTMLDivElement>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
@@ -99,6 +103,7 @@ const App: React.FC = () => {
       if (e.key === 'Escape') {
         setAuthModal(prev => ({ ...prev, open: false }));
         setIsSettingsOpen(false);
+        setIsProfileOpen(false);
         setIsModelMenuOpen(false);
       }
     };
@@ -119,13 +124,18 @@ const App: React.FC = () => {
 
   const handleNewChat = () => {
     const newId = Date.now().toString();
+    // Check both state and live auth object to ensure we have the latest displayName (especially after signup)
+    const currentDisplayName = user?.displayName || auth.currentUser?.displayName;
+    const firstName = currentDisplayName ? currentDisplayName.split(' ')[0] : '';
+    const greeting = firstName ? `Hello, ${firstName}!` : 'Hello!';
+    
     const newSession: ChatSession = {
       id: newId,
       title: 'New Conversation',
       messages: [{
         id: 'welcome',
         role: 'assistant',
-        parts: [{ type: 'text', content: 'Hello! I am ChatAdk. How can I help you today?' }],
+        parts: [{ type: 'text', content: `${greeting} I am ChatAdk. How can I help you today?` }],
         timestamp: new Date().toISOString(),
       }],
       updatedAt: Date.now(),
@@ -362,6 +372,7 @@ const App: React.FC = () => {
         onAuthClick={handleAuthClick}
         theme={theme}
         onOpenSettings={() => setIsSettingsOpen(true)}
+        onOpenProfile={() => setIsProfileOpen(true)}
       />
 
       <div className={`flex-1 flex flex-col min-w-0 transition-all duration-500 ${theme === 'dark' ? 'bg-slate-950/20' : 'bg-slate-50'}`}>
@@ -384,10 +395,17 @@ const App: React.FC = () => {
 
           {user ? (
             <button 
+              onClick={() => setIsProfileOpen(true)}
               className={`w-9 h-9 rounded-lg border border-white/5 flex items-center justify-center transition-all overflow-hidden ${theme === 'dark' ? 'bg-slate-900' : 'bg-slate-100'}`}
             >
-              {user.photoURL ? (
-                <img src={user.photoURL} alt="Avatar" className="w-full h-full object-cover" />
+              {user.photoURL && !imageError ? (
+                <img 
+                  src={user.photoURL} 
+                  alt="Avatar" 
+                  className="w-full h-full object-cover" 
+                  referrerPolicy="no-referrer"
+                  onError={() => setImageError(true)}
+                />
               ) : (
                 <i className="fas fa-user-circle text-base text-blue-500"></i>
               )}
@@ -419,11 +437,18 @@ const App: React.FC = () => {
           <div className="flex items-center gap-3 pointer-events-auto">
             {user ? (
               <button 
+                onClick={() => setIsProfileOpen(true)}
                 className={`w-10 h-10 rounded-xl border border-white/5 flex items-center justify-center transition-all overflow-hidden shadow-xl ${theme === 'dark' ? 'bg-slate-900/80 hover:bg-slate-800' : 'bg-white/90 hover:bg-slate-50'}`}
                 title="Profile"
               >
-                {user.photoURL ? (
-                  <img src={user.photoURL} alt="Avatar" className="w-full h-full object-cover" />
+                {user.photoURL && !imageError ? (
+                  <img 
+                    src={user.photoURL} 
+                    alt="Avatar" 
+                    className="w-full h-full object-cover" 
+                    referrerPolicy="no-referrer"
+                    onError={() => setImageError(true)}
+                  />
                 ) : (
                   <i className="fas fa-user-circle text-lg text-blue-500"></i>
                 )}
@@ -446,7 +471,11 @@ const App: React.FC = () => {
             {!currentSession && (
               <div className="flex flex-col items-center justify-center h-full text-center space-y-4 py-20 opacity-50">
                 <i className="fas fa-comments text-6xl text-slate-800"></i>
-                <h3 className="text-xl font-medium">Ready for a new adventure?</h3>
+                <h3 className="text-xl font-medium">
+                  {(user?.displayName || auth.currentUser?.displayName) 
+                    ? `Ready for a new adventure, ${(user?.displayName || auth.currentUser?.displayName)?.split(' ')[0]}?` 
+                    : 'Ready for a new adventure?'}
+                </h3>
                 <p className="text-sm text-slate-500 max-w-xs">Start a conversation or choose a recent chat from the sidebar.</p>
                 <button 
                   onClick={handleNewChat}
@@ -462,6 +491,19 @@ const App: React.FC = () => {
                 key={msg.id} 
                 message={msg as any} 
                 theme={theme}
+                onReusePrompt={(text) => {
+                  setInputValue(text);
+                  if (inputRef.current) {
+                    inputRef.current.focus();
+                    // Manually trigger height adjustment
+                    setTimeout(() => {
+                      if (inputRef.current) {
+                        inputRef.current.style.height = 'auto';
+                        inputRef.current.style.height = `${Math.min(inputRef.current.scrollHeight, 200)}px`;
+                      }
+                    }, 0);
+                  }
+                }}
               />
             ))}
             
@@ -700,6 +742,7 @@ const App: React.FC = () => {
                     </div>
 
                     <textarea 
+                      ref={inputRef}
                       rows={1}
                       value={inputValue}
                       onChange={(e) => {
@@ -751,6 +794,12 @@ const App: React.FC = () => {
         onClose={() => setIsSettingsOpen(false)}
         theme={theme}
         onToggleTheme={toggleTheme}
+      />
+      <UserProfileModal 
+        isOpen={isProfileOpen}
+        onClose={() => setIsProfileOpen(false)}
+        user={user}
+        theme={theme}
       />
     </div>
   );

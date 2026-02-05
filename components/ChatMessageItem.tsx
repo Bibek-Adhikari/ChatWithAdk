@@ -1,19 +1,24 @@
-
 import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { nightOwl, oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { ChatMessage } from '../types';
-import { Copy, Check, MessageSquare } from 'lucide-react';
+import { Copy, Check, MessageSquare, CornerDownLeft } from 'lucide-react';
 import remarkGfm from 'remark-gfm';
 
 interface ChatMessageItemProps {
   message: ChatMessage;
   onImageClick?: (url: string) => void;
   theme?: 'light' | 'dark';
+  onReusePrompt?: (text: string) => void; // New callback for reusing prompt
 }
 
-const ChatMessageItem: React.FC<ChatMessageItemProps> = ({ message, onImageClick, theme = 'dark' }) => {
+const ChatMessageItem: React.FC<ChatMessageItemProps> = ({ 
+  message, 
+  onImageClick, 
+  theme = 'dark',
+  onReusePrompt 
+}) => {
   const isUser = message.role === 'user';
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
 
@@ -21,6 +26,17 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = ({ message, onImageClick
     navigator.clipboard.writeText(code);
     setCopiedCode(code);
     setTimeout(() => setCopiedCode(null), 2000);
+  };
+
+  const handleReusePrompt = () => {
+    const allText = (message.parts || [])
+      .filter(p => p.type === 'text')
+      .map(p => p.content)
+      .join('\n');
+    
+    if (allText && onReusePrompt) {
+      onReusePrompt(allText);
+    }
   };
 
   const CodeBlock = ({ node, inline, className, children, ...props }: any) => {
@@ -76,6 +92,13 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = ({ message, onImageClick
       </code>
     );
   };
+
+  // Check if message has text content to reuse
+  const hasTextContent = (message.parts || []).some(p => p.type === 'text');
+  const allText = (message.parts || [])
+    .filter(p => p.type === 'text')
+    .map(p => p.content)
+    .join('\n');
 
   return (
     <div className={`flex flex-col ${isUser ? 'items-end' : 'items-start'} mb-8 w-full animate-slide-up`}>
@@ -193,17 +216,31 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = ({ message, onImageClick
                </span>
              </div>
 
+             {/* Reuse Prompt Button - Only show if there's text content and callback is provided */}
+             {hasTextContent && onReusePrompt && (
+               <button
+                 onClick={handleReusePrompt}
+                 className={`flex items-center gap-1.5 px-2 py-1 rounded-lg transition-all active:scale-90 group/reuse
+                   ${theme === 'dark' 
+                     ? 'hover:bg-blue-500/10 text-slate-500 hover:text-blue-400' 
+                     : 'hover:bg-blue-50 text-slate-400 hover:text-blue-600'}`}
+                 title="Use as new prompt"
+               >
+                 <CornerDownLeft size={12} className="group-hover/reuse:-rotate-12 transition-transform" />
+                 <span className="text-[9px] font-black uppercase tracking-widest">Reuse</span>
+               </button>
+             )}
+
              {/* Unified Copy Button */}
              <button
                onClick={() => {
-                 const allText = (message.parts || []).filter(p => p.type === 'text').map(p => p.content).join('\n');
                  if (allText) handleCopy(allText);
                }}
                className={`flex items-center gap-1.5 px-2 py-1 rounded-lg transition-all active:scale-90
                  ${theme === 'dark' ? 'hover:bg-white/5 text-slate-500 hover:text-slate-300' : 'hover:bg-slate-100 text-slate-400 hover:text-slate-600'}`}
                title="Copy full message"
              >
-               {copiedCode ? (
+               {copiedCode === allText ? (
                  <>
                    <Check size={12} className="text-emerald-500" />
                    <span className="text-[9px] font-black uppercase tracking-widest text-emerald-500">Copied</span>
