@@ -13,6 +13,7 @@ export interface ChatMessage {
   role: MessageRole;
   parts: MessagePart[];
   timestamp: string; // ISO string for better JSON serialization
+  modelId?: string; // For multi-chat tracking
 }
 
 export interface ChatSession {

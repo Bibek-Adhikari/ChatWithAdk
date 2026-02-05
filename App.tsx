@@ -1,5 +1,5 @@
 
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { ChatMessage, ChatSession, GenerationState, MessagePart } from './types';
 import ChatMessageItem from './components/ChatMessageItem';
 import Sidebar from './components/Sidebar';
@@ -53,12 +53,22 @@ const App: React.FC = () => {
     return localStorage.getItem('selectedVoiceURI') || '';
   });
   const [selectedImage, setSelectedImage] = useState<{ data: string; mimeType: string } | null>(null);
-  const [aiModel, setAiModel] = useState<'gemini' | 'groq' | 'research' | 'imagine' | 'motion'>('groq');
+  const [aiModel, setAiModel] = useState<'gemini' | 'groq' | 'research' | 'imagine' | 'motion' | 'multi'>('groq');
+  const [multiChatConfig, setMultiChatConfig] = useState({
+    leftModel: 'groq' as const,
+    rightModel: 'gemini' as const,
+    dividerPosition: 50,
+  });
   const [isModelMenuOpen, setIsModelMenuOpen] = useState(false);
+  const [isPromptDisabled, setIsPromptDisabled] = useState(false);
+  const [isPreviewVideoOpen, setIsPreviewVideoOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const modelMenuRef = useRef<HTMLDivElement>(null);
 
+  const [isResizing, setIsResizing] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const leftScrollRef = useRef<HTMLDivElement>(null);
+  const rightScrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -132,6 +142,11 @@ const App: React.FC = () => {
     return user && user.email && ADMIN_EMAILS.includes(user.email);
   }, [user]);
 
+  const isPro = useMemo(() => {
+    // Admins are always Pro, plus anyone with a 'pro' flag in custom claims or profile (placeholder here)
+    return isAdmin || (user && (user.displayName?.toLowerCase().includes('pro') || user.email?.toLowerCase().includes('pro')));
+  }, [user, isAdmin]);
+
   useEffect(() => {
 
     if (scrollRef.current) {
@@ -177,6 +192,35 @@ const App: React.FC = () => {
       window.removeEventListener('open-auth-modal', handleAuthEvent);
     };
   }, []);
+
+  const startResizing = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizing(true);
+  };
+
+  const stopResizing = useCallback(() => {
+    setIsResizing(false);
+  }, []);
+
+  const resize = useCallback((e: MouseEvent) => {
+    if (isResizing) {
+      const newPos = (e.clientX / window.innerWidth) * 100;
+      if (newPos > 20 && newPos < 80) {
+        setMultiChatConfig(prev => ({ ...prev, dividerPosition: newPos }));
+      }
+    }
+  }, [isResizing]);
+
+  useEffect(() => {
+    if (isResizing) {
+      window.addEventListener('mousemove', resize);
+      window.addEventListener('mouseup', stopResizing);
+    }
+    return () => {
+      window.removeEventListener('mousemove', resize);
+      window.removeEventListener('mouseup', stopResizing);
+    };
+  }, [isResizing, resize, stopResizing]);
 
   const handleNewChat = () => {
     const newId = Date.now().toString();
@@ -361,94 +405,17 @@ const App: React.FC = () => {
             }]);
           }
         }
+      } else if (aiModel === 'multi') {
+        const [leftResponse, rightResponse] = await Promise.all([
+          generateModelResponse(multiChatConfig.leftModel, currentInput, history, selectedImage || undefined),
+          generateModelResponse(multiChatConfig.rightModel, currentInput, history, selectedImage || undefined)
+        ]);
+        
+        addAssistantMessage(sessionId, [{ type: 'text', content: leftResponse }], multiChatConfig.leftModel);
+        addAssistantMessage(sessionId, [{ type: 'text', content: rightResponse }], multiChatConfig.rightModel);
       } else {
-        if (aiModel === 'groq') {
-          const textOnlyHistory = history.map(h => ({
-            ...h,
-            parts: h.parts.filter(p => 'text' in p) as { text: string }[]
-          }));
-          responseText = await generateGroqResponse(currentInput, textOnlyHistory);
-        } else if (aiModel === 'research') {
-          const textOnlyHistory = history.map(h => ({
-            ...h,
-            parts: h.parts.filter(p => 'text' in p) as { text: string }[]
-          }));
-          responseText = await generateResearchResponse(currentInput, textOnlyHistory);
-        } else {
-          responseText = await generateTextResponse(currentInput, history, selectedImage || undefined);
-        }
-
-        // Check for /image trigger (all models) OR /youtube triggers (All models - Force Feature)
-        const hasImageTrigger = responseText.toLowerCase().includes('/image');
-        const hasYoutubeTrigger = responseText.toLowerCase().includes('/youtube') ||
-                                 /https?:\/\/(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/.test(responseText);
-
-        if (hasImageTrigger || hasYoutubeTrigger) {
-          // Robust regex to split by commands OR direct youtube links
-          const parts = responseText.split(/(\/image\s+[^\n/]+|\/youtube\s+[^\n/]+|https?:\/\/(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)[a-zA-Z0-9_-]{11})/gi);
-          const finalParts: MessagePart[] = [];
-          
-          for (const segment of parts) {
-            if (!segment) continue;
-
-            const trimmedSegment = segment.trim();
-
-            if (trimmedSegment.toLowerCase().startsWith('/image')) {
-              const imgPrompt = trimmedSegment.substring(6).trim();
-              if (user) {
-                try {
-                  const imgUrl = await generateImageResponse(imgPrompt);
-                  finalParts.push({ type: 'image', content: imgUrl });
-                } catch (e) {
-                  finalParts.push({ type: 'text', content: segment });
-                }
-              } else {
-                finalParts.push({ type: 'text', content: " [Account required for image generation] " });
-              }
-            } else if (trimmedSegment.toLowerCase().startsWith('/youtube')) {
-              const query = trimmedSegment.substring(8).trim().replace(/[.,!?;:()]+$/, ''); // Clean trailing punctuation
-              try {
-                const video = await searchYouTubeVideo(query);
-                if (video) {
-                  finalParts.push({ 
-                    type: 'youtube', 
-                    content: video.id,
-                    metadata: {
-                      title: video.title,
-                      thumbnail: video.thumbnail,
-                      channelTitle: video.channelTitle
-                    }
-                  });
-                } else {
-                  finalParts.push({ type: 'text', content: segment });
-                  console.warn(`YouTube search for "${query}" returned no results. Check your API key or query.`);
-                }
-              } catch (e) {
-                finalParts.push({ type: 'text', content: segment });
-              }
-            } else if (trimmedSegment.startsWith('http')) {
-              // Check if segment is a direct YouTube link
-              const ytMatch = segment.match(/https?:\/\/(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/i);
-              if (ytMatch && ytMatch[1]) {
-                const videoId = ytMatch[1];
-                finalParts.push({ 
-                  type: 'youtube', 
-                  content: videoId,
-                  metadata: { title: "Suggested Video", thumbnail: `https://img.youtube.com/vi/${videoId}/mqdefault.jpg` }
-                });
-              } else {
-                finalParts.push({ type: 'text', content: segment });
-              }
-            } else {
-              if (segment.trim()) {
-                finalParts.push({ type: 'text', content: segment });
-              }
-            }
-          }
-          addAssistantMessage(sessionId, finalParts);
-        } else {
-          addAssistantMessage(sessionId, [{ type: 'text', content: responseText }]);
-        }
+        const responseText = await generateModelResponse(aiModel, currentInput, history, selectedImage || undefined);
+        addAssistantMessage(sessionId, [{ type: 'text', content: responseText }]);
       }
     } catch (err: any) {
       console.error("Chat error:", err);
@@ -488,14 +455,35 @@ const App: React.FC = () => {
     }
   };
 
-  const addAssistantMessage = (sessionId: string, parts: MessagePart[]) => {
+  const addAssistantMessage = (sessionId: string, parts: MessagePart[], modelId?: string) => {
     const newMessage: ChatMessage = {
-      id: (Date.now() + 1).toString(),
+      id: (Date.now() + Math.random()).toString(), // Ensure unique ID even in parallel calls
       role: 'assistant',
       parts,
       timestamp: new Date().toISOString(),
+      modelId
     };
     updateSessionMessages(sessionId, prev => [...prev, newMessage]);
+  };
+
+  const generateModelResponse = async (model: string, input: string, history: any[], image?: any) => {
+    if (model === 'groq') {
+      const textOnlyHistory = history.map(h => ({
+        ...h,
+        parts: h.parts.filter(p => 'text' in p) as { text: string }[]
+      }));
+      return await generateGroqResponse(input, textOnlyHistory);
+    } else if (model === 'research') {
+      const textOnlyHistory = history.map(h => ({
+        ...h,
+        parts: h.parts.filter(p => 'text' in p) as { text: string }[]
+      }));
+      return await generateResearchResponse(input, textOnlyHistory);
+    } else if (model === 'imagine') {
+      return `[Imagine Model Placeholder] I cannot yet generate images inside multi-chat logic cleanly. Use the standalone Imagine mode.`;
+    } else {
+      return await generateTextResponse(input, history, image);
+    }
   };
 
   // Convert ISO timestamp string back to Date for the component
@@ -505,6 +493,16 @@ const App: React.FC = () => {
       timestamp: new Date(m.timestamp)
     })),
     [currentSession?.messages]
+  );
+  
+  const leftMessages = useMemo(() => 
+    localizedMessages.filter(m => m.role === 'user' || m.modelId === multiChatConfig.leftModel || !m.modelId),
+    [localizedMessages, multiChatConfig.leftModel]
+  );
+  
+  const rightMessages = useMemo(() => 
+    localizedMessages.filter(m => m.role === 'user' || m.modelId === multiChatConfig.rightModel || !m.modelId),
+    [localizedMessages, multiChatConfig.rightModel]
   );
 
   return (
@@ -619,90 +617,188 @@ const App: React.FC = () => {
         </div>
 
         {/* Main Chat Area */}
-        <main className={`flex-1 overflow-y-auto px-3 sm:px-8 py-6 custom-scrollbar relative flex flex-col ${localizedMessages.length < 3 ? 'justify-center' : ''}`} ref={scrollRef}>
-          <div className={`max-w-3xl mx-auto space-y-2 w-full ${localizedMessages.length < 3 ? 'flex-1 flex flex-col justify-center' : ''}`}>
-            {!currentSession && (
-              <div className="flex flex-col items-center justify-center h-full text-center space-y-4 py-20 opacity-50">
-                <i className="fas fa-comments text-6xl text-slate-800"></i>
-                <h3 className="text-xl font-medium">
-                  {(user?.displayName || auth.currentUser?.displayName) 
-                    ? `Ready for a new adventure, ${(user?.displayName || auth.currentUser?.displayName)?.split(' ')[0]}?` 
-                    : 'Ready for a new adventure?'}
-                </h3>
-                <p className="text-sm text-slate-500 max-w-xs">Start a conversation or choose a recent chat from the sidebar.</p>
-                <button 
-                  onClick={handleNewChat}
-                  className="bg-blue-600/10 hover:bg-blue-600/20 text-blue-400 border border-blue-600/20 px-6 py-2 rounded-full text-sm font-semibold transition-all"
-                >
-                  Start Chatting
-                </button>
-              </div>
-            )}
-            
-            {localizedMessages.map((msg) => (
-              <ChatMessageItem 
-                key={msg.id} 
-                message={msg as any} 
-                theme={theme}
-                selectedVoiceURI={selectedVoiceURI}
-                isAuthenticated={!!user}
-                onReusePrompt={(text) => {
-                  setInputValue(text);
-                  if (inputRef.current) {
-                    inputRef.current.focus();
-                    // Manually trigger height adjustment
-                    setTimeout(() => {
+        <main 
+          className={`flex-1 overflow-hidden relative flex flex-col ${theme === 'dark' ? 'bg-slate-950/20' : 'bg-slate-50'}`} 
+          ref={scrollRef}
+        >
+          {aiModel !== 'multi' ? (
+            <div className={`flex-1 overflow-y-auto px-3 sm:px-8 py-6 custom-scrollbar relative flex flex-col ${localizedMessages.length < 3 ? 'justify-center' : ''}`}>
+              <div className={`max-w-3xl mx-auto space-y-2 w-full ${localizedMessages.length < 3 ? 'flex-1 flex flex-col justify-center' : ''}`}>
+                {!currentSession && (
+                  <div className="flex flex-col items-center justify-center h-full text-center space-y-4 py-20 opacity-50">
+                    <i className="fas fa-comments text-6xl text-slate-800"></i>
+                    <h3 className="text-xl font-medium">
+                      {(user?.displayName || auth.currentUser?.displayName) 
+                        ? `Ready for a new adventure, ${(user?.displayName || auth.currentUser?.displayName)?.split(' ')[0]}?` 
+                        : 'Ready for a new adventure?'}
+                    </h3>
+                    <p className="text-sm text-slate-500 max-w-xs">Start a conversation or choose a recent chat from the sidebar.</p>
+                    <button 
+                      onClick={handleNewChat}
+                      className="bg-blue-600/10 hover:bg-blue-600/20 text-blue-400 border border-blue-600/20 px-6 py-2 rounded-full text-sm font-semibold transition-all"
+                    >
+                      Start Chatting
+                    </button>
+                  </div>
+                )}
+                
+                {localizedMessages.map((msg) => (
+                  <ChatMessageItem 
+                    key={msg.id} 
+                    message={msg as any} 
+                    theme={theme}
+                    selectedVoiceURI={selectedVoiceURI}
+                    isAuthenticated={!!user}
+                    onReusePrompt={(text) => {
+                      setInputValue(text);
                       if (inputRef.current) {
-                        inputRef.current.style.height = 'auto';
-                        inputRef.current.style.height = `${Math.min(inputRef.current.scrollHeight, 200)}px`;
+                        inputRef.current.focus();
+                        setTimeout(() => {
+                          if (inputRef.current) {
+                            inputRef.current.style.height = 'auto';
+                            inputRef.current.style.height = `${Math.min(inputRef.current.scrollHeight, 200)}px`;
+                          }
+                        }, 0);
                       }
-                    }, 0);
-                  }
-                }}
-              />
-            ))}
-            
-            {status.isTyping && (
-              <div className="flex items-start gap-4 mb-8 animate-pulse">
-                <div className="w-10 h-10 rounded-xl overflow-hidden shrink-0 shadow-lg shadow-blue-500/10">
-                  <img src="/assets/logo.webp" alt="Thinking" className="w-full h-full object-cover" />
-                </div>
-                <div className={`px-5 py-3 rounded-2xl text-[13px] font-bold tracking-tight shadow-sm border
-                  ${theme === 'dark' 
-                    ? 'bg-slate-800/40 border-white/5 text-blue-400' 
-                    : 'bg-white border-slate-200 text-blue-600'}`}>
-                  <span className="flex items-center gap-2">
-                    ChatAdk is thinking
-                    <span className="flex gap-1">
-                      <span className="w-1 h-1 rounded-full bg-current animate-bounce [animation-delay:-0.3s]"></span>
-                      <span className="w-1 h-1 rounded-full bg-current animate-bounce [animation-delay:-0.15s]"></span>
-                      <span className="w-1 h-1 rounded-full bg-current animate-bounce"></span>
-                    </span>
-                  </span>
-                </div>
-              </div>
-            )}
+                    }}
+                  />
+                ))}
+                
+                {status.isTyping && (
+                  <div className="flex items-start gap-4 mb-8 animate-pulse">
+                    <div className="w-10 h-10 rounded-xl overflow-hidden shrink-0 shadow-lg shadow-blue-500/10">
+                      <img src="/assets/logo.webp" alt="Thinking" className="w-full h-full object-cover" />
+                    </div>
+                    <div className={`px-5 py-3 rounded-2xl text-[13px] font-bold tracking-tight shadow-sm border
+                      ${theme === 'dark' 
+                        ? 'bg-slate-800/40 border-white/5 text-blue-400' 
+                        : 'bg-white border-slate-200 text-blue-600'}`}>
+                      <span className="flex items-center gap-2">
+                        ChatAdk is thinking
+                        <span className="flex gap-1">
+                          <span className="w-1 h-1 rounded-full bg-current animate-bounce [animation-delay:-0.3s]"></span>
+                          <span className="w-1 h-1 rounded-full bg-current animate-bounce [animation-delay:-0.15s]"></span>
+                          <span className="w-1 h-1 rounded-full bg-current animate-bounce"></span>
+                        </span>
+                      </span>
+                    </div>
+                  </div>
+                )}
 
-            {status.error && (
-              <div className="max-w-xl mx-auto mb-8 animate-in slide-in-from-top-4 duration-500">
-                <div className="bg-red-500/10 border border-red-500/20 rounded-2xl p-4 flex items-center gap-4">
-                  <div className="w-10 h-10 rounded-xl bg-red-500/20 flex items-center justify-center text-red-500 shrink-0">
-                    <i className="fas fa-exclamation-circle text-lg"></i>
+                {status.error && (
+                  <div className="max-w-xl mx-auto mb-8 animate-in slide-in-from-top-4 duration-500">
+                    <div className="bg-red-500/10 border border-red-500/20 rounded-2xl p-4 flex items-center gap-4">
+                      <div className="w-10 h-10 rounded-xl bg-red-500/20 flex items-center justify-center text-red-500 shrink-0">
+                        <i className="fas fa-exclamation-circle text-lg"></i>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[10px] uppercase font-black tracking-widest text-red-500 opacity-60 mb-0.5">Application Error</p>
+                        <p className="text-xs font-bold text-red-100/80 leading-relaxed truncate">{status.error}</p>
+                      </div>
+                      <button 
+                        onClick={() => setStatus(prev => ({ ...prev, error: null }))}
+                        className="p-2 text-red-500/50 hover:text-red-500 transition-colors"
+                      >
+                        <i className="fas fa-times"></i>
+                      </button>
+                    </div>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[10px] uppercase font-black tracking-widest text-red-500 opacity-60 mb-0.5">Application Error</p>
-                    <p className="text-xs font-bold text-red-100/80 leading-relaxed truncate">{status.error}</p>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="flex-1 flex overflow-hidden relative group/multi">
+              {/* Left Column */}
+              <div 
+                ref={leftScrollRef}
+                className="h-full overflow-y-auto px-4 sm:px-6 py-6 custom-scrollbar border-r border-white/5" 
+                style={{ width: `${multiChatConfig.dividerPosition}%` }}
+              >
+                <div className="max-w-xl mx-auto space-y-4">
+                  <div className={`mb-6 p-3 rounded-2xl border flex items-center justify-between backdrop-blur-md transition-all group/choice
+                    ${theme === 'dark' 
+                      ? 'bg-slate-900/40 border-white/5 shadow-2xl shadow-blue-500/5 hover:bg-slate-900/60' 
+                      : 'bg-white/80 border-slate-100 shadow-lg hover:bg-white'}`}>
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-[10px] text-white font-black uppercase">
+                        {multiChatConfig.leftModel[0]}
+                      </div>
+                      <span className="text-[10px] font-black uppercase tracking-widest opacity-60">{multiChatConfig.leftModel}</span>
+                    </div>
+                    <select 
+                      value={multiChatConfig.leftModel}
+                      onChange={(e) => setMultiChatConfig(prev => ({ ...prev, leftModel: e.target.value as any }))}
+                      className={`bg-transparent text-[9px] font-black uppercase tracking-[0.2em] outline-none cursor-pointer border-none focus:ring-0
+                        ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}
+                    >
+                      <option value="groq" className={theme === 'dark' ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}>Groq</option>
+                      <option value="gemini" className={theme === 'dark' ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}>Gemini</option>
+                      <option value="research" className={theme === 'dark' ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}>Research</option>
+                    </select>
                   </div>
-                  <button 
-                    onClick={() => setStatus(prev => ({ ...prev, error: null }))}
-                    className="p-2 text-red-500/50 hover:text-red-500 transition-colors"
-                  >
-                    <i className="fas fa-times"></i>
-                  </button>
+                  {leftMessages.map((msg) => (
+                    <ChatMessageItem 
+                      key={msg.id} 
+                      message={msg as any} 
+                      theme={theme}
+                      selectedVoiceURI={selectedVoiceURI}
+                      isAuthenticated={!!user}
+                    />
+                  ))}
                 </div>
               </div>
-            )}
-          </div>
+
+              {/* Enhanced Resizer */}
+              <div 
+                className={`absolute top-0 bottom-0 w-1.5 cursor-col-resize z-50 transition-all hover:bg-blue-500/50 flex items-center justify-center
+                  ${isResizing ? 'bg-blue-500 shadow-[0_0_20px_rgba(59,130,246,0.5)]' : ''}`}
+                style={{ left: `calc(${multiChatConfig.dividerPosition}% - 0.75px)` }}
+                onMouseDown={startResizing}
+              >
+                <div className={`w-[2px] h-12 rounded-full transition-all ${isResizing ? 'bg-white' : 'bg-slate-500 opacity-20'}`} />
+              </div>
+
+              {/* Right Column */}
+              <div 
+                ref={rightScrollRef}
+                className="h-full overflow-y-auto px-4 sm:px-6 py-6 custom-scrollbar" 
+                style={{ width: `${100 - multiChatConfig.dividerPosition}%` }}
+              >
+                <div className="max-w-xl mx-auto space-y-4">
+                  <div className={`mb-6 p-3 rounded-2xl border flex items-center justify-between backdrop-blur-md transition-all group/choice
+                    ${theme === 'dark' 
+                      ? 'bg-slate-900/40 border-white/5 shadow-2xl shadow-blue-500/5 hover:bg-slate-900/60' 
+                      : 'bg-white/80 border-slate-100 shadow-lg hover:bg-white'}`}>
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-[10px] text-white font-black uppercase">
+                        {multiChatConfig.rightModel[0]}
+                      </div>
+                      <span className="text-[10px] font-black uppercase tracking-widest opacity-60">{multiChatConfig.rightModel}</span>
+                    </div>
+                    <select 
+                      value={multiChatConfig.rightModel}
+                      onChange={(e) => setMultiChatConfig(prev => ({ ...prev, rightModel: e.target.value as any }))}
+                      className={`bg-transparent text-[9px] font-black uppercase tracking-[0.2em] outline-none cursor-pointer border-none focus:ring-0
+                        ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}
+                    >
+                      <option value="groq" className={theme === 'dark' ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}>Groq</option>
+                      <option value="gemini" className={theme === 'dark' ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}>Gemini</option>
+                      <option value="research" className={theme === 'dark' ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}>Research</option>
+                    </select>
+                  </div>
+                  {rightMessages.map((msg) => (
+                    <ChatMessageItem 
+                      key={msg.id} 
+                      message={msg as any} 
+                      theme={theme}
+                      selectedVoiceURI={selectedVoiceURI}
+                      isAuthenticated={!!user}
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
         </main>
 
         {/* Input Section */}
@@ -809,19 +905,55 @@ const App: React.FC = () => {
                       </button>
 
                       <div 
-                        className={`w-full flex items-start gap-4 p-4 rounded-2xl transition-all text-left group relative opacity-60 cursor-not-allowed
-                          ${theme === 'dark' ? 'hover:bg-white/5' : 'hover:bg-slate-50'}`}
+                        onClick={() => { 
+                          if (!isPro) { 
+                            setStatus(prev => ({ ...prev, error: "Multi-Chat is a Pro feature. Level up your account to access it!" }));
+                            setIsModelMenuOpen(false);
+                            return; 
+                          }
+                          setAiModel('multi'); setIsModelMenuOpen(false); 
+                        }}
+                        className={`w-full flex items-start gap-4 p-4 rounded-2xl transition-all text-left group/multi-btn relative overflow-hidden cursor-pointer
+                          ${aiModel === 'multi' ? (theme === 'dark' ? 'bg-amber-600/20' : 'bg-amber-50') : (theme === 'dark' ? 'hover:bg-white/5' : 'hover:bg-slate-50')}`}
+                        role="button"
+                        tabIndex={0}
                       >
-                        <div className="absolute top-4 right-4 px-2 py-0.5 rounded-md bg-blue-600/20 border border-blue-600/30">
-                          <span className="text-[7px] font-black uppercase tracking-widest text-blue-400">Soon</span>
+                        {/* Video Preview on Hover with Fullscreen trigger */}
+                        <div className="absolute inset-0 opacity-0 group-hover/multi-btn:opacity-100 transition-opacity duration-500 pointer-events-none">
+                          <video 
+                            src="/pre.webm" 
+                            autoPlay 
+                            muted 
+                            loop 
+                            playsInline
+                            className="w-full h-full object-cover scale-110 group-hover/multi-btn:scale-100 transition-transform duration-700 brightness-[0.3]"
+                          />
                         </div>
-                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-transform
-                          ${theme === 'dark' ? 'bg-slate-800 text-slate-400' : 'bg-slate-200 text-slate-500'}`}>
-                          <i className="fas fa-film text-sm"></i>
+
+                        {/* Fullscreen Expand Icon - Accessible to everyone */}
+                        <div 
+                          className="absolute bottom-2 right-2 w-8 h-8 rounded-xl bg-white/10 backdrop-blur-md flex items-center justify-center text-white opacity-0 group-hover/multi-btn:opacity-100 transition-all z-20 hover:bg-white/30 hover:scale-110 active:scale-90 border border-white/10"
+                          onClick={(e) => {
+                            e.stopPropagation(); // Stop selection logic from firing
+                            setIsPreviewVideoOpen(true);
+                          }}
+                        >
+                          <i className="fas fa-expand text-[12px]"></i>
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <p className={`text-[11px] font-black uppercase tracking-wider ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>Motion</p>
-                          <p className="text-[10px] text-slate-500 leading-tight mt-1">High-fidelity AI video generation is coming soon to ChatADK.</p>
+
+                        <div className="relative z-10 flex items-start gap-4 w-full">
+                          {!isPro && <i className="fas fa-crown text-[8px] absolute top-0 right-0 text-amber-500"></i>}
+                          <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-transform group-active:scale-90
+                            ${aiModel === 'multi' ? 'bg-amber-600 text-white shadow-lg' : (theme === 'dark' ? 'bg-slate-800 text-slate-400' : 'bg-slate-200 text-slate-500')}`}>
+                            <i className="fas fa-columns text-sm"></i>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <p className={`text-[11px] font-black uppercase tracking-wider ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>Multi Chat</p>
+                              <span className="px-1.5 py-0.5 rounded text-[7px] font-black bg-amber-500/10 text-amber-500 border border-amber-500/20">PRO</span>
+                            </div>
+                            <p className="text-[10px] text-slate-500 leading-tight mt-1 group-hover/multi-btn:text-slate-300">Dual-AI mode. Compare responses side-by-side in real-time.</p>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -830,7 +962,7 @@ const App: React.FC = () => {
 
                 <div className="flex items-end gap-2">
                   <div className="flex flex-col flex-1 pl-1">
-                    {selectedImage && (
+                    {selectedImage && !isPromptDisabled && (
                       <div className="pb-2 flex items-center gap-2">
                         <div className="relative group/img overflow-hidden rounded-lg">
                           <img 
@@ -849,82 +981,99 @@ const App: React.FC = () => {
                       </div>
                     )}
                     
-                    <div className="flex items-center gap-1.5 px-2">
+                      <div className="flex items-center gap-1.5 px-2">
                        {/* ChatADK Logo in Input Area */}
-                      <img src="/assets/logo.webp" alt="Logo" className="w-12 h-12 rounded-xl shadow-lg shrink-0 mr-1 object-cover" />
-
-                      <button 
-                        type="button"
-                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); setIsModelMenuOpen(!isModelMenuOpen); }}
-                        className={`flex items-center gap-2 px-2.5 py-1.5 rounded-xl border transition-all hover:scale-[1.02] active:scale-95
-                          ${theme === 'dark' ? 'bg-black/40 border-white/10 text-white hover:bg-black/60' : 'bg-slate-50 border-slate-200 text-slate-900 hover:bg-slate-100 shadow-sm'}`}
-                      >
-                        <div className={`w-4 h-4 rounded-lg flex items-center justify-center text-[8px] shadow-sm
-                          ${aiModel === 'groq' ? 'bg-blue-600 text-white' : 
-                            aiModel === 'research' ? 'bg-emerald-600 text-white' :
-                            aiModel === 'imagine' ? 'bg-pink-600 text-white' :
-                            aiModel === 'motion' ? 'bg-amber-600 text-white' :
-                            'bg-indigo-600 text-white'}`}>
-                          <i className={`fas ${
-                            aiModel === 'groq' ? 'fa-bolt' : 
-                            aiModel === 'research' ? 'fa-microscope' :
-                            aiModel === 'imagine' ? 'fa-magic' :
-                            aiModel === 'motion' ? 'fa-film' :
-                            'fa-brain'
-                          }`}></i>
-                        </div>
-                        <span className="text-[9px] font-black uppercase tracking-widest">{aiModel === 'gemini' ? 'Detail' : aiModel === 'groq' ? 'Fast' : aiModel}</span>
-                        <i className={`fas fa-chevron-up text-[7px] transition-transform ${isModelMenuOpen ? 'rotate-180' : ''}`}></i>
-                      </button>
-
-                      <div className={`w-px h-3 ${theme === 'dark' ? 'bg-white/5' : 'bg-slate-200'}`}></div>
-
-                      <input 
-                        type="file"
-                        ref={fileInputRef}
-                        onChange={handleImageSelect}
-                        accept="image/*"
-                        className="hidden"
+                      <img 
+                        src="/assets/logo.webp" 
+                        alt="Logo" 
+                        className={`w-12 h-12 rounded-xl shadow-lg shrink-0 mr-1 object-cover cursor-pointer transition-all active:scale-95 hover:brightness-110 ${isPromptDisabled ? 'ring-2 ring-blue-500/50' : ''}`} 
+                        onClick={() => {
+                          setIsPromptDisabled(!isPromptDisabled);
+                          setIsModelMenuOpen(false);
+                        }}
+                        title={isPromptDisabled ? "Enable Prompt Box" : "Disable Prompt Box"}
                       />
-                      <button 
-                        type="button"
-                        onClick={() => fileInputRef.current?.click()}
-                        className={`w-8 h-8 shrink-0 flex items-center justify-center transition-all hover:scale-110 active:scale-95 ${theme === 'dark' ? 'text-slate-500 hover:text-white' : 'text-slate-400 hover:text-slate-600'}`}
-                        title="Attach Image"
-                      >
-                        <i className="fas fa-image text-base"></i>
-                      </button>
+
+                      {!isPromptDisabled && (
+                        <>
+                          <button 
+                            type="button"
+                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); setIsModelMenuOpen(!isModelMenuOpen); }}
+                            className={`flex items-center gap-2 px-2.5 py-1.5 rounded-xl border transition-all hover:scale-[1.02] active:scale-95
+                              ${theme === 'dark' ? 'bg-black/40 border-white/10 text-white hover:bg-black/60' : 'bg-slate-50 border-slate-200 text-slate-900 hover:bg-slate-100 shadow-sm'}`}
+                          >
+                            <div className={`w-4 h-4 rounded-lg flex items-center justify-center text-[8px] shadow-sm
+                              ${aiModel === 'groq' ? 'bg-blue-600 text-white' : 
+                                aiModel === 'research' ? 'bg-emerald-600 text-white' :
+                                aiModel === 'imagine' ? 'bg-pink-600 text-white' :
+                                aiModel === 'motion' ? 'bg-amber-600 text-white' :
+                                'bg-indigo-600 text-white'}`}>
+                              <i className={`fas ${
+                                aiModel === 'groq' ? 'fa-bolt' : 
+                                aiModel === 'research' ? 'fa-microscope' :
+                                aiModel === 'imagine' ? 'fa-magic' :
+                                aiModel === 'motion' ? 'fa-film' :
+                                'fa-brain'
+                              }`}></i>
+                            </div>
+                            <span className="text-[9px] font-black uppercase tracking-widest">{aiModel === 'gemini' ? 'Detail' : aiModel === 'groq' ? 'Fast' : aiModel}</span>
+                            <i className={`fas fa-chevron-up text-[7px] transition-transform ${isModelMenuOpen ? 'rotate-180' : ''}`}></i>
+                          </button>
+
+                          <div className={`w-px h-3 ${theme === 'dark' ? 'bg-white/5' : 'bg-slate-200'}`}></div>
+
+                          <input 
+                            type="file"
+                            ref={fileInputRef}
+                            onChange={handleImageSelect}
+                            accept="image/*"
+                            className="hidden"
+                          />
+                          <button 
+                            type="button"
+                            onClick={() => fileInputRef.current?.click()}
+                            className={`w-8 h-8 shrink-0 flex items-center justify-center transition-all hover:scale-110 active:scale-95 ${theme === 'dark' ? 'text-slate-500 hover:text-white' : 'text-slate-400 hover:text-slate-600'}`}
+                            title="Attach Image"
+                          >
+                            <i className="fas fa-image text-base"></i>
+                          </button>
+                        </>
+                      )}
                     </div>
 
-                    <textarea 
-                      ref={inputRef}
-                      rows={1}
-                      value={inputValue}
-                      onChange={(e) => {
-                        setInputValue(e.target.value);
-                        e.target.style.height = 'auto';
-                        e.target.style.height = `${Math.min(e.target.scrollHeight, 200)}px`;
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && !e.shiftKey) {
-                          e.preventDefault();
-                          handleSend();
-                        }
-                      }}
-                      placeholder="Type a message..."
-                      className={`flex-1 bg-transparent border-none outline-none px-4 py-3 text-[14.5px] leading-relaxed resize-none overflow-y-auto max-h-[200px] placeholder:text-slate-500/60
-                        ${theme === 'dark' ? 'text-slate-100' : 'text-slate-900'}`}
-                      disabled={status.isTyping}
-                    />
+                    {!isPromptDisabled && (
+                      <textarea 
+                        ref={inputRef}
+                        rows={1}
+                        value={inputValue}
+                        onChange={(e) => {
+                          setInputValue(e.target.value);
+                          e.target.style.height = 'auto';
+                          e.target.style.height = `${Math.min(e.target.scrollHeight, 200)}px`;
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault();
+                            handleSend();
+                          }
+                        }}
+                        placeholder="Type a message..."
+                        className={`flex-1 bg-transparent border-none outline-none px-4 py-3 text-[14.5px] leading-relaxed resize-none overflow-y-auto max-h-[200px] placeholder:text-slate-500/60
+                          ${theme === 'dark' ? 'text-slate-100' : 'text-slate-900'}`}
+                        disabled={status.isTyping}
+                      />
+                    )}
                   </div>
 
-                  <button 
-                    type="submit"
-                    disabled={!inputValue.trim() || status.isTyping}
-                    className="w-10 h-10 shrink-0 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800 disabled:opacity-30 text-white flex items-center justify-center transition-all hover:scale-105 active:scale-95 shadow-lg shadow-blue-500/20"
-                  >
-                    <i className={`fas ${status.isTyping ? 'fa-spinner fa-spin' : 'fa-arrow-up'} text-xs`}></i>
-                  </button>
+                  {!isPromptDisabled && (
+                    <button 
+                      type="submit"
+                      disabled={!inputValue.trim() || status.isTyping}
+                      className="w-10 h-10 shrink-0 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800 disabled:opacity-30 text-white flex items-center justify-center transition-all hover:scale-105 active:scale-95 shadow-lg shadow-blue-500/20"
+                    >
+                      <i className={`fas ${status.isTyping ? 'fa-spinner fa-spin' : 'fa-arrow-up'} text-xs`}></i>
+                    </button>
+                  )}
                 </div>
               </div>
             </form>
@@ -963,6 +1112,26 @@ const App: React.FC = () => {
         onClose={() => setIsAdminDashboardOpen(false)}
         theme={theme}
       />
+
+      {/* Fullscreen Video Preview Modal */}
+      {isPreviewVideoOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-2xl animate-in fade-in duration-300">
+          <div className="relative w-full max-w-5xl aspect-video mx-4 overflow-hidden rounded-[32px] border border-white/10 shadow-[0_0_100px_rgba(59,130,246,0.3)] group">
+            <video 
+              src="/pre.webm" 
+              autoPlay 
+              controls 
+              className="w-full h-full object-contain"
+            />
+            <button 
+              onClick={() => setIsPreviewVideoOpen(false)}
+              className="absolute top-6 right-6 w-12 h-12 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-all active:scale-90"
+            >
+              <i className="fas fa-times text-xl"></i>
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
