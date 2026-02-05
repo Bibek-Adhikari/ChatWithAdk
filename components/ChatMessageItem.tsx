@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { nightOwl, oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { ChatMessage } from '../types';
-import { Copy, Check, MessageSquare, CornerDownLeft } from 'lucide-react';
+import { Copy, Check, CornerDownLeft, Volume2, VolumeX, Pause, Play } from 'lucide-react';
 import remarkGfm from 'remark-gfm';
 
 interface ChatMessageItemProps {
@@ -20,7 +20,11 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
   onReusePrompt 
 }) => {
   const isUser = message.role === 'user';
+  const isAssistant = message.role === 'assistant';
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
+  const speechRef = useRef<SpeechSynthesisUtterance | null>(null);
 
   const handleCopy = (code: string) => {
     navigator.clipboard.writeText(code);
@@ -38,6 +42,102 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
       onReusePrompt(allText);
     }
   };
+
+  // Text-to-Speech functionality
+  const speakText = useCallback((text: string) => {
+    if (!('speechSynthesis' in window)) {
+      alert('Text-to-speech is not supported in your browser');
+      return;
+    }
+
+    // Stop any current speech
+    window.speechSynthesis.cancel();
+
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.rate = 1;
+    utterance.pitch = 1;
+    utterance.volume = 1;
+
+    // Try to use a good voice
+    const voices = window.speechSynthesis.getVoices();
+    const preferredVoice = voices.find(v => 
+      v.name.includes('Google') || 
+      v.name.includes('Samantha') || 
+      v.name.includes('Daniel') ||
+      v.lang === 'en-US'
+    );
+    if (preferredVoice) utterance.voice = preferredVoice;
+
+    utterance.onstart = () => {
+      setIsSpeaking(true);
+      setIsPaused(false);
+    };
+
+    utterance.onend = () => {
+      setIsSpeaking(false);
+      setIsPaused(false);
+      speechRef.current = null;
+    };
+
+    utterance.onerror = (e) => {
+      console.error('Speech error:', e);
+      setIsSpeaking(false);
+      setIsPaused(false);
+    };
+
+    speechRef.current = utterance;
+    window.speechSynthesis.speak(utterance);
+  }, []);
+
+  const toggleSpeech = () => {
+    const allText = (message.parts || [])
+      .filter(p => p.type === 'text')
+      .map(p => p.content)
+      .join('\n');
+
+    if (!allText) return;
+
+    if (isSpeaking) {
+      if (isPaused) {
+        window.speechSynthesis.resume();
+        setIsPaused(false);
+      } else {
+        window.speechSynthesis.pause();
+        setIsPaused(true);
+      }
+    } else {
+      // Clean text for speech (remove markdown syntax for better flow)
+      const cleanText = allText
+        .replace(/#{1,6}\s/g, '') // Remove headers
+        .replace(/```[\s\S]*?```/g, 'Code block omitted.') // Remove code blocks
+        .replace(/`([^`]+)`/g, '$1') // Remove inline code backticks
+        .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // Remove links, keep text
+        .replace(/[*_]{1,2}([^*_]+)[*_]{1,2}/g, '$1') // Remove bold/italic
+        .replace(/>\s/g, '') // Remove blockquote
+        .replace(/-\s/g, '') // Remove list markers
+        .replace(/\|/g, ' ') // Remove table pipes
+        .replace(/\n+/g, ' ') // Replace newlines with space
+        .trim();
+      
+      speakText(cleanText);
+    }
+  };
+
+  const stopSpeech = (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    window.speechSynthesis.cancel();
+    setIsSpeaking(false);
+    setIsPaused(false);
+  };
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (speechRef.current) {
+        window.speechSynthesis.cancel();
+      }
+    };
+  }, []);
 
   const CodeBlock = ({ node, inline, className, children, ...props }: any) => {
     const match = /language-(\w+)/.exec(className || '');
@@ -109,7 +209,46 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
           </div>
         )}
         
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-2 w-full">
+          {/* Audio Player Bar - Shows when speaking */}
+          {isSpeaking && isAssistant && (
+            <div className={`flex items-center gap-3 px-4 py-2 rounded-2xl mb-2 animate-fadeIn ${
+              theme === 'dark' ? 'bg-blue-500/10 border border-blue-500/20' : 'bg-blue-50 border border-blue-200'
+            }`}>
+              <div className="flex items-center gap-2">
+                <div className="flex gap-0.5 items-end h-4">
+                  {[1, 2, 3, 4].map((i) => (
+                    <div
+                      key={i}
+                      className={`w-1 bg-blue-500 rounded-full animate-pulse`}
+                      style={{
+                        height: `${Math.random() * 16 + 4}px`,
+                        animationDelay: `${i * 0.1}s`
+                      }}
+                    />
+                  ))}
+                </div>
+                <span className="text-[10px] font-bold uppercase tracking-widest text-blue-500">
+                  {isPaused ? 'Paused' : 'Reading...'}
+                </span>
+              </div>
+              <div className="flex-1" />
+              <button
+                onClick={toggleSpeech}
+                className="p-1.5 rounded-lg hover:bg-blue-500/10 transition-colors"
+                title={isPaused ? 'Resume' : 'Pause'}
+              >
+                {isPaused ? <Play size={14} className="text-blue-500" /> : <Pause size={14} className="text-blue-500" />}
+              </button>
+              <button
+                onClick={stopSpeech}
+                className="p-1.5 rounded-lg hover:bg-red-500/10 transition-colors"
+                title="Stop"
+              >
+                <VolumeX size={14} className="text-red-500" />
+              </button>
+            </div>
+          )}
           {(message.parts || []).map((part, idx) => (
             <div key={idx} className="w-full relative group/message">
               {part.type === 'text' ? (
@@ -215,6 +354,21 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
                  {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                </span>
              </div>
+
+             {/* Read Aloud Button - Only for assistant messages with text */}
+             {isAssistant && hasTextContent && !isSpeaking && (
+               <button
+                 onClick={toggleSpeech}
+                 className={`flex items-center gap-1.5 px-2 py-1 rounded-lg transition-all active:scale-90 group/speak
+                   ${theme === 'dark' 
+                     ? 'hover:bg-emerald-500/10 text-slate-500 hover:text-emerald-400' 
+                     : 'hover:bg-emerald-50 text-slate-400 hover:text-emerald-600'}`}
+                 title="Read aloud"
+               >
+                 <Volume2 size={12} className="group-hover/speak:scale-110 transition-transform" />
+                 <span className="text-[9px] font-black uppercase tracking-widest">Read</span>
+               </button>
+             )}
 
              {/* Reuse Prompt Button - Only show if there's text content and callback is provided */}
              {hasTextContent && onReusePrompt && (
