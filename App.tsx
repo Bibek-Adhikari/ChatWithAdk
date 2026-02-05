@@ -46,7 +46,9 @@ const App: React.FC = () => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [selectedImage, setSelectedImage] = useState<{ data: string; mimeType: string } | null>(null);
   const [aiModel, setAiModel] = useState<'gemini' | 'groq' | 'research' | 'imagine'>('groq');
+  const [isModelMenuOpen, setIsModelMenuOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const modelMenuRef = useRef<HTMLDivElement>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -97,10 +99,22 @@ const App: React.FC = () => {
       if (e.key === 'Escape') {
         setAuthModal(prev => ({ ...prev, open: false }));
         setIsSettingsOpen(false);
+        setIsModelMenuOpen(false);
       }
     };
+
+    const handleClickOutside = (e: MouseEvent) => {
+      if (modelMenuRef.current && !modelMenuRef.current.contains(e.target as Node)) {
+        setIsModelMenuOpen(false);
+      }
+    };
+
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('mousedown', handleClickOutside);
+    };
   }, []);
 
   const handleNewChat = () => {
@@ -350,45 +364,73 @@ const App: React.FC = () => {
 
       <div className={`flex-1 flex flex-col min-w-0 transition-all duration-500 ${theme === 'dark' ? 'bg-slate-950/20' : 'bg-slate-50'}`}>
 
-        {/* Floating Header Items (Relative to Chat Area) */}
-        <div className="sticky top-0 left-0 right-0 z-30 pointer-events-none flex items-center justify-between p-4 sm:p-6">
+        {/* Mobile Mini Navbar (Visible only on mobile) */}
+        <div className={`lg:hidden flex items-center justify-between p-3 border-b sticky top-0 z-30
+          ${theme === 'dark' ? 'bg-slate-950/80 border-white/5' : 'bg-white/80 border-slate-100'} backdrop-blur-md`}>
+          <button 
+            onClick={() => setIsSidebarOpen(true)}
+            className={`w-9 h-9 flex items-center justify-center rounded-lg transition-all active:scale-90
+              ${theme === 'dark' ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-slate-900'}`}
+          >
+            <i className="fas fa-bars-staggered text-sm"></i>
+          </button>
+          
+          <div className="flex items-center gap-2">
+            <div className="w-6 h-6 bg-gradient-to-br from-blue-600 to-indigo-600 rounded flex items-center justify-center shadow-lg">
+              <i className="fas fa-brain text-white text-[8px]"></i>
+            </div>
+            <span className={`text-[10px] font-black uppercase tracking-widest ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>ChatADK</span>
+          </div>
+
+          {user ? (
+            <button 
+              className={`w-9 h-9 rounded-lg border border-white/5 flex items-center justify-center transition-all overflow-hidden ${theme === 'dark' ? 'bg-slate-900' : 'bg-slate-100'}`}
+            >
+              {user.photoURL ? (
+                <img src={user.photoURL} alt="Avatar" className="w-full h-full object-cover" />
+              ) : (
+                <i className="fas fa-user-circle text-base text-blue-500"></i>
+              )}
+            </button>
+          ) : (
+            <button 
+              className="px-3 py-1 bg-blue-600 text-white rounded-lg text-[8px] font-black tracking-widest active:scale-95"
+              onClick={() => handleAuthClick('signin')}
+            >
+              SIGN IN
+            </button>
+          )}
+        </div>
+
+        {/* Desktop Standalone Floating Controls (Hidden on mobile) */}
+        <div className="hidden lg:flex fixed top-0 left-0 right-0 z-30 pointer-events-none items-center justify-between p-6">
           <div className="flex items-center gap-3 pointer-events-auto">
             {!isSidebarOpen && (
               <button 
                 onClick={() => setIsSidebarOpen(true)}
-                className={`w-11 h-11 flex items-center justify-center rounded-2xl shadow-2xl transition-all active:scale-90 group
+                className={`w-10 h-10 flex items-center justify-center rounded-xl shadow-xl transition-all active:scale-90 group
                   ${theme === 'dark' ? 'bg-slate-900/80 text-slate-400 hover:text-white border border-white/5 backdrop-blur-xl' : 'bg-white/90 text-slate-500 hover:text-slate-900 border border-slate-200 backdrop-blur-xl'}`}
               >
-                <i className="fas fa-bars-staggered group-hover:scale-110 transition-transform"></i>
+                <i className="fas fa-bars-staggered group-hover:scale-110 transition-transform text-sm"></i>
               </button>
             )}
-            <div className={`flex items-center gap-3 px-4 py-2 rounded-2xl transition-all
-              ${theme === 'dark' ? 'bg-slate-900/40 text-white' : 'bg-white/40 text-slate-900'} backdrop-blur-md`}>
-              <div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-lg flex items-center justify-center shadow-lg">
-                <i className="fas fa-brain text-white text-sm"></i>
-              </div>
-              <div className="hidden xs:block">
-                <h1 className="font-black text-[10px] uppercase tracking-[0.3em] leading-none mb-0.5">ChatADK</h1>
-                <p className="text-[7px] font-bold uppercase tracking-widest text-slate-500 opacity-60">Creative AI</p>
-              </div>
-            </div>
           </div>
 
           <div className="flex items-center gap-3 pointer-events-auto">
             {user ? (
               <button 
-                className={`w-11 h-11 rounded-2xl border border-white/5 flex items-center justify-center transition-all overflow-hidden shadow-2xl ${theme === 'dark' ? 'bg-slate-900/80 hover:bg-slate-800' : 'bg-white/90 hover:bg-slate-50'}`}
+                className={`w-10 h-10 rounded-xl border border-white/5 flex items-center justify-center transition-all overflow-hidden shadow-xl ${theme === 'dark' ? 'bg-slate-900/80 hover:bg-slate-800' : 'bg-white/90 hover:bg-slate-50'}`}
                 title="Profile"
               >
                 {user.photoURL ? (
                   <img src={user.photoURL} alt="Avatar" className="w-full h-full object-cover" />
                 ) : (
-                  <i className="fas fa-user-circle text-xl text-blue-500"></i>
+                  <i className="fas fa-user-circle text-lg text-blue-500"></i>
                 )}
               </button>
             ) : (
               <button 
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl text-[10px] font-black tracking-widest transition-all shadow-2xl active:scale-95"
+                className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-[9px] font-black tracking-widest transition-all shadow-xl active:scale-95"
                 onClick={() => handleAuthClick('signin')}
               >
                 <i className="fas fa-sign-in-alt"></i>
@@ -399,8 +441,8 @@ const App: React.FC = () => {
         </div>
 
         {/* Main Chat Area */}
-        <main className="flex-1 overflow-y-auto px-3 sm:px-8 py-6 custom-scrollbar relative" ref={scrollRef}>
-          <div className="max-w-3xl mx-auto space-y-2">
+        <main className={`flex-1 overflow-y-auto px-3 sm:px-8 py-6 custom-scrollbar relative flex flex-col ${localizedMessages.length < 3 ? 'justify-center' : ''}`} ref={scrollRef}>
+          <div className={`max-w-3xl mx-auto space-y-2 w-full ${localizedMessages.length < 3 ? 'flex-1 flex flex-col justify-center' : ''}`}>
             {!currentSession && (
               <div className="flex flex-col items-center justify-center h-full text-center space-y-4 py-20 opacity-50">
                 <i className="fas fa-comments text-6xl text-slate-800"></i>
@@ -468,78 +510,99 @@ const App: React.FC = () => {
                   ? 'bg-slate-900/80 border-white/5 backdrop-blur-xl' 
                   : 'bg-white/90 border-slate-200 backdrop-blur-xl'}`}>
                 
-                {/* Integrated Model Selector */}
-                <div className={`flex items-center gap-1.5 p-1 px-1.5 mb-2 w-fit rounded-xl border
-                  ${theme === 'dark' ? 'bg-black/20 border-white/5' : 'bg-slate-50 border-slate-200'}`}>
-                  <button 
-                    type="button"
-                    onClick={() => setAiModel('groq')}
-                    className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-2
-                      ${aiModel === 'groq' 
-                        ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/10' 
-                        : 'text-slate-500 hover:text-blue-400'}`}
+                
+
+                {/* Model Selector Dropdown (Floating above) */}
+                {isModelMenuOpen && (
+                  <div 
+                    ref={modelMenuRef}
+                    className={`absolute bottom-[calc(100%+16px)] left-0 w-72 rounded-[28px] shadow-[0_20px_50px_rgba(0,0,0,0.5)] border p-3 animate-slide-up z-50
+                    ${theme === 'dark' ? 'bg-slate-900 border-white/10' : 'bg-white border-slate-200 shadow-xl'}`}
+                    onClick={(e) => e.stopPropagation()}
                   >
-                    <i className={`fas fa-bolt ${aiModel === 'groq' ? 'animate-pulse' : ''}`}></i>
-                    <span>Fast</span>
-                  </button>
-                  <button 
-                    type="button"
-                    onClick={() => {
-                      if (!user) {
-                        handleAuthClick('signup');
-                        return;
-                      }
-                      setAiModel('research');
-                    }}
-                    className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-2 relative group-tooltip
-                      ${aiModel === 'research' 
-                        ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-500/10' 
-                        : 'text-slate-500 hover:text-emerald-400'}`}
-                    title={!user ? "Please sign up with ChatADK to access Research Mode" : "Research Mode (DeepSeek R1)"}
-                  >
-                    {!user && <i className="fas fa-lock text-[8px] absolute -top-1 -right-1 text-emerald-500 bg-slate-900 rounded-full p-0.5"></i>}
-                    <i className="fas fa-microscope"></i>
-                    <span>Research</span>
-                  </button>
-                  <button 
-                    type="button"
-                    onClick={() => {
-                      if (!user) {
-                        handleAuthClick('signup');
-                        return;
-                      }
-                      setAiModel('imagine');
-                    }}
-                    className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-2 relative
-                      ${aiModel === 'imagine' 
-                        ? 'bg-pink-600 text-white shadow-lg shadow-pink-500/10' 
-                        : 'text-slate-500 hover:text-pink-400'}`}
-                    title={!user ? "Please sign up with ChatADK to access Image Generation" : "Imagine (Image Generation)"}
-                  >
-                    {!user && <i className="fas fa-lock text-[8px] absolute -top-1 -right-1 text-pink-500 bg-slate-900 rounded-full p-0.5"></i>}
-                    <i className="fas fa-magic"></i>
-                    <span>Imagine</span>
-                  </button>
-                  <button 
-                    type="button"
-                    onClick={() => {
-                      if (!user) {
-                        handleAuthClick('signup');
-                        return;
-                      }
-                      setAiModel('gemini');
-                    }}
-                    className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-2 relative
-                      ${aiModel === 'gemini' 
-                        ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/10' 
-                        : 'text-slate-500 hover:text-indigo-400'}`}
-                    title={!user ? "Please sign up with ChatADK to access Detail Analysis" : "Detail Analysis (Gemini)"}
-                  >
-                    {!user && <i className="fas fa-lock text-[8px] absolute -top-1 -right-1 text-indigo-500 bg-slate-900 rounded-full p-0.5"></i>}
-                    <i className="fas fa-brain"></i>
-                    <span>Detail</span>
-                  </button>
-                </div>
+                    <div className="mb-2 px-3 py-2">
+                       <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Conversation Mode</p>
+                    </div>
+
+                    <div className="space-y-1">
+                      <button 
+                        type="button"
+                        onClick={() => { setAiModel('groq'); setIsModelMenuOpen(false); }}
+                        className={`w-full flex items-start gap-4 p-4 rounded-2xl transition-all text-left group
+                          ${aiModel === 'groq' ? (theme === 'dark' ? 'bg-blue-600/20' : 'bg-blue-50') : (theme === 'dark' ? 'hover:bg-white/5' : 'hover:bg-slate-50')}`}
+                      >
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-transform group-active:scale-90
+                          ${aiModel === 'groq' ? 'bg-blue-600 text-white shadow-lg' : (theme === 'dark' ? 'bg-slate-800 text-slate-400' : 'bg-slate-200 text-slate-500')}`}>
+                          <i className="fas fa-bolt"></i>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className={`text-[11px] font-black uppercase tracking-wider ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>Fast</p>
+                          <p className="text-[10px] text-slate-500 leading-tight mt-1">Blazing fast execution for simple tasks and quick answers.</p>
+                        </div>
+                      </button>
+
+                      <button 
+                        type="button"
+                        onClick={() => { 
+                          if (!user) { handleAuthClick('signup'); return; }
+                          setAiModel('research'); setIsModelMenuOpen(false); 
+                        }}
+                        className={`w-full flex items-start gap-4 p-4 rounded-2xl transition-all text-left group relative
+                          ${aiModel === 'research' ? (theme === 'dark' ? 'bg-emerald-600/20' : 'bg-emerald-50') : (theme === 'dark' ? 'hover:bg-white/5' : 'hover:bg-slate-50')}`}
+                      >
+                        {!user && <i className="fas fa-lock text-[8px] absolute top-4 right-4 text-emerald-500"></i>}
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-transform group-active:scale-90
+                          ${aiModel === 'research' ? 'bg-emerald-600 text-white shadow-lg' : (theme === 'dark' ? 'bg-slate-800 text-slate-400' : 'bg-slate-200 text-slate-500')}`}>
+                          <i className="fas fa-microscope text-sm"></i>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className={`text-[11px] font-black uppercase tracking-wider ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>Research</p>
+                          <p className="text-[10px] text-slate-500 leading-tight mt-1">Deep analysis and patterns using DeepSeek R1.</p>
+                        </div>
+                      </button>
+
+                      <button 
+                        type="button"
+                        onClick={() => { 
+                          if (!user) { handleAuthClick('signup'); return; }
+                          setAiModel('imagine'); setIsModelMenuOpen(false); 
+                        }}
+                        className={`w-full flex items-start gap-4 p-4 rounded-2xl transition-all text-left group relative
+                          ${aiModel === 'imagine' ? (theme === 'dark' ? 'bg-pink-600/20' : 'bg-pink-50') : (theme === 'dark' ? 'hover:bg-white/5' : 'hover:bg-slate-50')}`}
+                      >
+                        {!user && <i className="fas fa-lock text-[8px] absolute top-4 right-4 text-pink-500"></i>}
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-transform group-active:scale-90
+                          ${aiModel === 'imagine' ? 'bg-pink-600 text-white shadow-lg' : (theme === 'dark' ? 'bg-slate-800 text-slate-400' : 'bg-slate-200 text-slate-500')}`}>
+                          <i className="fas fa-magic text-sm"></i>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className={`text-[11px] font-black uppercase tracking-wider ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>Imagine</p>
+                          <p className="text-[10px] text-slate-500 leading-tight mt-1">Creative visual generation. Describe any image.</p>
+                        </div>
+                      </button>
+
+                      <button 
+                        type="button"
+                        onClick={() => { 
+                          if (!user) { handleAuthClick('signup'); return; }
+                          setAiModel('gemini'); setIsModelMenuOpen(false); 
+                        }}
+                        className={`w-full flex items-start gap-4 p-4 rounded-2xl transition-all text-left group relative
+                          ${aiModel === 'gemini' ? (theme === 'dark' ? 'bg-indigo-600/20' : 'bg-indigo-50') : (theme === 'dark' ? 'hover:bg-white/5' : 'hover:bg-slate-50')}`}
+                      >
+                        {!user && <i className="fas fa-lock text-[8px] absolute top-4 right-4 text-indigo-500"></i>}
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-transform group-active:scale-90
+                          ${aiModel === 'gemini' ? 'bg-indigo-600 text-white shadow-lg' : (theme === 'dark' ? 'bg-slate-800 text-slate-400' : 'bg-slate-200 text-slate-500')}`}>
+                          <i className="fas fa-brain text-sm"></i>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className={`text-[11px] font-black uppercase tracking-wider ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>Detail</p>
+                          <p className="text-[10px] text-slate-500 leading-tight mt-1">Advanced multimodal analysis and technical breakdown.</p>
+                        </div>
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 <div className="flex items-end gap-2">
                   <div className="flex flex-col flex-1 pl-1">
@@ -562,7 +625,36 @@ const App: React.FC = () => {
                       </div>
                     )}
                     
-                    <div className="flex items-end">
+                    <div className="flex items-center gap-1.5 px-2">
+                       {/* ChatADK Logo in Input Area */}
+                      <div className="w-7 h-7 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-lg flex items-center justify-center shadow-lg shrink-0 mr-1">
+                        <i className="fas fa-brain text-white text-[10px]"></i>
+                      </div>
+
+                      <button 
+                        type="button"
+                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); setIsModelMenuOpen(!isModelMenuOpen); }}
+                        className={`flex items-center gap-2 px-2.5 py-1.5 rounded-xl border transition-all hover:scale-[1.02] active:scale-95
+                          ${theme === 'dark' ? 'bg-black/40 border-white/10 text-white hover:bg-black/60' : 'bg-slate-50 border-slate-200 text-slate-900 hover:bg-slate-100 shadow-sm'}`}
+                      >
+                        <div className={`w-4 h-4 rounded-lg flex items-center justify-center text-[8px] shadow-sm
+                          ${aiModel === 'groq' ? 'bg-blue-600 text-white' : 
+                            aiModel === 'research' ? 'bg-emerald-600 text-white' :
+                            aiModel === 'imagine' ? 'bg-pink-600 text-white' :
+                            'bg-indigo-600 text-white'}`}>
+                          <i className={`fas ${
+                            aiModel === 'groq' ? 'fa-bolt' : 
+                            aiModel === 'research' ? 'fa-microscope' :
+                            aiModel === 'imagine' ? 'fa-magic' :
+                            'fa-brain'
+                          }`}></i>
+                        </div>
+                        <span className="text-[9px] font-black uppercase tracking-widest">{aiModel === 'gemini' ? 'Detail' : aiModel === 'groq' ? 'Fast' : aiModel}</span>
+                        <i className={`fas fa-chevron-up text-[7px] transition-transform ${isModelMenuOpen ? 'rotate-180' : ''}`}></i>
+                      </button>
+
+                      <div className={`w-px h-3 ${theme === 'dark' ? 'bg-white/5' : 'bg-slate-200'}`}></div>
+
                       <input 
                         type="file"
                         ref={fileInputRef}
@@ -573,40 +665,40 @@ const App: React.FC = () => {
                       <button 
                         type="button"
                         onClick={() => fileInputRef.current?.click()}
-                        className={`w-11 h-11 shrink-0 flex items-center justify-center transition-all hover:scale-105 active:scale-95 ${theme === 'dark' ? 'text-slate-500 hover:text-white' : 'text-slate-400 hover:text-slate-600'}`}
+                        className={`w-8 h-8 shrink-0 flex items-center justify-center transition-all hover:scale-110 active:scale-95 ${theme === 'dark' ? 'text-slate-500 hover:text-white' : 'text-slate-400 hover:text-slate-600'}`}
                         title="Attach Image"
                       >
-                        <i className="fas fa-image text-xl"></i>
+                        <i className="fas fa-image text-base"></i>
                       </button>
-
-                      <textarea 
-                        rows={1}
-                        value={inputValue}
-                        onChange={(e) => {
-                          setInputValue(e.target.value);
-                          e.target.style.height = 'auto';
-                          e.target.style.height = `${Math.min(e.target.scrollHeight, 200)}px`;
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' && !e.shiftKey) {
-                            e.preventDefault();
-                            handleSend();
-                          }
-                        }}
-                        placeholder="Type a message..."
-                        className={`flex-1 bg-transparent border-none outline-none px-4 py-3 text-[14.5px] leading-relaxed resize-none overflow-y-auto max-h-[200px] placeholder:text-slate-500/60
-                          ${theme === 'dark' ? 'text-slate-100' : 'text-slate-900'}`}
-                        disabled={status.isTyping}
-                      />
                     </div>
+
+                    <textarea 
+                      rows={1}
+                      value={inputValue}
+                      onChange={(e) => {
+                        setInputValue(e.target.value);
+                        e.target.style.height = 'auto';
+                        e.target.style.height = `${Math.min(e.target.scrollHeight, 200)}px`;
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault();
+                          handleSend();
+                        }
+                      }}
+                      placeholder="Type a message..."
+                      className={`flex-1 bg-transparent border-none outline-none px-4 py-3 text-[14.5px] leading-relaxed resize-none overflow-y-auto max-h-[200px] placeholder:text-slate-500/60
+                        ${theme === 'dark' ? 'text-slate-100' : 'text-slate-900'}`}
+                      disabled={status.isTyping}
+                    />
                   </div>
 
                   <button 
                     type="submit"
                     disabled={!inputValue.trim() || status.isTyping}
-                    className="w-11 h-11 shrink-0 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800 disabled:opacity-30 text-white flex items-center justify-center transition-all hover:scale-105 active:scale-95 shadow-lg shadow-blue-500/20"
+                    className="w-10 h-10 shrink-0 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800 disabled:opacity-30 text-white flex items-center justify-center transition-all hover:scale-105 active:scale-95 shadow-lg shadow-blue-500/20"
                   >
-                    <i className={`fas ${status.isTyping ? 'fa-spinner fa-spin' : 'fa-arrow-up'} text-sm`}></i>
+                    <i className={`fas ${status.isTyping ? 'fa-spinner fa-spin' : 'fa-arrow-up'} text-xs`}></i>
                   </button>
                 </div>
               </div>

@@ -139,7 +139,10 @@ const Sidebar: React.FC<SidebarProps> = ({
                     <span className="flex-1 text-[13px] truncate font-semibold tracking-tight">{session.title}</span>
                   )}
 
-                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all translate-x-2 group-hover:translate-x-0">
+                  <div className={`flex items-center gap-1 transition-all duration-300 
+                    ${currentSessionId === session.id 
+                      ? 'opacity-100 translate-x-0' 
+                      : 'opacity-0 lg:group-hover:opacity-100 translate-x-2 lg:group-hover:translate-x-0'}`}>
                     <button 
                       onClick={(e) => { e.stopPropagation(); handleStartEdit(session); }}
                       className="p-1.5 text-slate-500 hover:text-blue-400 transition-colors"
