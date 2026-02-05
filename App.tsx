@@ -377,9 +377,9 @@ const App: React.FC = () => {
             <i className="fas fa-bars-staggered text-sm"></i>
           </button>
           
-          <div className="flex items-center gap-2">
-            <img src="/accets/applogo.webp" alt="Logo" className="w-10 h-10 rounded-xl shadow-lg object-cover" />
-            <span className={`text-[10px] font-black uppercase tracking-widest ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>ChatADK</span>
+          <div className="flex items-center gap-2 -ml-8">
+            <img src="/accets/logo.webp" alt="ChatADK" className="w-9 h-9 rounded-xl shadow-xl object-cover border border-white/5" />
+            <span className={`text-[11px] font-black uppercase tracking-[0.2em] ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>ChatADK</span>
           </div>
 
           {user ? (
@@ -509,7 +509,7 @@ const App: React.FC = () => {
         </main>
 
         {/* Input Section */}
-        <footer className={`p-4 sm:p-6 shrink-0 z-10 ${theme === 'dark' ? 'bg-transparent' : 'bg-transparent'}`}>
+        <footer className={`p-4 sm:p-6 shrink-0 z-10 pb-safe ${theme === 'dark' ? 'bg-transparent' : 'bg-transparent'}`}>
           <div className="max-w-3xl mx-auto">
             <form onSubmit={handleSend} className="relative group transition-all duration-300">
               {/* Outer Glow */}
