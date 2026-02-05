@@ -1,14 +1,41 @@
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
   theme: 'light' | 'dark';
   onToggleTheme: () => void;
+  selectedVoiceURI: string;
+  onSelectVoice: (uri: string) => void;
 }
 
-const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, theme, onToggleTheme }) => {
+const SettingsModal: React.FC<SettingsModalProps> = ({ 
+  isOpen, 
+  onClose, 
+  theme, 
+  onToggleTheme,
+  selectedVoiceURI,
+  onSelectVoice
+}) => {
+  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
+
+  useEffect(() => {
+    const updateVoices = () => {
+      const allVoices = window.speechSynthesis.getVoices();
+      // Filter for English, Nepali, and Hindi voices
+      const filteredVoices = allVoices.filter(v => 
+        v.lang.startsWith('en') || 
+        v.lang.startsWith('ne') || 
+        v.lang.startsWith('hi')
+      );
+      setVoices(filteredVoices);
+    };
+
+    updateVoices();
+    window.speechSynthesis.onvoiceschanged = updateVoices;
+  }, []);
+
   if (!isOpen) return null;
 
   const shortcuts = [
@@ -47,7 +74,39 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, theme, o
           </button>
         </div>
 
-        <div className="p-8 space-y-8">
+        <div className="p-8 space-y-8 max-h-[70vh] overflow-y-auto custom-scrollbar">
+          {/* Voice Section */}
+          <section>
+            <h3 className={`text-[10px] font-black uppercase tracking-[0.2em] mb-4 ${theme === 'dark' ? 'text-slate-500' : 'text-slate-400'}`}>Chat Voice</h3>
+            <div className={`p-5 rounded-2xl border transition-all
+              ${theme === 'dark' ? 'bg-slate-800/20 border-white/5' : 'bg-slate-50 border-slate-200'}`}>
+              <div className="flex items-center gap-4 mb-4">
+                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-xl transition-all
+                  ${theme === 'dark' ? 'bg-emerald-400/10 text-emerald-400' : 'bg-emerald-600/10 text-emerald-600'}`}>
+                  <i className="fas fa-volume-up"></i>
+                </div>
+                <div>
+                  <p className={`text-sm font-bold ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>Speech Voice</p>
+                  <p className="text-xs text-slate-500 font-medium">Choose how ChatAdk sounds</p>
+                </div>
+              </div>
+              
+              <select 
+                value={selectedVoiceURI}
+                onChange={(e) => onSelectVoice(e.target.value)}
+                className={`w-full p-3 rounded-xl border text-sm font-bold appearance-none outline-none focus:ring-2 focus:ring-blue-500 transition-all cursor-pointer
+                  ${theme === 'dark' ? 'bg-slate-900 border-white/10 text-white' : 'bg-white border-slate-200 text-slate-900'}`}
+              >
+                <option value="">System Default</option>
+                {voices.map(voice => (
+                  <option key={voice.voiceURI} value={voice.voiceURI}>
+                    {voice.name} ({voice.lang})
+                  </option>
+                ))}
+              </select>
+            </div>
+          </section>
+
           {/* Appearance Section */}
           <section>
             <h3 className={`text-[10px] font-black uppercase tracking-[0.2em] mb-4 ${theme === 'dark' ? 'text-slate-500' : 'text-slate-400'}`}>Appearance</h3>
@@ -92,7 +151,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, theme, o
         </div>
 
         {/* Footer info */}
-        <div className={`px-8 py-5 text-center border-t ${theme === 'dark' ? 'bg-white/5 border-white/5' : 'bg-slate-50 border-slate-100'}`}>
+        <div className={`px-8 py-4 text-center border-t ${theme === 'dark' ? 'bg-white/5 border-white/5' : 'bg-slate-50 border-slate-100'}`}>
           <p className="text-[9px] font-black uppercase tracking-[0.3em] text-slate-500">v1.2.4 Premium Edition</p>
         </div>
       </div>

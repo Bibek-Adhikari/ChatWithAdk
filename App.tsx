@@ -47,6 +47,9 @@ const App: React.FC = () => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [imageError, setImageError] = useState(false);
+  const [selectedVoiceURI, setSelectedVoiceURI] = useState<string>(() => {
+    return localStorage.getItem('selectedVoiceURI') || '';
+  });
   const [selectedImage, setSelectedImage] = useState<{ data: string; mimeType: string } | null>(null);
   const [aiModel, setAiModel] = useState<'gemini' | 'groq' | 'research' | 'imagine' | 'motion'>('groq');
   const [isModelMenuOpen, setIsModelMenuOpen] = useState(false);
@@ -61,8 +64,11 @@ const App: React.FC = () => {
     localStorage.setItem('theme', theme);
   }, [theme]);
 
-  const toggleTheme = () => {
-    setTheme(prev => prev === 'dark' ? 'light' : 'dark');
+  const toggleTheme = () => setTheme(prev => (prev === 'light' ? 'dark' : 'light'));
+
+  const handleSelectVoice = (uri: string) => {
+    setSelectedVoiceURI(uri);
+    localStorage.setItem('selectedVoiceURI', uri);
   };
 
   const currentSession = useMemo(() => 
@@ -491,6 +497,7 @@ const App: React.FC = () => {
                 key={msg.id} 
                 message={msg as any} 
                 theme={theme}
+                selectedVoiceURI={selectedVoiceURI}
                 onReusePrompt={(text) => {
                   setInputValue(text);
                   if (inputRef.current) {
@@ -794,6 +801,8 @@ const App: React.FC = () => {
         onClose={() => setIsSettingsOpen(false)}
         theme={theme}
         onToggleTheme={toggleTheme}
+        selectedVoiceURI={selectedVoiceURI}
+        onSelectVoice={handleSelectVoice}
       />
       <UserProfileModal 
         isOpen={isProfileOpen}

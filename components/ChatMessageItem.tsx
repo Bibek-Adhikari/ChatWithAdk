@@ -11,13 +11,15 @@ interface ChatMessageItemProps {
   onImageClick?: (url: string) => void;
   theme?: 'light' | 'dark';
   onReusePrompt?: (text: string) => void; // New callback for reusing prompt
+  selectedVoiceURI?: string;
 }
 
 const ChatMessageItem: React.FC<ChatMessageItemProps> = ({ 
   message, 
   onImageClick, 
   theme = 'dark',
-  onReusePrompt 
+  onReusePrompt,
+  selectedVoiceURI 
 }) => {
   const isUser = message.role === 'user';
   const isAssistant = message.role === 'assistant';
@@ -58,15 +60,38 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
     utterance.pitch = 1;
     utterance.volume = 1;
 
-    // Try to use a good voice
+    // Try to use the user-selected voice
     const voices = window.speechSynthesis.getVoices();
-    const preferredVoice = voices.find(v => 
-      v.name.includes('Google') || 
-      v.name.includes('Samantha') || 
-      v.name.includes('Daniel') ||
-      v.lang === 'en-US'
-    );
-    if (preferredVoice) utterance.voice = preferredVoice;
+    if (selectedVoiceURI) {
+      const voice = voices.find(v => v.voiceURI === selectedVoiceURI);
+      if (voice) {
+        utterance.voice = voice;
+        utterance.lang = voice.lang;
+      }
+    } else {
+      // Smart Fallback: Detect if text is likely Nepali/Hindi (Devanagari script)
+      const isDevanagari = /[\u0900-\u097F]/.test(text);
+      
+      if (isDevanagari) {
+        const regionalVoice = voices.find(v => v.lang.startsWith('ne') || v.lang.startsWith('hi'));
+        if (regionalVoice) {
+          utterance.voice = regionalVoice;
+          utterance.lang = regionalVoice.lang;
+        }
+      } else {
+        // Find a good high-quality English voice
+        const preferredVoice = voices.find(v => 
+          v.name.includes('Google') || 
+          v.name.includes('Samantha') || 
+          v.name.includes('Daniel') ||
+          v.lang === 'en-US'
+        );
+        if (preferredVoice) {
+          utterance.voice = preferredVoice;
+          utterance.lang = preferredVoice.lang;
+        }
+      }
+    }
 
     utterance.onstart = () => {
       setIsSpeaking(true);
@@ -87,7 +112,7 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
 
     speechRef.current = utterance;
     window.speechSynthesis.speak(utterance);
-  }, []);
+  }, [selectedVoiceURI]);
 
   const toggleSpeech = () => {
     const allText = (message.parts || [])
@@ -116,6 +141,7 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
         .replace(/>\s/g, '') // Remove blockquote
         .replace(/-\s/g, '') // Remove list markers
         .replace(/\|/g, ' ') // Remove table pipes
+        .replace(/(\u00a9|\u00ae|[\u2000-\u3300]|\ud83c[\ud000-\udfff]|\ud83d[\ud000-\udfff]|\ud83e[\ud000-\udfff])/g, '') // Remove emojis
         .replace(/\n+/g, ' ') // Replace newlines with space
         .trim();
       
