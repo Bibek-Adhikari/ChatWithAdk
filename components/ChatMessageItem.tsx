@@ -81,8 +81,8 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = ({ message, onImageClick
     <div className={`flex flex-col ${isUser ? 'items-end' : 'items-start'} mb-8 w-full animate-slide-up`}>
       <div className={`flex items-start gap-3 max-w-[92%] sm:max-w-[85%]`}>
         {!isUser && (
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center text-white shrink-0 shadow-lg shadow-blue-500/20">
-            <i className="fas fa-brain text-xs"></i>
+          <div className="w-9 h-9 rounded-xl overflow-hidden shrink-0 shadow-lg shadow-blue-500/10">
+            <img src="/accets/logo.webp" alt="ChatADK" className="w-full h-full object-cover" />
           </div>
         )}
         
@@ -147,6 +147,21 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = ({ message, onImageClick
                       </div>
                     </div>
                   )}
+                </div>
+              ) : part.type === 'video' ? (
+                <div className="mt-4 relative group/video max-w-md rounded-[28px] overflow-hidden border border-white/10 shadow-2xl bg-black">
+                  <video 
+                    src={part.content} 
+                    controls 
+                    className="w-full h-auto block"
+                    poster={part.metadata?.thumbnail}
+                  />
+                  <div className="absolute top-4 left-4 pointer-events-none">
+                    <div className="px-3 py-1.5 rounded-xl bg-black/60 backdrop-blur-md border border-white/10 flex items-center gap-2">
+                       <i className="fas fa-video text-blue-400 text-[10px]"></i>
+                       <span className="text-[9px] font-black uppercase tracking-widest text-white">Motion Gen</span>
+                    </div>
+                  </div>
                 </div>
               ) : (
                 <div className={`mt-2 rounded-2xl overflow-hidden border shadow-xl group/yt transition-all hover:scale-[1.01] max-w-sm

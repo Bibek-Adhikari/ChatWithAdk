@@ -68,9 +68,12 @@ const Sidebar: React.FC<SidebarProps> = ({
         <div className="w-72 h-full flex flex-col shrink-0">
           <div className="p-6 flex flex-col gap-6 shrink-0">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></div>
-                <h2 className="text-[10px] font-black uppercase tracking-[0.25em] text-slate-500">History</h2>
+              <div className="flex items-center gap-3">
+                <img src="/accets/logo.webp" alt="ChatADK" className="w-12 h-12 rounded-xl shadow-2xl object-cover mb-1" />
+                <div className="flex flex-col">
+                  <h2 className="text-[12px] font-black uppercase tracking-[0.2em] text-white">ChatADK</h2>
+                  <p className="text-[8px] font-bold text-blue-500 uppercase tracking-widest opacity-80">Intelligence App</p>
+                </div>
               </div>
               <div className="flex items-center gap-1">
                 <button 

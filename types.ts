@@ -2,7 +2,7 @@
 export type MessageRole = 'user' | 'assistant';
 
 export interface MessagePart {
-  type: 'text' | 'image' | 'youtube';
+  type: 'text' | 'image' | 'youtube' | 'video';
   content: string;
   mimeType?: string; // e.g. 'image/png', 'image/jpeg'
   metadata?: any; // For structured data like video titles/thumbs

@@ -45,7 +45,7 @@ const App: React.FC = () => {
   });
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [selectedImage, setSelectedImage] = useState<{ data: string; mimeType: string } | null>(null);
-  const [aiModel, setAiModel] = useState<'gemini' | 'groq' | 'research' | 'imagine'>('groq');
+  const [aiModel, setAiModel] = useState<'gemini' | 'groq' | 'research' | 'imagine' | 'motion'>('groq');
   const [isModelMenuOpen, setIsModelMenuOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const modelMenuRef = useRef<HTMLDivElement>(null);
@@ -237,6 +237,8 @@ const App: React.FC = () => {
             { type: 'image', content: generatedImageUrl }
           ]);
         }
+      } else if (aiModel === 'motion' || currentInput.toLowerCase().startsWith('/video')) {
+        addAssistantMessage(sessionId, [{ type: 'text', content: "Motion generation is currently an upcoming feature and will be available soon! Stay tuned." }]);
       } else {
         if (aiModel === 'groq') {
           const textOnlyHistory = history.map(h => ({
@@ -376,9 +378,7 @@ const App: React.FC = () => {
           </button>
           
           <div className="flex items-center gap-2">
-            <div className="w-6 h-6 bg-gradient-to-br from-blue-600 to-indigo-600 rounded flex items-center justify-center shadow-lg">
-              <i className="fas fa-brain text-white text-[8px]"></i>
-            </div>
+            <img src="/accets/applogo.webp" alt="Logo" className="w-10 h-10 rounded-xl shadow-lg object-cover" />
             <span className={`text-[10px] font-black uppercase tracking-widest ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>ChatADK</span>
           </div>
 
@@ -466,12 +466,22 @@ const App: React.FC = () => {
             ))}
             
             {status.isTyping && (
-              <div className="flex items-start gap-2 mb-6 animate-pulse">
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-slate-500 ${theme === 'dark' ? 'bg-slate-800' : 'bg-slate-200'}`}>
-                  <i className="fas fa-ellipsis"></i>
+              <div className="flex items-start gap-4 mb-8 animate-pulse">
+                <div className="w-10 h-10 rounded-xl overflow-hidden shrink-0 shadow-lg shadow-blue-500/10">
+                  <img src="/accets/logo.webp" alt="Thinking" className="w-full h-full object-cover" />
                 </div>
-                <div className={`border px-4 py-2 rounded-2xl text-xs ${theme === 'dark' ? 'bg-slate-800/50 border-slate-700/50 text-slate-400' : 'bg-white border-slate-200 text-slate-600'}`}>
-                  Processing prompt...
+                <div className={`px-5 py-3 rounded-2xl text-[13px] font-bold tracking-tight shadow-sm border
+                  ${theme === 'dark' 
+                    ? 'bg-slate-800/40 border-white/5 text-blue-400' 
+                    : 'bg-white border-slate-200 text-blue-600'}`}>
+                  <span className="flex items-center gap-2">
+                    ChatAdk is thinking
+                    <span className="flex gap-1">
+                      <span className="w-1 h-1 rounded-full bg-current animate-bounce [animation-delay:-0.3s]"></span>
+                      <span className="w-1 h-1 rounded-full bg-current animate-bounce [animation-delay:-0.15s]"></span>
+                      <span className="w-1 h-1 rounded-full bg-current animate-bounce"></span>
+                    </span>
+                  </span>
                 </div>
               </div>
             )}
@@ -600,6 +610,23 @@ const App: React.FC = () => {
                           <p className="text-[10px] text-slate-500 leading-tight mt-1">Advanced multimodal analysis and technical breakdown.</p>
                         </div>
                       </button>
+
+                      <div 
+                        className={`w-full flex items-start gap-4 p-4 rounded-2xl transition-all text-left group relative opacity-60 cursor-not-allowed
+                          ${theme === 'dark' ? 'hover:bg-white/5' : 'hover:bg-slate-50'}`}
+                      >
+                        <div className="absolute top-4 right-4 px-2 py-0.5 rounded-md bg-blue-600/20 border border-blue-600/30">
+                          <span className="text-[7px] font-black uppercase tracking-widest text-blue-400">Soon</span>
+                        </div>
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-transform
+                          ${theme === 'dark' ? 'bg-slate-800 text-slate-400' : 'bg-slate-200 text-slate-500'}`}>
+                          <i className="fas fa-film text-sm"></i>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className={`text-[11px] font-black uppercase tracking-wider ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>Motion</p>
+                          <p className="text-[10px] text-slate-500 leading-tight mt-1">High-fidelity AI video generation is coming soon to ChatADK.</p>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -627,9 +654,7 @@ const App: React.FC = () => {
                     
                     <div className="flex items-center gap-1.5 px-2">
                        {/* ChatADK Logo in Input Area */}
-                      <div className="w-7 h-7 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-lg flex items-center justify-center shadow-lg shrink-0 mr-1">
-                        <i className="fas fa-brain text-white text-[10px]"></i>
-                      </div>
+                      <img src="/accets/logo.webp" alt="Logo" className="w-12 h-12 rounded-xl shadow-lg shrink-0 mr-1 object-cover" />
 
                       <button 
                         type="button"
@@ -641,11 +666,13 @@ const App: React.FC = () => {
                           ${aiModel === 'groq' ? 'bg-blue-600 text-white' : 
                             aiModel === 'research' ? 'bg-emerald-600 text-white' :
                             aiModel === 'imagine' ? 'bg-pink-600 text-white' :
+                            aiModel === 'motion' ? 'bg-amber-600 text-white' :
                             'bg-indigo-600 text-white'}`}>
                           <i className={`fas ${
                             aiModel === 'groq' ? 'fa-bolt' : 
                             aiModel === 'research' ? 'fa-microscope' :
                             aiModel === 'imagine' ? 'fa-magic' :
+                            aiModel === 'motion' ? 'fa-film' :
                             'fa-brain'
                           }`}></i>
                         </div>
