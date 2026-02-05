@@ -378,7 +378,7 @@ const App: React.FC = () => {
           </button>
           
           <div className="flex items-center gap-2 -ml-8">
-            <img src="/accets/logo.webp" alt="ChatADK" className="w-9 h-9 rounded-xl shadow-xl object-cover border border-white/5" />
+            <img src="/assets/logo.webp" alt="ChatADK" className="w-9 h-9 rounded-xl shadow-xl object-cover border border-white/5" />
             <span className={`text-[11px] font-black uppercase tracking-[0.2em] ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>ChatADK</span>
           </div>
 
@@ -468,7 +468,7 @@ const App: React.FC = () => {
             {status.isTyping && (
               <div className="flex items-start gap-4 mb-8 animate-pulse">
                 <div className="w-10 h-10 rounded-xl overflow-hidden shrink-0 shadow-lg shadow-blue-500/10">
-                  <img src="/accets/logo.webp" alt="Thinking" className="w-full h-full object-cover" />
+                  <img src="/assets/logo.webp" alt="Thinking" className="w-full h-full object-cover" />
                 </div>
                 <div className={`px-5 py-3 rounded-2xl text-[13px] font-bold tracking-tight shadow-sm border
                   ${theme === 'dark' 
@@ -654,7 +654,7 @@ const App: React.FC = () => {
                     
                     <div className="flex items-center gap-1.5 px-2">
                        {/* ChatADK Logo in Input Area */}
-                      <img src="/accets/logo.webp" alt="Logo" className="w-12 h-12 rounded-xl shadow-lg shrink-0 mr-1 object-cover" />
+                      <img src="/assets/logo.webp" alt="Logo" className="w-12 h-12 rounded-xl shadow-lg shrink-0 mr-1 object-cover" />
 
                       <button 
                         type="button"

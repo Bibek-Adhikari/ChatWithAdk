@@ -82,7 +82,7 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = ({ message, onImageClick
       <div className={`flex items-start gap-3 max-w-[92%] sm:max-w-[85%]`}>
         {!isUser && (
           <div className="w-9 h-9 rounded-xl overflow-hidden shrink-0 shadow-lg shadow-blue-500/10">
-            <img src="/accets/logo.webp" alt="ChatADK" className="w-full h-full object-cover" />
+            <img src="/assets/logo.webp" alt="ChatADK" className="w-full h-full object-cover" />
           </div>
         )}
         
