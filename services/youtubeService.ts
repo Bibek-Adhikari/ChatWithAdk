@@ -17,13 +17,20 @@ export async function searchYouTubeVideo(query: string): Promise<YouTubeVideo | 
   }
 
   try {
-    const response = await fetch(`${YOUTUBE_API_URL}?part=snippet&maxResults=1&q=${encodeURIComponent(query)}&type=video&key=${apiKey}`);
+    const url = `${YOUTUBE_API_URL}?part=snippet&maxResults=1&q=${encodeURIComponent(query)}&type=video&key=${apiKey}`;
+    console.log('Fetching YouTube:', url.replace(apiKey, 'HIDDEN_KEY'));
+    
+    const response = await fetch(url);
     
     if (!response.ok) {
-      throw new Error(`YouTube API error: ${response.statusText}`);
+      const errorData = await response.json().catch(() => ({}));
+      console.error('YouTube API Error Details:', errorData);
+      const reason = errorData.error?.message || response.statusText;
+      throw new Error(`${response.status} - ${reason}`);
     }
 
     const data = await response.json();
+    console.log('YouTube Response Data:', data);
     const item = data.items?.[0];
 
     if (item) {
@@ -35,9 +42,10 @@ export async function searchYouTubeVideo(query: string): Promise<YouTubeVideo | 
       };
     }
 
+    console.warn('No items found in YouTube response');
     return null;
   } catch (error) {
-    console.error('YouTube Search Error:', error);
-    return null;
+    console.error('YouTube Search Exception:', error);
+    throw error; // Throw so the caller knows it failed
   }
 }

@@ -12,6 +12,7 @@ interface ChatMessageItemProps {
   theme?: 'light' | 'dark';
   onReusePrompt?: (text: string) => void; // New callback for reusing prompt
   selectedVoiceURI?: string;
+  isAuthenticated?: boolean;
 }
 
 const ChatMessageItem: React.FC<ChatMessageItemProps> = ({ 
@@ -19,7 +20,8 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
   onImageClick, 
   theme = 'dark',
   onReusePrompt,
-  selectedVoiceURI 
+  selectedVoiceURI,
+  isAuthenticated = false 
 }) => {
   const isUser = message.role === 'user';
   const isAssistant = message.role === 'assistant';
@@ -381,20 +383,32 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
                </span>
              </div>
 
-             {/* Read Aloud Button - Only for assistant messages with text */}
-             {isAssistant && hasTextContent && !isSpeaking && (
-               <button
-                 onClick={toggleSpeech}
-                 className={`flex items-center gap-1.5 px-2 py-1 rounded-lg transition-all active:scale-90 group/speak
-                   ${theme === 'dark' 
-                     ? 'hover:bg-emerald-500/10 text-slate-500 hover:text-emerald-400' 
-                     : 'hover:bg-emerald-50 text-slate-400 hover:text-emerald-600'}`}
-                 title="Read aloud"
-               >
-                 <Volume2 size={12} className="group-hover/speak:scale-110 transition-transform" />
-                 <span className="text-[9px] font-black uppercase tracking-widest">Read</span>
-               </button>
-             )}
+              {/* Read Aloud Button - Only for assistant messages with text */}
+              {isAssistant && hasTextContent && !isSpeaking && (
+                <button
+                  onClick={() => {
+                    if (isAuthenticated) {
+                      toggleSpeech();
+                    } else {
+                      // Trigger auth modal if not authenticated
+                      const event = new CustomEvent('open-auth-modal', { detail: 'signin' });
+                      window.dispatchEvent(event);
+                    }
+                  }}
+                  className={`flex items-center gap-1.5 px-2 py-1 rounded-lg transition-all active:scale-90 group/speak
+                    ${theme === 'dark' 
+                      ? 'hover:bg-emerald-500/10 text-slate-500 hover:text-emerald-400' 
+                      : 'hover:bg-emerald-50 text-slate-400 hover:text-emerald-600'}`}
+                  title={isAuthenticated ? "Read aloud" : "Login to listen"}
+                >
+                  {isAuthenticated ? (
+                    <Volume2 size={12} className="group-hover/speak:scale-110 transition-transform" />
+                  ) : (
+                    <i className="fas fa-lock text-[10px] text-slate-500"></i>
+                  )}
+                  <span className="text-[9px] font-black uppercase tracking-widest">{isAuthenticated ? 'Read' : 'Locked'}</span>
+                </button>
+              )}
 
              {/* Reuse Prompt Button - Only show if there's text content and callback is provided */}
              {hasTextContent && onReusePrompt && (

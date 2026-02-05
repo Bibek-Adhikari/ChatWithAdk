@@ -120,11 +120,17 @@ const App: React.FC = () => {
       }
     };
 
+    const handleAuthEvent = (e: any) => {
+      setAuthModal({ open: true, mode: e.detail || 'signin' });
+    };
+
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('mousedown', handleClickOutside);
+    window.addEventListener('open-auth-modal', handleAuthEvent);
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('mousedown', handleClickOutside);
+      window.removeEventListener('open-auth-modal', handleAuthEvent);
     };
   }, []);
 
@@ -255,6 +261,41 @@ const App: React.FC = () => {
         }
       } else if (aiModel === 'motion' || currentInput.toLowerCase().startsWith('/video')) {
         addAssistantMessage(sessionId, [{ type: 'text', content: "Motion generation is currently an upcoming feature and will be available soon! Stay tuned." }]);
+      } else if (currentInput.toLowerCase().startsWith('/youtube')) {
+        const query = currentInput.substring(8).trim();
+        if (!query) {
+          addAssistantMessage(sessionId, [{ type: 'text', content: "Please provide a search query after /youtube (e.g., /youtube lo-fi hip hop)" }]);
+        } else {
+          try {
+            const video = await searchYouTubeVideo(query);
+            if (video) {
+              addAssistantMessage(sessionId, [
+                { type: 'text', content: `🎬 I found a great video for: **${query}**` },
+                { 
+                  type: 'youtube', 
+                  content: video.id,
+                  metadata: {
+                    title: video.title,
+                    thumbnail: video.thumbnail,
+                    channelTitle: video.channelTitle
+                  }
+                },
+                { type: 'text', content: `[Not the right video? View more results here](https://www.youtube.com/results?search_query=${encodeURIComponent(query)})` }
+              ]);
+            } else {
+              addAssistantMessage(sessionId, [
+                { type: 'text', content: `🔍 I couldn't find a direct video match for "${query}".` },
+                { type: 'text', content: `👉 [Click here to see YouTube search results for "${query}"](https://www.youtube.com/results?search_query=${encodeURIComponent(query)})` }
+              ]);
+            }
+          } catch (e: any) {
+            const errorMsg = e.message || "Unknown error";
+            addAssistantMessage(sessionId, [{ 
+              type: 'text', 
+              content: `❌ YouTube Search Failed: ${errorMsg}. Please check if your YouTube API Key is valid and enabled in the Google Cloud Console.` 
+            }]);
+          }
+        }
       } else {
         if (aiModel === 'groq') {
           const textOnlyHistory = history.map(h => ({
@@ -272,14 +313,23 @@ const App: React.FC = () => {
           responseText = await generateTextResponse(currentInput, history, selectedImage || undefined);
         }
 
-        // Check if AI suggested an image generation via /image trigger
-        if (responseText.toLowerCase().includes('/image') || responseText.toLowerCase().includes('/youtube')) {
-          const parts = responseText.split(/(\/image\s+[^\s]+|\/youtube\s+[^\s]+)/i);
+        // Check for /image trigger (all models) OR /youtube triggers (All models - Force Feature)
+        const hasImageTrigger = responseText.toLowerCase().includes('/image');
+        const hasYoutubeTrigger = responseText.toLowerCase().includes('/youtube') ||
+                                 /https?:\/\/(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/.test(responseText);
+
+        if (hasImageTrigger || hasYoutubeTrigger) {
+          // Robust regex to split by commands OR direct youtube links
+          const parts = responseText.split(/(\/image\s+[^\n/]+|\/youtube\s+[^\n/]+|https?:\/\/(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)[a-zA-Z0-9_-]{11})/gi);
           const finalParts: MessagePart[] = [];
           
           for (const segment of parts) {
-            if (segment.toLowerCase().startsWith('/image')) {
-              const imgPrompt = segment.substring(6).trim();
+            if (!segment) continue;
+
+            const trimmedSegment = segment.trim();
+
+            if (trimmedSegment.toLowerCase().startsWith('/image')) {
+              const imgPrompt = trimmedSegment.substring(6).trim();
               if (user) {
                 try {
                   const imgUrl = await generateImageResponse(imgPrompt);
@@ -288,10 +338,10 @@ const App: React.FC = () => {
                   finalParts.push({ type: 'text', content: segment });
                 }
               } else {
-                finalParts.push({ type: 'text', content: " [Image generation requires sign-in] " });
+                finalParts.push({ type: 'text', content: " [Account required for image generation] " });
               }
-            } else if (segment.toLowerCase().startsWith('/youtube')) {
-              const query = segment.substring(8).trim();
+            } else if (trimmedSegment.toLowerCase().startsWith('/youtube')) {
+              const query = trimmedSegment.substring(8).trim().replace(/[.,!?;:()]+$/, ''); // Clean trailing punctuation
               try {
                 const video = await searchYouTubeVideo(query);
                 if (video) {
@@ -306,12 +356,28 @@ const App: React.FC = () => {
                   });
                 } else {
                   finalParts.push({ type: 'text', content: segment });
+                  console.warn(`YouTube search for "${query}" returned no results. Check your API key or query.`);
                 }
               } catch (e) {
                 finalParts.push({ type: 'text', content: segment });
               }
-            } else if (segment.trim()) {
-              finalParts.push({ type: 'text', content: segment });
+            } else if (trimmedSegment.startsWith('http')) {
+              // Check if segment is a direct YouTube link
+              const ytMatch = segment.match(/https?:\/\/(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/i);
+              if (ytMatch && ytMatch[1]) {
+                const videoId = ytMatch[1];
+                finalParts.push({ 
+                  type: 'youtube', 
+                  content: videoId,
+                  metadata: { title: "Suggested Video", thumbnail: `https://img.youtube.com/vi/${videoId}/mqdefault.jpg` }
+                });
+              } else {
+                finalParts.push({ type: 'text', content: segment });
+              }
+            } else {
+              if (segment.trim()) {
+                finalParts.push({ type: 'text', content: segment });
+              }
             }
           }
           addAssistantMessage(sessionId, finalParts);
@@ -498,6 +564,7 @@ const App: React.FC = () => {
                 message={msg as any} 
                 theme={theme}
                 selectedVoiceURI={selectedVoiceURI}
+                isAuthenticated={!!user}
                 onReusePrompt={(text) => {
                   setInputValue(text);
                   if (inputRef.current) {
