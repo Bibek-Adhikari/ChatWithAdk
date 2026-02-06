@@ -12,9 +12,11 @@ import { generateResearchResponse } from './services/openRouterService';
 import { generateImageResponse } from './services/imageService';
 import { searchYouTubeVideo } from './services/youtubeService';
 import { auth, db } from './services/firebase';
-import { onAuthStateChanged, signOut, User } from 'firebase/auth';
+import { onAuthStateChanged, signOut, User, getRedirectResult } from 'firebase/auth';
 import { chatStorageService } from './services/chatStorageService';
 import AdminDashboardModal from './components/AdminDashboardModal';
+import { adminService } from './services/adminService';
+
 
 const ADMIN_EMAILS = [
   "crazybibek4444@gmail.com",
@@ -128,6 +130,21 @@ const App: React.FC = () => {
   }, [sessions, user?.uid]);
 
   useEffect(() => {
+    // Handle redirect result (primarily for mobile)
+    const handleRedirect = async () => {
+      try {
+        const result = await getRedirectResult(auth);
+        if (result) {
+          console.log("Redirect login successful:", result.user);
+          await adminService.syncUser(result.user);
+        }
+      } catch (err: any) {
+        console.error("Redirect login error:", err);
+        setStatus(prev => ({ ...prev, error: `Login failed: ${err.message}` }));
+      }
+    };
+    handleRedirect();
+
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       // Reset to Groq if user logs out and was on a restricted model
