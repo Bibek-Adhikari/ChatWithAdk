@@ -55,8 +55,11 @@ const App: React.FC = () => {
 
   const [currentSessionId, setCurrentSessionId] = useState<string>(() => {
     if (urlSessionId) return urlSessionId;
-    return localStorage.getItem(`${STORAGE_KEY}_last_session_id`) || '';
+    return ''; // Start with empty, will be initialized in syncSessions or handleNewChat
   });
+
+  const lastUserUidRef = useRef<string | null>(null);
+  const initialSyncRef = useRef(false);
 
   const [inputValue, setInputValue] = useState('');
   const [status, setStatus] = useState<GenerationState>({
@@ -149,11 +152,10 @@ const App: React.FC = () => {
             const loadedSessions = JSON.parse(saved);
             setSessions(loadedSessions);
             
-            // Sync session ID for logged-in user
+            // On fresh login or mount, if no URL session, we might want a new one 
+            // but let's wait for cloud sync to be sure
             if (urlSessionId && loadedSessions.some((s: any) => s.id === urlSessionId)) {
               setCurrentSessionId(urlSessionId);
-            } else if (loadedSessions.length > 0 && !urlSessionId) {
-              setCurrentSessionId(loadedSessions[0].id);
             }
           } catch (err) {
             console.error("User cache load failed:", err);
@@ -184,43 +186,49 @@ const App: React.FC = () => {
         // Subscribe to real-time updates from cloud
         unsubscribe = chatStorageService.subscribeToUserSessions(user.uid, (cloudSessions) => {
           setSessions(prev => {
-            // Map of cloud sessions for fast lookup
             const cloudMap = new Map(cloudSessions.map(s => [s.id, s]));
-            
-            // Start with cloud sessions
             const merged = [...cloudSessions];
             
-            // Check current local sessions
             prev.forEach(local => {
               const cloud = cloudMap.get(local.id);
               if (!cloud) {
-                // If not in cloud yet, it might be a brand new local session
                 merged.push(local);
-              } else if (local.updatedAt > cloud.updatedAt) {
-                // Local is newer (sync still pending), keep local version
+              } else if (local.updatedAt > (cloud.updatedAt || 0)) {
                 const index = merged.findIndex(s => s.id === local.id);
-                merged[index] = local;
+                if (index !== -1) merged[index] = local;
               }
             });
 
-            // Sort by most recent
             const finalSessions = merged.sort((a, b) => b.updatedAt - a.updatedAt);
-            
-            // Persist the merged state to local cache
             localStorage.setItem(key, JSON.stringify(finalSessions));
-            
             return finalSessions;
           });
 
-          // Handle initial current session selection
-          if (urlSessionId) {
-            setCurrentSessionId(urlSessionId);
+          // Handle initial current session selection or new chat on login
+          if (!initialSyncRef.current) {
+            initialSyncRef.current = true;
+            if (urlSessionId) {
+              setCurrentSessionId(urlSessionId);
+            } else {
+              // Always start fresh on relogin/start as requested
+              handleNewChat();
+            }
           } else if (!currentSessionId && cloudSessions.length > 0) {
             setCurrentSessionId(cloudSessions[0].id);
           }
           
           setStatus(prev => ({ ...prev, isSyncing: false }));
         });
+      } else {
+        // Guest mode
+        if (!initialSyncRef.current) {
+          initialSyncRef.current = true;
+          if (urlSessionId) {
+            setCurrentSessionId(urlSessionId);
+          } else if (!currentSessionId) {
+            handleNewChat();
+          }
+        }
       }
     };
 
@@ -240,13 +248,40 @@ const App: React.FC = () => {
       if (location.pathname !== `/chat/${currentSessionId}`) {
         navigate(`/chat/${currentSessionId}`);
       }
-      localStorage.setItem(`${STORAGE_KEY}_last_session_id`, currentSessionId);
+      const key = user ? `${STORAGE_KEY}_last_session_id_${user.uid}` : `${STORAGE_KEY}_last_session_id_guest`;
+      localStorage.setItem(key, currentSessionId);
     } else if (location.pathname.startsWith('/chat/')) {
        // Optional: if URL is /chat/something but it's not in state, we might wait for syncSessions
     } else {
        navigate('/');
     }
-  }, [currentSessionId, navigate, location.pathname]);
+  }, [currentSessionId, navigate, location.pathname, user?.uid]);
+
+  // Handle "relogin" (auth change) to reset sync state and trigger new chat
+  useEffect(() => {
+    if (user?.uid !== lastUserUidRef.current) {
+      initialSyncRef.current = false;
+      lastUserUidRef.current = user?.uid || null;
+    }
+  }, [user?.uid]);
+
+  // Fix loading hang if session not found after sync
+  useEffect(() => {
+    if (!status.isSyncing && currentSessionId && sessions.length > 0) {
+      const exists = sessions.some(s => s.id === currentSessionId);
+      if (!exists && !urlSessionId) {
+        // If the ID we have is not in the list and not in URL, pick the first one or new chat
+        setCurrentSessionId(sessions[0].id);
+      } else if (!exists && urlSessionId && !status.isTyping) {
+        // If it's in URL but doesn't exist even after sync... it's a dead link
+        // We could either redirect to home or show error
+        // Let's redirect to home to avoid the "never ending" loading
+        console.warn("Session ID not found, redirecting...");
+        navigate('/');
+        setCurrentSessionId('');
+      }
+    }
+  }, [sessions, currentSessionId, status.isSyncing, urlSessionId, navigate, status.isTyping]);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
