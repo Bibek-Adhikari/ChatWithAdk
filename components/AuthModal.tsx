@@ -121,8 +121,6 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode, the
             setIsRedirecting(true);
             setError(null);
             
-            // Ensure persistence is set before redirect
-            await setPersistence(auth, browserLocalPersistence);
             await signInWithRedirect(auth, provider);
             return;
           }

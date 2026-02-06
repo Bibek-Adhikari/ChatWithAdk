@@ -1,5 +1,5 @@
 import { initializeApp } from "firebase/app";
-import { getAuth, GoogleAuthProvider } from "firebase/auth";
+import { getAuth, GoogleAuthProvider, setPersistence, browserLocalPersistence } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 
 const getEnv = (key: string) => {
@@ -40,5 +40,13 @@ try {
 }
 
 export const auth = getAuth(app);
+
+// Set persistence once at initialization to prevent assertion errors on mobile
+if (isFirebaseConfigured) {
+  setPersistence(auth, browserLocalPersistence).catch(err => {
+    console.error("Firebase persistence error:", err);
+  });
+}
+
 export const db = getFirestore(app);
 export const googleProvider = new GoogleAuthProvider();

@@ -101,13 +101,6 @@ const Sidebar: React.FC<SidebarProps> = ({
                   <span className="absolute top-2 right-2 w-1.5 h-1.5 bg-red-500 rounded-full border border-[#0f172a]"></span>
                 </Link>
                 <button 
-                  onClick={onOpenPlans}
-                  className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-slate-800/50 text-slate-500 transition-all"
-                  title="Plans"
-                >
-                  <i className="fas fa-gem text-xs"></i>
-                </button>
-                <button 
                   onClick={onOpenSettings}
                   className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-slate-800/50 text-slate-500 transition-all"
                   title="Settings"
@@ -116,7 +109,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                 </button>
                 <button 
                   onClick={onClose}
-                  className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-slate-800/50 text-slate-500 transition-all lg:hidden"
+                  className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-slate-800/50 text-slate-500 transition-all"
                 >
                   <i className="fas fa-times text-xs"></i>
                 </button>
@@ -128,13 +121,23 @@ const Sidebar: React.FC<SidebarProps> = ({
               <div className={`p-4 rounded-2xl border ${theme === 'dark' ? 'bg-white/5 border-white/5' : 'bg-slate-50 border-slate-200'}`}>
                 <div className="flex items-center justify-between mb-2">
                   <span className={`text-[10px] font-black uppercase tracking-widest ${theme === 'dark' ? 'text-slate-400' : 'text-slate-500'}`}>Daily Limit</span>
-                  <span className={`text-[10px] font-black tracking-widest ${usageCount >= dailyLimit ? 'text-red-500' : 'text-blue-500'}`}>
+                  <span className={`text-[10px] font-black tracking-widest ${
+                    usageCount <= 5 ? 'text-emerald-500' : 
+                    usageCount <= 10 ? 'text-blue-500' : 
+                    usageCount <= 15 ? 'text-amber-500' : 
+                    'text-red-500'
+                  }`}>
                     {usageCount}/{dailyLimit}
                   </span>
                 </div>
                 <div className="h-1.5 w-full bg-slate-800/20 rounded-full overflow-hidden">
                   <div 
-                    className={`h-full transition-all duration-1000 ${usageCount >= dailyLimit ? 'bg-red-500' : 'bg-blue-500'}`}
+                    className={`h-full transition-all duration-1000 ${
+                      usageCount <= 5 ? 'bg-emerald-500' : 
+                      usageCount <= 10 ? 'bg-blue-500' : 
+                      usageCount <= 15 ? 'bg-amber-500' : 
+                      'bg-red-500'
+                    }`}
                     style={{ width: `${Math.min((usageCount / dailyLimit) * 100, 100)}%` }}
                   />
                 </div>
@@ -256,8 +259,17 @@ const Sidebar: React.FC<SidebarProps> = ({
                     </div>
                   </div>
                 </div>
-                <div className="w-8 h-8 flex items-center justify-center text-slate-500 group-hover/user:text-blue-400 transition-all">
-                  <i className="fas fa-chevron-right text-[10px]"></i>
+                <div className="flex items-center gap-1">
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); onOpenPlans(); }}
+                    className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-white/10 text-blue-400/70 hover:text-blue-400 transition-all"
+                    title="View Plans"
+                  >
+                    <i className="fas fa-gem text-[10px]"></i>
+                  </button>
+                  <div className="w-8 h-8 flex items-center justify-center text-slate-500 group-hover/user:text-white transition-all">
+                    <i className="fas fa-chevron-right text-[10px]"></i>
+                  </div>
                 </div>
               </div>
             ) : (

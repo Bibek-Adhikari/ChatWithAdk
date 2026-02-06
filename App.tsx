@@ -38,8 +38,25 @@ const App: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const [sessions, setSessions] = useState<ChatSession[]>([]);
-  const [currentSessionId, setCurrentSessionId] = useState<string>(urlSessionId || '');
+  const [sessions, setSessions] = useState<ChatSession[]>(() => {
+    // Initial load from Guest cache to prevent race conditions during boot
+    const key = `${STORAGE_KEY}_guest`;
+    const saved = localStorage.getItem(key);
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (err) {
+        console.error("Initial cache load failed:", err);
+        return [];
+      }
+    }
+    return [];
+  });
+
+  const [currentSessionId, setCurrentSessionId] = useState<string>(() => {
+    if (urlSessionId) return urlSessionId;
+    return localStorage.getItem(`${STORAGE_KEY}_last_session_id`) || '';
+  });
 
   const [inputValue, setInputValue] = useState('');
   const [status, setStatus] = useState<GenerationState>({
@@ -84,7 +101,7 @@ const App: React.FC = () => {
     }
     return saved ? parseInt(saved) : 0;
   });
-  const [dailyLimit] = useState(10); // Free limit: 10 messages
+  const [dailyLimit] = useState(20); // Free limit: 20 messages
   const fileInputRef = useRef<HTMLInputElement>(null);
   const modelMenuRef = useRef<HTMLDivElement>(null);
 
@@ -123,26 +140,24 @@ const App: React.FC = () => {
     const syncSessions = async () => {
       const key = getUserStorageKey();
       
-      // Load initial state from cache immediately for zero-lag UI
-      const saved = localStorage.getItem(key);
-      if (saved) {
-        try {
-          const loadedSessions = JSON.parse(saved);
-          setSessions(loadedSessions);
-          
-          // Sync current session ID with URL or cache
-          if (urlSessionId && loadedSessions.some((s: any) => s.id === urlSessionId)) {
-            setCurrentSessionId(urlSessionId);
-          } else if (!currentSessionId) {
-            const savedId = localStorage.getItem(`${STORAGE_KEY}_last_session_id`);
-            if (savedId && loadedSessions.some((s: any) => s.id === savedId)) {
-              setCurrentSessionId(savedId);
-            } else if (loadedSessions.length > 0) {
+      // If user is logged in, we need to switch from guest data to user data
+      if (user) {
+        // Load user-specific local cache first for speed
+        const saved = localStorage.getItem(key);
+        if (saved) {
+          try {
+            const loadedSessions = JSON.parse(saved);
+            setSessions(loadedSessions);
+            
+            // Sync session ID for logged-in user
+            if (urlSessionId && loadedSessions.some((s: any) => s.id === urlSessionId)) {
+              setCurrentSessionId(urlSessionId);
+            } else if (loadedSessions.length > 0 && !urlSessionId) {
               setCurrentSessionId(loadedSessions[0].id);
             }
+          } catch (err) {
+            console.error("User cache load failed:", err);
           }
-        } catch (err) {
-          console.error("Cache load failed:", err);
         }
       }
 
@@ -189,11 +204,13 @@ const App: React.FC = () => {
   }, [user?.uid]);
 
   useEffect(() => {
-    if (!user) {
+    // Only save guest sessions to localStorage. 
+    // Logged-in users are persisted via the Firestore snapshot listener.
+    if (!user && sessions.length >= 0) {
       const key = getUserStorageKey();
       localStorage.setItem(key, JSON.stringify(sessions));
     }
-  }, [sessions, user?.uid]);
+  }, [sessions, user]);
 
   // Sync session ID with URL
   useEffect(() => {
@@ -739,15 +756,13 @@ const App: React.FC = () => {
         {/* Desktop Standalone Floating Controls (Hidden on mobile) */}
         <div className="hidden lg:flex fixed top-0 left-0 right-0 z-30 pointer-events-none items-center justify-between p-6">
           <div className="flex items-center gap-3 pointer-events-auto">
-            {!isSidebarOpen && (
-              <button 
-                onClick={() => setIsSidebarOpen(true)}
-                className={`w-10 h-10 flex items-center justify-center rounded-xl shadow-xl transition-all active:scale-90 group
-                  ${theme === 'dark' ? 'bg-slate-900/80 text-slate-400 hover:text-white border border-white/5 backdrop-blur-xl' : 'bg-white/90 text-slate-500 hover:text-slate-900 border border-slate-200 backdrop-blur-xl'}`}
-              >
-                <i className="fas fa-bars-staggered group-hover:scale-110 transition-transform text-sm"></i>
-              </button>
-            )}
+            <button 
+              onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+              className={`w-10 h-10 flex items-center justify-center rounded-xl shadow-xl transition-all active:scale-90 group
+                ${theme === 'dark' ? 'bg-slate-900/80 text-slate-400 hover:text-white border border-white/5 backdrop-blur-xl' : 'bg-white/90 text-slate-500 hover:text-slate-900 border border-slate-200 backdrop-blur-xl'}`}
+            >
+              <i className={`fas ${isSidebarOpen ? 'fa-times' : 'fa-bars-staggered'} group-hover:scale-110 transition-transform text-sm`}></i>
+            </button>
           </div>
 
           <div className="flex items-center gap-3 pointer-events-auto">
