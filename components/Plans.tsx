@@ -95,7 +95,7 @@ const colorThemes = [
   { name: 'Rose', value: 'rose', gradient: 'from-rose-500 to-pink-600' },
 ];
 
-const Plans: React.FC<{ theme: 'light' | 'dark' }> = ({ theme }) => {
+const Plans: React.FC<{ theme: 'light' | 'dark'; onClose?: () => void }> = ({ theme, onClose }) => {
   const navigate = useNavigate();
   const [plans, setPlans] = useState<ProPlan[]>([]);
   const [userSubscriptions, setUserSubscriptions] = useState<UserPlan[]>([]);
@@ -327,10 +327,10 @@ const Plans: React.FC<{ theme: 'light' | 'dark' }> = ({ theme }) => {
         <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between mb-8 gap-4">
           <div>
             <button 
-              onClick={() => navigate('/?admin=true')}
+              onClick={() => onClose ? onClose() : navigate('/?admin=true')}
               className={`flex items-center gap-2 px-4 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest mb-4 transition-all
                 ${theme === 'dark' ? 'text-slate-400 hover:text-white hover:bg-white/5' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200'}`}>
-              <i className="fas fa-arrow-left" /> Back to Admin
+              <i className="fas fa-arrow-left" /> {onClose ? 'Close' : 'Back to Admin'}
             </button>
             <h1 className={`text-3xl font-black tracking-tight ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>
               Pro Plans Management

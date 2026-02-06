@@ -4,7 +4,6 @@ import {
   createUserWithEmailAndPassword,
   signInWithPopup,
   signInWithRedirect, 
-  getRedirectResult,
   GoogleAuthProvider,
   updateProfile
 } from 'firebase/auth';
@@ -28,44 +27,17 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode, the
   const [loading, setLoading] = useState(false);
   const [isRedirecting, setIsRedirecting] = useState(false);
 
-  // Handle redirect result when component mounts (for mobile redirect flow)
+  // Check for pending redirects
   useEffect(() => {
-    const handleRedirectResult = async () => {
-      try {
-        setLoading(true);
-        const result = await getRedirectResult(auth);
-        
-        if (result) {
-          // Successfully returned from redirect
-          await adminService.syncUser(result.user);
-          onClose();
-        }
-      } catch (err: any) {
-        console.error("Redirect result error:", err);
-        setError(err.message || "Failed to complete sign in.");
-      } finally {
-        setLoading(false);
-        setIsRedirecting(false);
-      }
-    };
-
-    if (isOpen) {
-      handleRedirectResult();
-    }
-  }, [isOpen, onClose]);
-
-  // Check if we were in the middle of a redirect (persisted in sessionStorage)
-  useEffect(() => {
-    const wasRedirecting = sessionStorage.getItem('auth_redirect_pending');
+    const wasRedirecting = localStorage.getItem('auth_redirect_pending');
     if (wasRedirecting === 'true' && isOpen) {
       setIsRedirecting(true);
-      sessionStorage.removeItem('auth_redirect_pending');
       
-      // Safety timeout: if redirect result doesn't resolve in 5s, clear it
+      // Safety timeout: if login doesn't happen in 10s, clear it
       const timeout = setTimeout(() => {
         setIsRedirecting(false);
-        setLoading(false);
-      }, 5000);
+        localStorage.removeItem('auth_redirect_pending');
+      }, 10000);
       
       return () => clearTimeout(timeout);
     }
@@ -122,31 +94,34 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode, the
     setLoading(true);
 
     try {
-      // More reliable mobile detection
+      // Improved mobile/small screen detection
       const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-      
-      // iOS Safari and many Android browsers work better with redirect
-      const useRedirect = isMobile || window.innerWidth < 768;
+      const isSmallScreen = window.innerWidth < 1024;
+      const useRedirect = isMobile || isSmallScreen;
 
       if (useRedirect) {
-        // Set flag before redirect so we know to show loading state when we return
-        sessionStorage.setItem('auth_redirect_pending', 'true');
+        // Use localStorage as it's more persistent across mobile redirects
+        localStorage.setItem('auth_redirect_pending', 'true');
         setIsRedirecting(true);
         
-        // Clear any existing error to prevent confusion
+        // Clear any existing error
         setError(null);
+        
+        // Set persistence to LOCAL explicitly for mobile
+        await auth.setPersistence({ type: 'LOCAL' });
         
         // Force account selection for better mobile experience
         googleProvider.setCustomParameters({ prompt: 'select_account' });
         
         await signInWithRedirect(auth, googleProvider);
-        // Page will reload, no code executes after this
+        // Page will redirect, no further code executes
       } else {
         // Desktop: Use popup
         const result = await signInWithPopup(auth, googleProvider);
-        await adminService.syncUser(result.user);
-        onClose();
+        if (result.user) {
+          await adminService.syncUser(result.user);
+          onClose();
+        }
       }
     } catch (err: any) {
       console.error("Google Auth error:", err);
@@ -161,7 +136,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode, the
       const code = err.code || '';
       setError(errorMessages[code] || err.message || "Failed to sign in with Google.");
       setIsRedirecting(false);
-      sessionStorage.removeItem('auth_redirect_pending');
+      localStorage.removeItem('auth_redirect_pending');
     } finally {
       if (!isRedirecting) {
         setLoading(false);

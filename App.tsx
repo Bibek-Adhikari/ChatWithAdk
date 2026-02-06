@@ -56,6 +56,7 @@ const App: React.FC = () => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState<{ open: boolean; showPricing: boolean }>({ open: false, showPricing: false });
   const [isAdminDashboardOpen, setIsAdminDashboardOpen] = useState(false);
+  const [isPlansOpen, setIsPlansOpen] = useState(false);
   const [imageError, setImageError] = useState(false);
 
   const [selectedVoiceURI, setSelectedVoiceURI] = useState<string>(() => {
@@ -221,12 +222,19 @@ const App: React.FC = () => {
       } catch (err: any) {
         console.error("Redirect login error:", err);
         setStatus(prev => ({ ...prev, error: `Login failed: ${err.message}` }));
+      } finally {
+        localStorage.removeItem('auth_redirect_pending');
       }
     };
     handleRedirect();
 
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
+      if (currentUser) {
+        setAuthModal(prev => ({ ...prev, open: false }));
+        // Ensure user is synced
+        await adminService.syncUser(currentUser);
+      }
       // Reset to Groq if user logs out and was on a restricted model
       if (!currentUser) {
         setAiModel('groq');
@@ -280,13 +288,19 @@ const App: React.FC = () => {
       setAuthModal({ open: true, mode: e.detail || 'signin' });
     };
 
+    const handleOpenAdminPlans = () => {
+      setIsPlansOpen(true);
+    };
+
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('mousedown', handleClickOutside);
     window.addEventListener('open-auth-modal', handleAuthEvent);
+    window.addEventListener('open-admin-plans', handleOpenAdminPlans);
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('mousedown', handleClickOutside);
       window.removeEventListener('open-auth-modal', handleAuthEvent);
+      window.removeEventListener('open-admin-plans', handleOpenAdminPlans);
     };
   }, []);
 
@@ -638,6 +652,7 @@ const App: React.FC = () => {
         theme={theme}
         onOpenSettings={() => setIsSettingsOpen(true)}
         onOpenProfile={() => setIsProfileOpen({ open: true, showPricing: false })}
+        onOpenPlans={() => navigate('/plans')}
         isAdmin={isAdmin}
         onOpenAdmin={() => setIsAdminDashboardOpen(true)}
       />
@@ -1024,7 +1039,7 @@ const App: React.FC = () => {
                       <div 
                         onClick={() => { 
                           if (!isPro) { 
-                            setIsProfileOpen({ open: true, showPricing: true });
+                            navigate('/plans');
                             setIsModelMenuOpen(false);
                             return; 
                           }
@@ -1230,6 +1245,12 @@ const App: React.FC = () => {
         onClose={() => setIsAdminDashboardOpen(false)}
         theme={theme}
       />
+      
+      {isAdmin && isPlansOpen && (
+        <div className="fixed inset-0 z-[100] overflow-y-auto bg-slate-950/50 backdrop-blur-sm animate-in fade-in duration-300">
+           <Plans theme={theme} onClose={() => setIsPlansOpen(false)} />
+        </div>
+      )}
 
       {/* Fullscreen Video Preview Modal */}
       {isPreviewVideoOpen && (

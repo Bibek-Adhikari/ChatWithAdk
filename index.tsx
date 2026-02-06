@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import App from './App';
 
 import UsersData from './components/UsersData';
+import PricingPage from './components/PricingPage';
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
@@ -19,6 +20,7 @@ root.render(
       <Routes>
         <Route path="/" element={<App />} />
         <Route path="/chat/:sessionId" element={<App />} />
+        <Route path="/plans" element={<PricingPage />} />
         <Route path="/admin/usersData/:userId" element={<UsersData theme={theme} />} />
       </Routes>
     </BrowserRouter>

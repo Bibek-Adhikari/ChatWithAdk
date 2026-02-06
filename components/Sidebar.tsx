@@ -20,6 +20,7 @@ interface SidebarProps {
   onOpenProfile: () => void;
   isAdmin?: boolean;
   onOpenAdmin?: () => void;
+  onOpenPlans: () => void;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ 
@@ -37,7 +38,8 @@ const Sidebar: React.FC<SidebarProps> = ({
   onOpenSettings,
   onOpenProfile,
   isAdmin,
-  onOpenAdmin
+  onOpenAdmin,
+  onOpenPlans
 }) => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
@@ -83,6 +85,13 @@ const Sidebar: React.FC<SidebarProps> = ({
                 </div>
               </div>
               <div className="flex items-center gap-1">
+                <button 
+                  onClick={onOpenPlans}
+                  className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-slate-800/50 text-slate-500 transition-all"
+                  title="Plans"
+                >
+                  <i className="fas fa-gem text-xs"></i>
+                </button>
                 <button 
                   onClick={onOpenSettings}
                   className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-slate-800/50 text-slate-500 transition-all"
