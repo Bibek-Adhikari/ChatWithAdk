@@ -45,10 +45,18 @@ interface UserProfileModalProps {
   onClose: () => void;
   user: User | null;
   theme: 'light' | 'dark';
+  initialShowPricing?: boolean;
 }
 
-const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onClose, user, theme }) => {
-  const [showPricing, setShowPricing] = useState(false);
+const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onClose, user, theme, initialShowPricing = false }) => {
+  const [showPricing, setShowPricing] = useState(initialShowPricing);
+
+  // Sync state if modal is opened with a specific intent
+  React.useEffect(() => {
+    if (isOpen) {
+      setShowPricing(initialShowPricing);
+    }
+  }, [isOpen, initialShowPricing]);
   const [selectedTier, setSelectedTier] = useState<string | null>(null);
   const [imageError, setImageError] = useState(false);
 

@@ -26,4 +26,5 @@ export interface ChatSession {
 export interface GenerationState {
   isTyping: boolean;
   error: string | null;
+  isSyncing: boolean;
 }

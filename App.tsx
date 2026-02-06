@@ -15,6 +15,7 @@ import { auth, db } from './services/firebase';
 import { onAuthStateChanged, signOut, User, getRedirectResult } from 'firebase/auth';
 import { chatStorageService } from './services/chatStorageService';
 import AdminDashboardModal from './components/AdminDashboardModal';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { adminService } from './services/adminService';
 
 
@@ -32,13 +33,18 @@ const App: React.FC = () => {
     return (saved as 'light' | 'dark') || 'dark';
   });
 
+  const { sessionId: urlSessionId } = useParams();
+  const navigate = useNavigate();
+  const location = useLocation();
+
   const [sessions, setSessions] = useState<ChatSession[]>([]);
-  const [currentSessionId, setCurrentSessionId] = useState<string>('');
+  const [currentSessionId, setCurrentSessionId] = useState<string>(urlSessionId || '');
 
   const [inputValue, setInputValue] = useState('');
   const [status, setStatus] = useState<GenerationState>({
     isTyping: false,
     error: null,
+    isSyncing: false,
   });
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [user, setUser] = useState<User | null>(null);
@@ -47,7 +53,7 @@ const App: React.FC = () => {
     mode: 'signin'
   });
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [isProfileOpen, setIsProfileOpen] = useState<{ open: boolean; showPricing: boolean }>({ open: false, showPricing: false });
   const [isAdminDashboardOpen, setIsAdminDashboardOpen] = useState(false);
   const [imageError, setImageError] = useState(false);
 
@@ -95,39 +101,104 @@ const App: React.FC = () => {
     return user ? `${STORAGE_KEY}_${user.uid}` : `${STORAGE_KEY}_guest`;
   };
 
-  // Load user sessions when user changes
+  // Real-time listener for user sessions
   useEffect(() => {
-    const loadSessions = async () => {
+    let unsubscribe: () => void = () => {};
+
+    const syncSessions = async () => {
+      // If we have a user, subscribe to their cloud sessions
       if (user) {
-        // Load from Firestore for authenticated users
-        const cloudSessions = await chatStorageService.getUserSessions(user.uid);
-        if (cloudSessions.length > 0) {
+        // First, check if there are guest sessions to migrate
+        const guestKey = `${STORAGE_KEY}_guest`;
+        const guestData = localStorage.getItem(guestKey);
+        if (guestData) {
+          try {
+            const guestSessions: ChatSession[] = JSON.parse(guestData);
+            if (guestSessions.length > 0) {
+              await Promise.all(guestSessions.map(s => chatStorageService.saveSession(user.uid, s)));
+              localStorage.removeItem(guestKey); // Clear guest data after migration
+            }
+          } catch (err) {
+            console.error("Migration failed:", err);
+          }
+        }
+
+        // Now subscribe to real-time updates
+        unsubscribe = chatStorageService.subscribeToUserSessions(user.uid, (cloudSessions) => {
           setSessions(cloudSessions);
-          setCurrentSessionId(cloudSessions[0].id);
-          // Also update local storage cache
+          
+          // Prioritize URL session ID
+          if (urlSessionId && cloudSessions.some(s => s.id === urlSessionId)) {
+            setCurrentSessionId(urlSessionId);
+          } else {
+            const savedId = localStorage.getItem(`${STORAGE_KEY}_last_session_id`);
+            if (savedId && cloudSessions.some(s => s.id === savedId)) {
+              setCurrentSessionId(savedId);
+            } else if (cloudSessions.length > 0 && !currentSessionId) {
+              setCurrentSessionId(cloudSessions[0].id);
+            }
+          }
+          // Cache locally for offline/fast load
           localStorage.setItem(getUserStorageKey(), JSON.stringify(cloudSessions));
-          return;
+        });
+      } else {
+        // Guest user: Just load from localStorage once
+        const key = getUserStorageKey();
+        const saved = localStorage.getItem(key);
+        if (saved) {
+          try {
+            const loadedSessions = JSON.parse(saved);
+            setSessions(loadedSessions);
+            
+            if (urlSessionId && loadedSessions.some((s: any) => s.id === urlSessionId)) {
+              setCurrentSessionId(urlSessionId);
+            } else {
+              const savedId = localStorage.getItem(`${STORAGE_KEY}_last_session_id`);
+              if (savedId && loadedSessions.some((s: any) => s.id === savedId)) {
+                setCurrentSessionId(savedId);
+              } else if (loadedSessions.length > 0 && !currentSessionId) {
+                setCurrentSessionId(loadedSessions[0].id);
+              }
+            }
+          } catch (err) {
+            console.error("Error loading guest sessions:", err);
+          }
+        } else {
+          setSessions([]);
         }
       }
-      
-      // Fallback to local storage
-      const key = getUserStorageKey();
-      const saved = localStorage.getItem(key);
-      const loadedSessions = saved ? JSON.parse(saved) : [];
-      setSessions(loadedSessions);
-      setCurrentSessionId(loadedSessions.length > 0 ? loadedSessions[0].id : '');
     };
 
-    loadSessions();
+    syncSessions();
+    return () => unsubscribe();
   }, [user?.uid]);
 
-  // Save sessions when they change
   useEffect(() => {
-    const key = getUserStorageKey();
-    if (key) {
+    if (!user) {
+      const key = getUserStorageKey();
       localStorage.setItem(key, JSON.stringify(sessions));
     }
   }, [sessions, user?.uid]);
+
+  // Sync session ID with URL
+  useEffect(() => {
+    if (urlSessionId && urlSessionId !== currentSessionId) {
+      setCurrentSessionId(urlSessionId);
+    }
+  }, [urlSessionId]);
+
+  useEffect(() => {
+    if (currentSessionId) {
+      if (location.pathname !== `/chat/${currentSessionId}`) {
+        navigate(`/chat/${currentSessionId}`);
+      }
+      localStorage.setItem(`${STORAGE_KEY}_last_session_id`, currentSessionId);
+    } else if (location.pathname.startsWith('/chat/')) {
+       // Optional: if URL is /chat/something but it's not in state, we might wait for syncSessions
+    } else {
+       navigate('/');
+    }
+  }, [currentSessionId, navigate, location.pathname]);
 
   useEffect(() => {
     // Handle redirect result (primarily for mobile)
@@ -135,7 +206,6 @@ const App: React.FC = () => {
       try {
         const result = await getRedirectResult(auth);
         if (result) {
-          console.log("Redirect login successful:", result.user);
           await adminService.syncUser(result.user);
         }
       } catch (err: any) {
@@ -183,7 +253,7 @@ const App: React.FC = () => {
       if (e.key === 'Escape') {
         setAuthModal(prev => ({ ...prev, open: false }));
         setIsSettingsOpen(false);
-        setIsProfileOpen(false);
+        setIsProfileOpen(prev => ({ ...prev, open: false }));
         setIsAdminDashboardOpen(false);
         setIsModelMenuOpen(false);
       }
@@ -241,7 +311,6 @@ const App: React.FC = () => {
 
   const handleNewChat = () => {
     const newId = Date.now().toString();
-    // Check both state and live auth object to ensure we have the latest displayName (especially after signup)
     const currentDisplayName = user?.displayName || auth.currentUser?.displayName;
     const firstName = currentDisplayName ? currentDisplayName.split(' ')[0] : '';
     const greeting = firstName ? `Hello, ${firstName}!` : 'Hello!';
@@ -257,8 +326,17 @@ const App: React.FC = () => {
       }],
       updatedAt: Date.now(),
     };
+
+    // Immediate Cloud Sync
+    if (user) {
+      chatStorageService.saveSession(user.uid, newSession).catch(err => 
+        console.error("Failed to sync new chat to cloud:", err)
+      );
+    }
+
     setSessions(prev => [newSession, ...prev]);
     setCurrentSessionId(newId);
+    navigate(`/chat/${newId}`);
     if (window.innerWidth < 1024) setIsSidebarOpen(false);
   };
 
@@ -284,20 +362,20 @@ const App: React.FC = () => {
   };
 
   const handleRenameSession = async (id: string, newTitle: string) => {
-    setSessions(prev => prev.map(s => s.id === id ? { ...s, title: newTitle } : s));
-    
-    // Sync with Firestore if authenticated
-    if (user) {
-      const session = sessions.find(s => s.id === id);
-      if (session) {
-        try {
-          await chatStorageService.saveSession(user.uid, { ...session, title: newTitle });
-        } catch (err) {
-          console.error("Failed to rename session in cloud:", err);
+    setSessions(prev => prev.map(s => {
+      if (s.id === id) {
+        const updated = { ...s, title: newTitle, updatedAt: Date.now() };
+        if (user) {
+          chatStorageService.saveSession(user.uid, updated).catch(err => 
+            console.error("Failed to sync rename to cloud:", err)
+          );
         }
+        return updated;
       }
-    }
+      return s;
+    }));
   };
+
 
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -327,7 +405,9 @@ const App: React.FC = () => {
     if (!inputValue.trim() || status.isTyping) return;
 
     let sessionId = currentSessionId;
-    if (!sessionId) {
+    let currentSess = currentSession;
+
+    if (!sessionId || !currentSess) {
       const newId = Date.now().toString();
       const newSession: ChatSession = {
         id: newId,
@@ -335,6 +415,14 @@ const App: React.FC = () => {
         messages: [],
         updatedAt: Date.now(),
       };
+      
+      // Persist new session immediately if user is logged in
+      if (user) {
+        chatStorageService.saveSession(user.uid, newSession).catch(err => 
+          console.error("Failed to create initial session in cloud:", err)
+        );
+      }
+
       setSessions([newSession]);
       setCurrentSessionId(newId);
       sessionId = newId;
@@ -364,8 +452,6 @@ const App: React.FC = () => {
           return { inlineData: { data: p.content, mimeType: p.mimeType || 'image/jpeg' } };
         })
       }));
-      
-      console.log("Sending prompt with history:", { prompt: currentInput, historyLength: history.length, hasImage: !!selectedImage, model: aiModel });
       
       let responseText = '';
       let generatedImageUrl = '';
@@ -445,31 +531,35 @@ const App: React.FC = () => {
   };
 
   const updateSessionMessages = async (sessionId: string, updater: (prev: ChatMessage[]) => ChatMessage[], firstInput?: string) => {
-    let updatedSession: ChatSession | null = null;
-    
-    setSessions(prev => prev.map(s => {
-      if (s.id === sessionId) {
-        const newMessages = updater(s.messages);
-        const newTitle = (s.title === 'New Conversation' && firstInput) ? (firstInput.slice(0, 30) + (firstInput.length > 30 ? '...' : '')) : s.title;
-        updatedSession = { 
-          ...s, 
-          messages: newMessages, 
-          updatedAt: Date.now(),
-          title: newTitle
-        };
-        return updatedSession;
-      }
-      return s;
-    }));
+    setSessions(prev => {
+      const updatedSessions = prev.map(s => {
+        if (s.id === sessionId) {
+          const newMessages = updater(s.messages);
+          const newTitle = (s.title === 'New Conversation' && firstInput) 
+            ? (firstInput.slice(0, 30) + (firstInput.length > 30 ? '...' : '')) 
+            : s.title;
+          
+          const updated = { 
+            ...s, 
+            messages: newMessages, 
+            updatedAt: Date.now(),
+            title: newTitle
+          };
 
-    // Sync with Firestore if authenticated
-    if (user && updatedSession) {
-      try {
-        await chatStorageService.saveSession(user.uid, updatedSession);
-      } catch (err) {
-        console.error("Failed to sync message to cloud:", err);
-      }
-    }
+          // Background sync to Firestore
+          if (user) {
+            setStatus(prev => ({ ...prev, isSyncing: true }));
+            chatStorageService.saveSession(user.uid, updated)
+              .catch(err => console.error("Cloud sync failed:", err))
+              .finally(() => setStatus(prev => ({ ...prev, isSyncing: false })));
+          }
+
+          return updated;
+        }
+        return s;
+      });
+      return updatedSessions;
+    });
   };
 
   const addAssistantMessage = (sessionId: string, parts: MessagePart[], modelId?: string) => {
@@ -537,7 +627,7 @@ const App: React.FC = () => {
         onAuthClick={handleAuthClick}
         theme={theme}
         onOpenSettings={() => setIsSettingsOpen(true)}
-        onOpenProfile={() => setIsProfileOpen(true)}
+        onOpenProfile={() => setIsProfileOpen({ open: true, showPricing: false })}
         isAdmin={isAdmin}
         onOpenAdmin={() => setIsAdminDashboardOpen(true)}
       />
@@ -563,7 +653,7 @@ const App: React.FC = () => {
 
           {user ? (
             <button 
-              onClick={() => setIsProfileOpen(true)}
+              onClick={() => setIsProfileOpen({ open: true, showPricing: false })}
               className={`w-9 h-9 rounded-lg border border-white/5 flex items-center justify-center transition-all overflow-hidden ${theme === 'dark' ? 'bg-slate-900' : 'bg-slate-100'}`}
             >
               {user.photoURL && !imageError ? (
@@ -580,7 +670,7 @@ const App: React.FC = () => {
             </button>
           ) : (
             <button 
-              className="px-3 py-1 bg-blue-600 text-white rounded-lg text-[8px] font-black tracking-widest active:scale-95"
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-[10px] font-black tracking-widest active:scale-95 transition-all shadow-lg shadow-blue-500/20"
               onClick={() => handleAuthClick('signin')}
             >
               SIGN IN
@@ -605,7 +695,7 @@ const App: React.FC = () => {
           <div className="flex items-center gap-3 pointer-events-auto">
             {user ? (
               <button 
-                onClick={() => setIsProfileOpen(true)}
+                onClick={() => setIsProfileOpen({ open: true, showPricing: false })}
                 className={`w-10 h-10 rounded-xl border border-white/5 flex items-center justify-center transition-all overflow-hidden shadow-xl ${theme === 'dark' ? 'bg-slate-900/80 hover:bg-slate-800' : 'bg-white/90 hover:bg-slate-50'}`}
                 title="Profile"
               >
@@ -710,7 +800,7 @@ const App: React.FC = () => {
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-[10px] uppercase font-black tracking-widest text-red-500 opacity-60 mb-0.5">Application Error</p>
-                        <p className="text-xs font-bold text-red-100/80 leading-relaxed truncate">{status.error}</p>
+                        <p className={`text-xs font-bold leading-relaxed truncate ${theme === 'dark' ? 'text-red-200' : 'text-red-900'}`}>{status.error}</p>
                       </div>
                       <button 
                         onClick={() => setStatus(prev => ({ ...prev, error: null }))}
@@ -924,7 +1014,7 @@ const App: React.FC = () => {
                       <div 
                         onClick={() => { 
                           if (!isPro) { 
-                            setStatus(prev => ({ ...prev, error: "Multi-Chat is a Pro feature. Level up your account to access it!" }));
+                            setIsProfileOpen({ open: true, showPricing: true });
                             setIsModelMenuOpen(false);
                             return; 
                           }
@@ -1119,8 +1209,9 @@ const App: React.FC = () => {
         onSelectVoice={handleSelectVoice}
       />
       <UserProfileModal 
-        isOpen={isProfileOpen}
-        onClose={() => setIsProfileOpen(false)}
+        isOpen={isProfileOpen.open}
+        onClose={() => setIsProfileOpen({ open: false, showPricing: false })}
+        initialShowPricing={isProfileOpen.showPricing}
         user={user}
         theme={theme}
       />
@@ -1146,6 +1237,16 @@ const App: React.FC = () => {
             >
               <i className="fas fa-times text-xl"></i>
             </button>
+          </div>
+        </div>
+      )}
+
+      {status.isSyncing && (
+        <div className="fixed bottom-24 right-6 z-50 animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <div className={`px-4 py-2 rounded-full border shadow-2xl flex items-center gap-3 backdrop-blur-xl transition-all
+            ${theme === 'dark' ? 'bg-blue-600/10 border-blue-500/20 text-blue-400' : 'bg-white/90 border-blue-100 text-blue-600'}`}>
+            <i className="fas fa-cloud-upload-alt animate-pulse"></i>
+            <span className="text-[10px] font-black uppercase tracking-widest">Cloud Syncing...</span>
           </div>
         </div>
       )}

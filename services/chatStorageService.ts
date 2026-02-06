@@ -9,7 +9,9 @@ import {
   deleteDoc, 
   updateDoc,
   Timestamp,
-  getDoc
+  getDoc,
+  arrayUnion,
+  onSnapshot
 } from "firebase/firestore";
 import { db } from "./firebase";
 import { ChatSession, ChatMessage } from "../types";
@@ -31,8 +33,6 @@ export const chatStorageService = {
         updatedAt: Timestamp.fromMillis(session.updatedAt),
         // Convert ISO timestamps if needed, but keeping them as strings is fine for messages
       }, { merge: true });
-      
-      console.log(`Session ${session.id} saved to Firestore for user ${userId}`);
     } catch (error) {
       console.error("Error saving session to Firestore:", error);
       throw error;
@@ -46,8 +46,7 @@ export const chatStorageService = {
     try {
       const q = query(
         collection(db, SESSIONS_COLLECTION),
-        where("userId", "==", userId),
-        orderBy("updatedAt", "desc")
+        where("userId", "==", userId)
       );
       
       const querySnapshot = await getDocs(q);
@@ -63,6 +62,7 @@ export const chatStorageService = {
         } as ChatSession);
       });
       
+      sessions.sort((a, b) => b.updatedAt - a.updatedAt);
       return sessions;
     } catch (error) {
       console.error("Error getting user sessions from Firestore:", error);
@@ -76,7 +76,6 @@ export const chatStorageService = {
   async deleteSession(sessionId: string): Promise<void> {
     try {
       await deleteDoc(doc(db, SESSIONS_COLLECTION, sessionId));
-      console.log(`Session ${sessionId} deleted from Firestore`);
     } catch (error) {
       console.error("Error deleting session from Firestore:", error);
       throw error;
@@ -89,25 +88,47 @@ export const chatStorageService = {
   async addMessageToSession(sessionId: string, message: ChatMessage, sessionTitle?: string): Promise<void> {
     try {
       const sessionRef = doc(db, SESSIONS_COLLECTION, sessionId);
-      const sessionDoc = await getDoc(sessionRef);
       
-      if (sessionDoc.exists()) {
-        const data = sessionDoc.data();
-        const updatedMessages = [...(data.messages || []), message];
-        
-        const updates: any = {
-          messages: updatedMessages,
-          updatedAt: Timestamp.now()
-        };
-        
-        if (sessionTitle) {
-          updates.title = sessionTitle;
-        }
-        
-        await updateDoc(sessionRef, updates);
+      const updates: any = {
+        messages: arrayUnion(message),
+        updatedAt: Timestamp.now()
+      };
+      
+      if (sessionTitle) {
+        updates.title = sessionTitle;
       }
+      
+      await updateDoc(sessionRef, updates);
     } catch (error) {
-      console.error("Error adding message to Firestore:", error);
+      // If document doesn't exist, we might need a full saveSession call first
+      console.error("Error adding message via arrayUnion:", error);
     }
+  },
+
+  /**
+   * Subscribes to real-time updates for a user's sessions
+   */
+  subscribeToUserSessions(userId: string, callback: (sessions: ChatSession[]) => void) {
+    const q = query(
+      collection(db, SESSIONS_COLLECTION),
+      where("userId", "==", userId)
+    );
+
+    return onSnapshot(q, (querySnapshot) => {
+      const sessions: ChatSession[] = [];
+      querySnapshot.forEach((doc) => {
+        const data = doc.data();
+        sessions.push({
+          id: data.id,
+          title: data.title,
+          messages: data.messages,
+          updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toMillis() : data.updatedAt
+        } as ChatSession);
+      });
+      sessions.sort((a, b) => b.updatedAt - a.updatedAt);
+      callback(sessions);
+    }, (error) => {
+      console.error("Real-time sync error:", error);
+    });
   }
 };

@@ -29,7 +29,6 @@ let app;
 try {
   if (isFirebaseConfigured) {
     app = initializeApp(firebaseConfig);
-    console.log("Firebase initialized successfully.");
   } else {
     console.warn("Firebase configuration is missing. Authentication features will be disabled.");
     // Initialize with empty config to prevent downstream crashes, or handle null auth
