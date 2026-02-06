@@ -5,7 +5,9 @@ import {
   signInWithPopup,
   signInWithRedirect, 
   GoogleAuthProvider,
-  updateProfile
+  updateProfile,
+  setPersistence,
+  browserLocalPersistence
 } from 'firebase/auth';
 import { auth, googleProvider } from '../services/firebase';
 import { adminService } from '../services/adminService';
@@ -94,34 +96,40 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode, the
     setLoading(true);
 
     try {
-      // Improved mobile/small screen detection
-      const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-      const isSmallScreen = window.innerWidth < 1024;
-      const useRedirect = isMobile || isSmallScreen;
+      // Create a fresh provider instance
+      const provider = new GoogleAuthProvider();
+      
+      // Removed forced 'select_account' to allow automatic sign-in as requested
+      // provider.setCustomParameters({ prompt: 'select_account' });
 
-      if (useRedirect) {
-        // Use localStorage as it's more persistent across mobile redirects
-        localStorage.setItem('auth_redirect_pending', 'true');
-        setIsRedirecting(true);
-        
-        // Clear any existing error
-        setError(null);
-        
-        // Set persistence to LOCAL explicitly for mobile
-        await auth.setPersistence({ type: 'LOCAL' });
-        
-        // Force account selection for better mobile experience
-        googleProvider.setCustomParameters({ prompt: 'select_account' });
-        
-        await signInWithRedirect(auth, googleProvider);
-        // Page will redirect, no further code executes
-      } else {
-        // Desktop: Use popup
-        const result = await signInWithPopup(auth, googleProvider);
+      try {
+        // Try popup first (even on mobile). Modern mobile browsers often handle this 
+        // as a new tab, which Google considers MORE SECURE than a redirect.
+        const result = await signInWithPopup(auth, provider);
         if (result.user) {
           await adminService.syncUser(result.user);
           onClose();
         }
+      } catch (popupErr: any) {
+        // Fallback to redirect ONLY if the popup was blocked or failed
+        if (popupErr.code === 'auth/popup-blocked' || popupErr.code === 'auth/popup-closed-by-user') {
+          const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+          const isSmallScreen = window.innerWidth < 1024;
+          
+          if (isMobile || isSmallScreen) {
+            localStorage.setItem('auth_redirect_pending', 'true');
+            setIsRedirecting(true);
+            setError(null);
+            
+            // Ensure persistence is set before redirect
+            await setPersistence(auth, browserLocalPersistence);
+            await signInWithRedirect(auth, provider);
+            return;
+          }
+        }
+        
+        // If it's not a blockable error or not on mobile, throw it to the outer catch
+        throw popupErr;
       }
     } catch (err: any) {
       console.error("Google Auth error:", err);

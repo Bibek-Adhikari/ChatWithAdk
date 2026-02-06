@@ -108,66 +108,66 @@ const App: React.FC = () => {
     let unsubscribe: () => void = () => {};
 
     const syncSessions = async () => {
-      // If we have a user, subscribe to their cloud sessions
+      const key = getUserStorageKey();
+      
+      // Load initial state from cache immediately for zero-lag UI
+      const saved = localStorage.getItem(key);
+      if (saved) {
+        try {
+          const loadedSessions = JSON.parse(saved);
+          setSessions(loadedSessions);
+          
+          // Sync current session ID with URL or cache
+          if (urlSessionId && loadedSessions.some((s: any) => s.id === urlSessionId)) {
+            setCurrentSessionId(urlSessionId);
+          } else if (!currentSessionId) {
+            const savedId = localStorage.getItem(`${STORAGE_KEY}_last_session_id`);
+            if (savedId && loadedSessions.some((s: any) => s.id === savedId)) {
+              setCurrentSessionId(savedId);
+            } else if (loadedSessions.length > 0) {
+              setCurrentSessionId(loadedSessions[0].id);
+            }
+          }
+        } catch (err) {
+          console.error("Cache load failed:", err);
+        }
+      }
+
       if (user) {
-        // First, check if there are guest sessions to migrate
+        // Migrate Guest -> User Cloud if guest data exists
         const guestKey = `${STORAGE_KEY}_guest`;
         const guestData = localStorage.getItem(guestKey);
         if (guestData) {
           try {
             const guestSessions: ChatSession[] = JSON.parse(guestData);
             if (guestSessions.length > 0) {
-              await Promise.all(guestSessions.map(s => chatStorageService.saveSession(user.uid, s)));
-              localStorage.removeItem(guestKey); // Clear guest data after migration
+              setStatus(prev => ({ ...prev, isSyncing: true }));
+              // Save each guest session to cloud
+              for (const s of guestSessions) {
+                await chatStorageService.saveSession(user.uid, s);
+              }
+              localStorage.removeItem(guestKey);
             }
           } catch (err) {
             console.error("Migration failed:", err);
           }
         }
 
-        // Now subscribe to real-time updates
+        // Subscribe to real-time updates from cloud
         unsubscribe = chatStorageService.subscribeToUserSessions(user.uid, (cloudSessions) => {
           setSessions(cloudSessions);
           
-          // Prioritize URL session ID
+          // After cloud sync, check if we need to select a session
           if (urlSessionId && cloudSessions.some(s => s.id === urlSessionId)) {
             setCurrentSessionId(urlSessionId);
-          } else {
-            const savedId = localStorage.getItem(`${STORAGE_KEY}_last_session_id`);
-            if (savedId && cloudSessions.some(s => s.id === savedId)) {
-              setCurrentSessionId(savedId);
-            } else if (cloudSessions.length > 0 && !currentSessionId) {
-              setCurrentSessionId(cloudSessions[0].id);
-            }
+          } else if (!currentSessionId && cloudSessions.length > 0) {
+            setCurrentSessionId(cloudSessions[0].id);
           }
-          // Cache locally for offline/fast load
+          
+          // Persist to local cache
           localStorage.setItem(getUserStorageKey(), JSON.stringify(cloudSessions));
+          setStatus(prev => ({ ...prev, isSyncing: false }));
         });
-      } else {
-        // Guest user: Just load from localStorage once
-        const key = getUserStorageKey();
-        const saved = localStorage.getItem(key);
-        if (saved) {
-          try {
-            const loadedSessions = JSON.parse(saved);
-            setSessions(loadedSessions);
-            
-            if (urlSessionId && loadedSessions.some((s: any) => s.id === urlSessionId)) {
-              setCurrentSessionId(urlSessionId);
-            } else {
-              const savedId = localStorage.getItem(`${STORAGE_KEY}_last_session_id`);
-              if (savedId && loadedSessions.some((s: any) => s.id === savedId)) {
-                setCurrentSessionId(savedId);
-              } else if (loadedSessions.length > 0 && !currentSessionId) {
-                setCurrentSessionId(loadedSessions[0].id);
-              }
-            }
-          } catch (err) {
-            console.error("Error loading guest sessions:", err);
-          }
-        } else {
-          setSessions([]);
-        }
       }
     };
 
@@ -228,12 +228,12 @@ const App: React.FC = () => {
     };
     handleRedirect();
 
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       if (currentUser) {
         setAuthModal(prev => ({ ...prev, open: false }));
         // Ensure user is synced
-        await adminService.syncUser(currentUser);
+        adminService.syncUser(currentUser);
       }
       // Reset to Groq if user logs out and was on a restricted model
       if (!currentUser) {
@@ -447,7 +447,7 @@ const App: React.FC = () => {
         );
       }
 
-      setSessions([newSession]);
+      setSessions(prev => [newSession, ...prev]);
       setCurrentSessionId(newId);
       sessionId = newId;
     }
