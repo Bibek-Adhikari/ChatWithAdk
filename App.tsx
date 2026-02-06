@@ -72,6 +72,19 @@ const App: React.FC = () => {
   const [isModelMenuOpen, setIsModelMenuOpen] = useState(false);
   const [isPromptDisabled, setIsPromptDisabled] = useState(false);
   const [isPreviewVideoOpen, setIsPreviewVideoOpen] = useState(false);
+  const [usageCount, setUsageCount] = useState<number>(() => {
+    const saved = localStorage.getItem('daily_usage_count');
+    const lastDate = localStorage.getItem('daily_usage_date');
+    const today = new Date().toDateString();
+    
+    if (lastDate !== today) {
+      localStorage.setItem('daily_usage_date', today);
+      localStorage.setItem('daily_usage_count', '0');
+      return 0;
+    }
+    return saved ? parseInt(saved) : 0;
+  });
+  const [dailyLimit] = useState(10); // Free limit: 10 messages
   const fileInputRef = useRef<HTMLInputElement>(null);
   const modelMenuRef = useRef<HTMLDivElement>(null);
 
@@ -428,6 +441,16 @@ const App: React.FC = () => {
     if (e) e.preventDefault();
     if (!inputValue.trim() || status.isTyping) return;
 
+    // Enforce daily limit for free users
+    if (!isPro && usageCount >= dailyLimit) {
+      setStatus(prev => ({ 
+        ...prev, 
+        error: "Daily message limit reached! Upgrade to Pro for unlimited messages." 
+      }));
+      navigate('/plans');
+      return;
+    }
+
     let sessionId = currentSessionId;
     let currentSess = currentSession;
 
@@ -464,6 +487,13 @@ const App: React.FC = () => {
 
     updateSessionMessages(sessionId, (prev) => [...prev, userMessage], inputValue.trim());
     
+    // Increment usage count
+    if (!isPro) {
+      const newCount = usageCount + 1;
+      setUsageCount(newCount);
+      localStorage.setItem('daily_usage_count', newCount.toString());
+    }
+
     const currentInput = inputValue.trim();
     setInputValue('');
     setStatus(prev => ({ ...prev, isTyping: true, error: null }));
@@ -655,6 +685,9 @@ const App: React.FC = () => {
         onOpenPlans={() => navigate('/plans')}
         isAdmin={isAdmin}
         onOpenAdmin={() => setIsAdminDashboardOpen(true)}
+        usageCount={usageCount}
+        dailyLimit={isPro ? 1000 : dailyLimit}
+        isPro={isPro}
       />
 
 
@@ -979,13 +1012,22 @@ const App: React.FC = () => {
                       <button 
                         type="button"
                         onClick={() => { 
-                          if (!user) { handleAuthClick('signup'); return; }
+                          if (!isPro) { 
+                            navigate('/plans');
+                            setIsModelMenuOpen(false);
+                            return; 
+                          }
                           setAiModel('research'); setIsModelMenuOpen(false); 
                         }}
                         className={`w-full flex items-start gap-4 p-4 rounded-2xl transition-all text-left group relative
                           ${aiModel === 'research' ? (theme === 'dark' ? 'bg-emerald-600/20' : 'bg-emerald-50') : (theme === 'dark' ? 'hover:bg-white/5' : 'hover:bg-slate-50')}`}
+                        title={!isPro ? "Upgrade to Pro to use Research Mode" : ""}
                       >
-                        {!user && <i className="fas fa-lock text-[8px] absolute top-4 right-4 text-emerald-500"></i>}
+                        {!isPro && (
+                          <div className="absolute top-4 right-4 flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-emerald-500 text-white text-[8px] font-black tracking-widest uppercase">
+                            <i className="fas fa-lock text-[7px]"></i> PRO
+                          </div>
+                        )}
                         <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-transform group-active:scale-90
                           ${aiModel === 'research' ? 'bg-emerald-600 text-white shadow-lg' : (theme === 'dark' ? 'bg-slate-800 text-slate-400' : 'bg-slate-200 text-slate-500')}`}>
                           <i className="fas fa-microscope text-sm"></i>
@@ -999,13 +1041,22 @@ const App: React.FC = () => {
                       <button 
                         type="button"
                         onClick={() => { 
-                          if (!user) { handleAuthClick('signup'); return; }
+                          if (!isPro) { 
+                            navigate('/plans');
+                            setIsModelMenuOpen(false);
+                            return; 
+                          }
                           setAiModel('imagine'); setIsModelMenuOpen(false); 
                         }}
                         className={`w-full flex items-start gap-4 p-4 rounded-2xl transition-all text-left group relative
                           ${aiModel === 'imagine' ? (theme === 'dark' ? 'bg-pink-600/20' : 'bg-pink-50') : (theme === 'dark' ? 'hover:bg-white/5' : 'hover:bg-slate-50')}`}
+                        title={!isPro ? "Upgrade to Pro to use Imagine Mode" : ""}
                       >
-                        {!user && <i className="fas fa-lock text-[8px] absolute top-4 right-4 text-pink-500"></i>}
+                        {!isPro && (
+                          <div className="absolute top-4 right-4 flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-pink-500 text-white text-[8px] font-black tracking-widest uppercase">
+                            <i className="fas fa-lock text-[7px]"></i> PRO
+                          </div>
+                        )}
                         <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-transform group-active:scale-90
                           ${aiModel === 'imagine' ? 'bg-pink-600 text-white shadow-lg' : (theme === 'dark' ? 'bg-slate-800 text-slate-400' : 'bg-slate-200 text-slate-500')}`}>
                           <i className="fas fa-magic text-sm"></i>
@@ -1019,13 +1070,22 @@ const App: React.FC = () => {
                       <button 
                         type="button"
                         onClick={() => { 
-                          if (!user) { handleAuthClick('signup'); return; }
+                          if (!isPro) { 
+                            navigate('/plans');
+                            setIsModelMenuOpen(false);
+                            return; 
+                          }
                           setAiModel('gemini'); setIsModelMenuOpen(false); 
                         }}
                         className={`w-full flex items-start gap-4 p-4 rounded-2xl transition-all text-left group relative
                           ${aiModel === 'gemini' ? (theme === 'dark' ? 'bg-indigo-600/20' : 'bg-indigo-50') : (theme === 'dark' ? 'hover:bg-white/5' : 'hover:bg-slate-50')}`}
+                        title={!isPro ? "Upgrade to Pro to use Detail Mode" : ""}
                       >
-                        {!user && <i className="fas fa-lock text-[8px] absolute top-4 right-4 text-indigo-500"></i>}
+                        {!isPro && (
+                          <div className="absolute top-4 right-4 flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-indigo-500 text-white text-[8px] font-black tracking-widest uppercase">
+                            <i className="fas fa-lock text-[7px]"></i> PRO
+                          </div>
+                        )}
                         <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-transform group-active:scale-90
                           ${aiModel === 'gemini' ? 'bg-indigo-600 text-white shadow-lg' : (theme === 'dark' ? 'bg-slate-800 text-slate-400' : 'bg-slate-200 text-slate-500')}`}>
                           <i className="fas fa-brain text-sm"></i>
@@ -1033,6 +1093,35 @@ const App: React.FC = () => {
                         <div className="flex-1 min-w-0">
                           <p className={`text-[11px] font-black uppercase tracking-wider ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>Detail</p>
                           <p className="text-[10px] text-slate-500 leading-tight mt-1">Advanced multimodal analysis and technical breakdown.</p>
+                        </div>
+                      </button>
+
+                      <button 
+                        type="button"
+                        onClick={() => { 
+                          if (!isPro) { 
+                            navigate('/plans');
+                            setIsModelMenuOpen(false);
+                            return; 
+                          }
+                          setAiModel('motion'); setIsModelMenuOpen(false); 
+                        }}
+                        className={`w-full flex items-start gap-4 p-4 rounded-2xl transition-all text-left group relative
+                          ${aiModel === 'motion' ? (theme === 'dark' ? 'bg-orange-600/20' : 'bg-orange-50') : (theme === 'dark' ? 'hover:bg-white/5' : 'hover:bg-slate-50')}`}
+                        title={!isPro ? "Upgrade to Pro to use Motion Mode" : ""}
+                      >
+                        {!isPro && (
+                          <div className="absolute top-4 right-4 flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-orange-500 text-white text-[8px] font-black tracking-widest uppercase">
+                            <i className="fas fa-lock text-[7px]"></i> PRO
+                          </div>
+                        )}
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-transform group-active:scale-90
+                          ${aiModel === 'motion' ? 'bg-orange-600 text-white shadow-lg' : (theme === 'dark' ? 'bg-slate-800 text-slate-400' : 'bg-slate-200 text-slate-500')}`}>
+                          <i className="fas fa-video text-sm"></i>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className={`text-[11px] font-black uppercase tracking-wider ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>Motion</p>
+                          <p className="text-[10px] text-slate-500 leading-tight mt-1">Generate dynamic videos from prompts.</p>
                         </div>
                       </button>
 
@@ -1049,6 +1138,7 @@ const App: React.FC = () => {
                           ${aiModel === 'multi' ? (theme === 'dark' ? 'bg-amber-600/20' : 'bg-amber-50') : (theme === 'dark' ? 'hover:bg-white/5' : 'hover:bg-slate-50')}`}
                         role="button"
                         tabIndex={0}
+                        title={!isPro ? "Upgrade to Pro to use Multi Chat" : ""}
                       >
                         {/* Video Preview on Hover with Fullscreen trigger */}
                         <div className="absolute inset-0 opacity-0 group-hover/multi-btn:opacity-100 transition-opacity duration-500 pointer-events-none">
@@ -1074,7 +1164,11 @@ const App: React.FC = () => {
                         </div>
 
                         <div className="relative z-10 flex items-start gap-4 w-full">
-                          {!isPro && <i className="fas fa-crown text-[8px] absolute top-0 right-0 text-amber-500"></i>}
+                          {!isPro && (
+                            <div className="absolute top-0 right-0 flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-amber-500 text-white text-[8px] font-black tracking-widest uppercase shadow-lg">
+                              <i className="fas fa-lock text-[7px]"></i> PRO
+                            </div>
+                          )}
                           <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-transform group-active:scale-90
                             ${aiModel === 'multi' ? 'bg-amber-600 text-white shadow-lg' : (theme === 'dark' ? 'bg-slate-800 text-slate-400' : 'bg-slate-200 text-slate-500')}`}>
                             <i className="fas fa-columns text-sm"></i>

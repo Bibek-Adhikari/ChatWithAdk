@@ -5,6 +5,7 @@ import App from './App';
 
 import UsersData from './components/UsersData';
 import PricingPage from './components/PricingPage';
+import NotificationsPage from './components/NotificationsPage';
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
@@ -21,6 +22,7 @@ root.render(
         <Route path="/" element={<App />} />
         <Route path="/chat/:sessionId" element={<App />} />
         <Route path="/plans" element={<PricingPage />} />
+        <Route path="/notifications" element={<NotificationsPage />} />
         <Route path="/admin/usersData/:userId" element={<UsersData theme={theme} />} />
       </Routes>
     </BrowserRouter>

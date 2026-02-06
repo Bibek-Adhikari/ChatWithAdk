@@ -1,6 +1,7 @@
 
 import React, { useState } from 'react';
 import { ChatSession } from '../types';
+import { useNavigate, Link } from 'react-router-dom';
 import { User, signOut } from 'firebase/auth';
 import { auth } from '../services/firebase';
 
@@ -21,6 +22,9 @@ interface SidebarProps {
   isAdmin?: boolean;
   onOpenAdmin?: () => void;
   onOpenPlans: () => void;
+  usageCount: number;
+  dailyLimit: number;
+  isPro: boolean;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ 
@@ -39,7 +43,10 @@ const Sidebar: React.FC<SidebarProps> = ({
   onOpenProfile,
   isAdmin,
   onOpenAdmin,
-  onOpenPlans
+  onOpenPlans,
+  usageCount,
+  dailyLimit,
+  isPro
 }) => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
@@ -85,6 +92,14 @@ const Sidebar: React.FC<SidebarProps> = ({
                 </div>
               </div>
               <div className="flex items-center gap-1">
+                <Link 
+                  to="/notifications"
+                  className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-slate-800/50 text-slate-500 transition-all relative"
+                  title="Updates"
+                >
+                  <i className="fas fa-bell text-xs"></i>
+                  <span className="absolute top-2 right-2 w-1.5 h-1.5 bg-red-500 rounded-full border border-[#0f172a]"></span>
+                </Link>
                 <button 
                   onClick={onOpenPlans}
                   className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-slate-800/50 text-slate-500 transition-all"
@@ -101,12 +116,36 @@ const Sidebar: React.FC<SidebarProps> = ({
                 </button>
                 <button 
                   onClick={onClose}
-                  className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-slate-800/50 text-slate-500 transition-all"
+                  className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-slate-800/50 text-slate-500 transition-all lg:hidden"
                 >
                   <i className="fas fa-times text-xs"></i>
                 </button>
               </div>
             </div>
+
+            {/* Daily Limit Tracker - Hidden for Pro/Admin */}
+            {!isPro && (
+              <div className={`p-4 rounded-2xl border ${theme === 'dark' ? 'bg-white/5 border-white/5' : 'bg-slate-50 border-slate-200'}`}>
+                <div className="flex items-center justify-between mb-2">
+                  <span className={`text-[10px] font-black uppercase tracking-widest ${theme === 'dark' ? 'text-slate-400' : 'text-slate-500'}`}>Daily Limit</span>
+                  <span className={`text-[10px] font-black tracking-widest ${usageCount >= dailyLimit ? 'text-red-500' : 'text-blue-500'}`}>
+                    {usageCount}/{dailyLimit}
+                  </span>
+                </div>
+                <div className="h-1.5 w-full bg-slate-800/20 rounded-full overflow-hidden">
+                  <div 
+                    className={`h-full transition-all duration-1000 ${usageCount >= dailyLimit ? 'bg-red-500' : 'bg-blue-500'}`}
+                    style={{ width: `${Math.min((usageCount / dailyLimit) * 100, 100)}%` }}
+                  />
+                </div>
+                <button 
+                  onClick={onOpenPlans}
+                  className="mt-3 w-full text-[9px] font-black uppercase tracking-widest text-blue-500 hover:text-blue-400 transition-colors flex items-center justify-center gap-1"
+                >
+                  Upgrade for more <i className="fas fa-arrow-right text-[8px]"></i>
+                </button>
+              </div>
+            )}
             
             <button 
               onClick={onNewChat}
@@ -201,8 +240,20 @@ const Sidebar: React.FC<SidebarProps> = ({
                     )}
                   </div>
                   <div className="min-w-0">
-                    <p className={`text-[11px] font-black truncate leading-tight ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{user.displayName || user.email?.split('@')[0]}</p>
-                    <p className="text-[9px] text-emerald-500 font-bold uppercase tracking-widest leading-none mt-1">Online</p>
+                    <div className="flex items-center gap-2">
+                      <p className={`text-[11px] font-black truncate leading-tight ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{user.displayName || user.email?.split('@')[0]}</p>
+                      {isPro && (
+                        <span className="shrink-0 px-1 py-0.5 rounded-[4px] bg-blue-500/10 border border-blue-500/20 text-blue-500 text-[6px] font-black uppercase tracking-widest">
+                          PRO
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1.5 mt-1">
+                      <div className={`w-1 h-1 rounded-full ${isPro ? 'bg-emerald-500 animate-pulse' : 'bg-blue-500'}`}></div>
+                      <p className={`text-[9px] font-bold uppercase tracking-widest leading-none ${isPro ? 'text-emerald-500' : 'text-slate-500'}`}>
+                        {isPro ? 'Pro Member' : 'Basic Plan'}
+                      </p>
+                    </div>
                   </div>
                 </div>
                 <div className="w-8 h-8 flex items-center justify-center text-slate-500 group-hover/user:text-blue-400 transition-all">
