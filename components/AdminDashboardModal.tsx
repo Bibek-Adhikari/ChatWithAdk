@@ -168,6 +168,10 @@ const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [activeTab, setActiveTab] = useState<'overview' | 'models'>('overview');
+  const [modelConfig, setModelConfig] = useState<any>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
 
   const loadAdminData = useCallback(async () => {
     if (!isOpen) return;
@@ -176,13 +180,15 @@ const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
     setError(null);
     
     try {
-      const [systemStats, users] = await Promise.all([
+      const [systemStats, users, config] = await Promise.all([
         adminService.getSystemStats(),
-        adminService.getLatestUsers(10)
+        adminService.getLatestUsers(10),
+        adminService.getModelConfig()
       ]);
       
       setStats(systemStats);
       setLatestUsers(users);
+      setModelConfig(config);
       setLastUpdated(new Date());
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to load admin data';
@@ -281,6 +287,26 @@ const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
           </div>
           
           <div className="flex items-center gap-2 sm:gap-3">
+            <div className={`flex p-1 rounded-xl border ${theme === 'dark' ? 'bg-slate-800/50 border-white/5' : 'bg-slate-100 border-slate-200'}`}>
+              <button 
+                onClick={() => setActiveTab('overview')}
+                className={`px-3 py-1.5 rounded-lg text-[9px] font-black tracking-widest uppercase transition-all
+                  ${activeTab === 'overview' 
+                    ? (theme === 'dark' ? 'bg-indigo-600 text-white shadow-lg' : 'bg-white text-indigo-600 shadow-sm')
+                    : (theme === 'dark' ? 'text-slate-500 hover:text-slate-300' : 'text-slate-500 hover:text-slate-700')}`}
+              >
+                OVERVIEW
+              </button>
+              <button 
+                onClick={() => setActiveTab('models')}
+                className={`px-3 py-1.5 rounded-lg text-[9px] font-black tracking-widest uppercase transition-all
+                  ${activeTab === 'models' 
+                    ? (theme === 'dark' ? 'bg-indigo-600 text-white shadow-lg' : 'bg-white text-indigo-600 shadow-sm')
+                    : (theme === 'dark' ? 'text-slate-500 hover:text-slate-300' : 'text-slate-500 hover:text-slate-700')}`}
+              >
+                SYSTEM
+              </button>
+            </div>
             <button 
               onClick={loadAdminData}
               disabled={loading}
@@ -354,44 +380,35 @@ const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
             </div>
           ) : (
             <>
-              {/* Stats Grid */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 mb-8">
-                <StatCard 
-                  label="Total Managed Users"
-                  value={stats.totalUsers.toLocaleString()}
-                  subtext="Active Profiles in Firestore"
-                  color="blue"
-                  theme={theme}
-                />
-                <StatCard 
-                  label="Cloud Chat Sessions"
-                  value={stats.totalSessions.toLocaleString()}
-                  subtext="Syncing across devices"
-                  color="indigo"
-                  theme={theme}
-                />
-                <StatCard 
-                  label="System Status"
-                  value="Active"
-                  subtext="Privileged access granted"
-                  color="pink"
-                  theme={theme}
-                />
-              </div>
+              {activeTab === 'overview' ? (
+                <>
+                  {/* Stats Grid */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 mb-8">
+                    <StatCard 
+                      label="Total Managed Users"
+                      value={stats.totalUsers.toLocaleString()}
+                      subtext="Active Profiles in Firestore"
+                      color="blue"
+                      theme={theme}
+                    />
+                    <StatCard 
+                      label="Cloud Chat Sessions"
+                      value={stats.totalSessions.toLocaleString()}
+                      subtext="Syncing across devices"
+                      color="indigo"
+                      theme={theme}
+                    />
+                    <StatCard 
+                      label="System Status"
+                      value="Active"
+                      subtext="Privileged access granted"
+                      color="pink"
+                      theme={theme}
+                    />
+                  </div>
 
-                <div className="space-y-8">
-                  {loading && latestUsers.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-20 gap-4 opacity-50">
-                      <div className="relative">
-                        <i className="fas fa-circle-notch fa-spin text-4xl text-indigo-500" />
-                        <div className="absolute inset-0 blur-xl bg-indigo-500/30 rounded-full" />
-                      </div>
-                      <p className="text-[10px] font-black uppercase tracking-widest animate-pulse">
-                        Fetching Secure Data...
-                      </p>
-                    </div>
-                  ) : (
-                    (() => {
+                  <div className="space-y-8">
+                    {(() => {
                       const now = new Date();
                       const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
                       const lastWeek = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
@@ -438,9 +455,101 @@ const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
                           </div>
                         </div>
                       ));
-                    })()
-                  )}
+                    })()}
+                  </div>
+                </>
+              ) : (
+                <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
+                  <div className={`p-6 rounded-[32px] border ${theme === 'dark' ? 'bg-slate-800/40 border-white/5' : 'bg-slate-50 border-slate-100'}`}>
+                    <div className="flex items-center gap-4 mb-8">
+                      <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center text-white shrink-0">
+                        <i className="fas fa-microchip" />
+                      </div>
+                      <div>
+                        <h3 className={`text-sm font-black uppercase tracking-widest ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>Model Configuration</h3>
+                        <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-0.5">Map UI modes to AI engines</p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {[
+                        { id: 'fast', label: 'Fast Mode', icon: 'fa-bolt', color: 'text-blue-400' },
+                        { id: 'research', label: 'Research Mode', icon: 'fa-microscope', color: 'text-emerald-400' },
+                        { id: 'detail', label: 'Detail Mode', icon: 'fa-brain', color: 'text-indigo-400' }
+                      ].map(item => (
+                        <div key={item.id} className="space-y-3">
+                          <div className="flex items-center gap-2">
+                            <i className={`fas ${item.icon} text-[10px] ${item.color}`} />
+                            <label className={`text-[10px] font-black uppercase tracking-widest ${theme === 'dark' ? 'text-slate-400' : 'text-slate-500'}`}>
+                              {item.label}
+                            </label>
+                          </div>
+                          <select 
+                            value={modelConfig?.[item.id] || 'groq'}
+                            onChange={(e) => setModelConfig((prev: any) => ({ ...prev, [item.id]: e.target.value }))}
+                            className={`w-full px-4 py-3 rounded-2xl border outline-none text-xs font-bold transition-all
+                              ${theme === 'dark' 
+                                ? 'bg-slate-900 border-white/10 text-white focus:border-blue-500' 
+                                : 'bg-white border-slate-200 text-slate-900 focus:border-blue-500 shadow-sm'}`}
+                          >
+                            <option value="groq">Groq (Llama 3 70B)</option>
+                            <option value="gemini">Gemini (2.0 Flash)</option>
+                            <option value="research">DeepSeek (R1 Research)</option>
+                            <option value="openrouter">OpenRouter (Auto)</option>
+                          </select>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="mt-10 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        {saveSuccess && (
+                          <span className="flex items-center gap-2 text-emerald-500 text-[10px] font-black uppercase tracking-widest animate-in fade-in zoom-in">
+                            <i className="fas fa-check-circle" /> Settings Saved
+                          </span>
+                        )}
+                      </div>
+                      <button 
+                        onClick={async () => {
+                          setIsSaving(true);
+                          try {
+                            await adminService.updateModelConfig(modelConfig);
+                            setSaveSuccess(true);
+                            setTimeout(() => setSaveSuccess(false), 3000);
+                          } catch (e) {
+                            setError("Failed to save configuration");
+                          } finally {
+                            setIsSaving(false);
+                          }
+                        }}
+                        disabled={isSaving}
+                        className={`px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] transition-all active:scale-95 flex items-center gap-3
+                          ${theme === 'dark' 
+                            ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-500/20' 
+                            : 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-500/20'}
+                          ${isSaving ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      >
+                        {isSaving ? <i className="fas fa-circle-notch fa-spin" /> : <i className="fas fa-save" />}
+                        Apply Changes
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className={`p-6 rounded-[32px] border ${theme === 'dark' ? 'bg-amber-500/5 border-amber-500/10' : 'bg-amber-50 border-amber-100'}`}>
+                    <div className="flex items-start gap-4">
+                      <div className="w-8 h-8 rounded-lg bg-amber-500/20 flex items-center justify-center text-amber-500 shrink-0">
+                        <i className="fas fa-exclamation-triangle text-xs" />
+                      </div>
+                      <div>
+                        <p className={`text-[11px] font-black uppercase tracking-widest ${theme === 'dark' ? 'text-amber-500' : 'text-amber-600'} mb-1`}>Critical Update Info</p>
+                        <p className={`text-[10px] leading-relaxed ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}`}>
+                          Changing these mappings will affect all users immediately. New chat sessions will use the updated engine, while active sessions may require a page refresh for complete synchronization.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
                 </div>
+              )}
             </>
           )}
         </div>

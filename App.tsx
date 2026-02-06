@@ -11,7 +11,7 @@ import { generateTextResponse } from './services/geminiService';
 import { generateGroqResponse } from './services/groqService';
 import { generateResearchResponse } from './services/openRouterService';
 import { generateImageResponse } from './services/imageService';
-import { searchYouTubeVideo } from './services/youtubeService';
+import { searchYouTubeVideo, getVideoDetails } from './services/youtubeService';
 import { auth, db } from './services/firebase';
 import { onAuthStateChanged, signOut, User, getRedirectResult } from 'firebase/auth';
 import { chatStorageService } from './services/chatStorageService';
@@ -104,6 +104,21 @@ const App: React.FC = () => {
     }
     return saved ? parseInt(saved) : 0;
   });
+
+  const [systemConfig, setSystemConfig] = useState<any>(null);
+
+  useEffect(() => {
+    const fetchConfig = async () => {
+      try {
+        const config = await adminService.getModelConfig();
+        setSystemConfig(config);
+      } catch (err) {
+        console.error("Failed to fetch system config:", err);
+      }
+    };
+    fetchConfig();
+  }, [isAdminDashboardOpen]); // Re-fetch when dashboard closes in case of changes
+
   const [dailyLimit] = useState(20); // Free limit: 20 messages
   const fileInputRef = useRef<HTMLInputElement>(null);
   const modelMenuRef = useRef<HTMLDivElement>(null);
@@ -769,21 +784,37 @@ const App: React.FC = () => {
   };
 
   const generateModelResponse = async (model: string, input: string, history: any[], image?: any) => {
-    if (model === 'groq') {
+    // Map the UI Mode to the Configured Engine
+    let engine = model;
+    if (systemConfig) {
+      if (model === 'groq') engine = systemConfig.fast;
+      else if (model === 'research') engine = systemConfig.research;
+      else if (model === 'gemini') engine = systemConfig.detail;
+    }
+
+    if (engine === 'groq') {
       const textOnlyHistory = history.map(h => ({
         ...h,
         parts: h.parts.filter(p => 'text' in p) as { text: string }[]
       }));
       return await generateGroqResponse(input, textOnlyHistory);
-    } else if (model === 'research') {
+    } else if (engine === 'research') {
       const textOnlyHistory = history.map(h => ({
         ...h,
         parts: h.parts.filter(p => 'text' in p) as { text: string }[]
       }));
       return await generateResearchResponse(input, textOnlyHistory);
-    } else if (model === 'imagine') {
+    } else if (engine === 'imagine') {
       return `[Imagine Model Placeholder] I cannot yet generate images inside multi-chat logic cleanly. Use the standalone Imagine mode.`;
+    } else if (engine === 'openrouter') {
+      // Fallback to research/openrouter service
+      const textOnlyHistory = history.map(h => ({
+        ...h,
+        parts: h.parts.filter(p => 'text' in p) as { text: string }[]
+      }));
+      return await generateResearchResponse(input, textOnlyHistory);
     } else {
+      // Default to Gemini (for 'gemini' engine or unknown)
       return await generateTextResponse(input, history, image);
     }
   };

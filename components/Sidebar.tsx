@@ -178,8 +178,13 @@ const Sidebar: React.FC<SidebarProps> = ({
                         : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900 border-transparent'}`}
                   onClick={() => {
                     if (editingId !== session.id) {
+                      // On mobile, if we tap the already active chat, we DON'T close the sidebar.
+                      // This allows the user to see/click the edit/delete buttons (the "focus" they requested).
+                      const isChangingSession = currentSessionId !== session.id;
                       onSelectSession(session.id);
-                      if (window.innerWidth < 1024) onClose();
+                      if (window.innerWidth < 1024 && isChangingSession) {
+                        onClose();
+                      }
                     }
                   }}
                 >
@@ -200,19 +205,21 @@ const Sidebar: React.FC<SidebarProps> = ({
                     <span className="flex-1 text-[13px] truncate font-semibold tracking-tight">{session.title}</span>
                   )}
 
-                  <div className={`flex items-center gap-1 transition-all duration-300 
+                  <div className={`flex items-center gap-0.5 transition-all duration-300 
                     ${currentSessionId === session.id 
-                      ? 'opacity-100 translate-x-0' 
-                      : 'opacity-0 lg:group-hover:opacity-100 translate-x-2 lg:group-hover:translate-x-0'}`}>
+                      ? 'opacity-100 translate-x-0 pointer-events-auto' 
+                      : 'opacity-0 lg:group-hover:opacity-100 translate-x-2 lg:group-hover:translate-x-0 pointer-events-none lg:group-hover:pointer-events-auto'}`}>
                     <button 
                       onClick={(e) => { e.stopPropagation(); handleStartEdit(session); }}
-                      className="p-1.5 text-slate-500 hover:text-blue-400 transition-colors"
+                      className="p-2 sm:p-1.5 text-slate-500 hover:text-blue-400 transition-colors"
+                      title="Rename Chat"
                     >
                       <i className="fas fa-pen text-[10px]"></i>
                     </button>
                     <button 
                       onClick={(e) => { e.stopPropagation(); onDeleteSession(session.id); }}
-                      className="p-1.5 text-slate-500 hover:text-red-400 transition-colors"
+                      className="p-2 sm:p-1.5 text-slate-500 hover:text-red-400 transition-colors"
+                      title="Delete Chat"
                     >
                       <i className="fas fa-trash-alt text-[10px]"></i>
                     </button>

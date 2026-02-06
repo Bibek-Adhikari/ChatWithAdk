@@ -288,8 +288,6 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
                         ? 'bg-gradient-to-br from-[#1e293b]/80 to-[#1e293b]/40 text-slate-100 rounded-tl-none border border-blue-500/10 backdrop-blur-md shadow-lg shadow-blue-500/5'
                         : 'bg-white text-slate-800 rounded-tl-none border border-slate-200'}`}
                 >
-                  
-                  
                   <ReactMarkdown
                     remarkPlugins={[remarkGfm]}
                     components={{
