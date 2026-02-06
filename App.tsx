@@ -589,19 +589,43 @@ const App: React.FC = () => {
           try {
             const video = await searchYouTubeVideo(query);
             if (video) {
-              addAssistantMessage(sessionId, [
-                { type: 'text', content: `🎬 I found a great video for: **${query}**` },
-                { 
-                  type: 'youtube', 
-                  content: video.id,
-                  metadata: {
-                    title: video.title,
-                    thumbnail: video.thumbnail,
-                    channelTitle: video.channelTitle
+              // Now that we have the video and its description, 
+              // let's ask Gemini to give a short intelligent "why I chose this" or summary
+              try {
+                const aiSummary = await generateTextResponse(
+                  `The user searched for "${query}" on YouTube. I found a video titled "${video.title}" by "${video.channelTitle}". 
+                   Description: ${video.description || 'No description available.'}. 
+                   Briefly (1-2 sentences) explain why this is a good match and what the user can expect from it.`,
+                  []
+                );
+
+                addAssistantMessage(sessionId, [
+                  { type: 'text', content: aiSummary },
+                  { 
+                    type: 'youtube', 
+                    content: video.id,
+                    metadata: {
+                      title: video.title,
+                      thumbnail: video.thumbnail,
+                      channelTitle: video.channelTitle
+                    }
                   }
-                },
-                { type: 'text', content: `[Not the right video? View more results here](https://www.youtube.com/results?search_query=${encodeURIComponent(query)})` }
-              ]);
+                ]);
+              } catch (aiErr) {
+                // Fallback to basic message if AI summary fails
+                addAssistantMessage(sessionId, [
+                  { type: 'text', content: `🎬 I found a relevant video: **${video.title}**` },
+                  { 
+                    type: 'youtube', 
+                    content: video.id,
+                    metadata: {
+                      title: video.title,
+                      thumbnail: video.thumbnail,
+                      channelTitle: video.channelTitle
+                    }
+                  }
+                ]);
+              }
             } else {
               addAssistantMessage(sessionId, [
                 { type: 'text', content: `🔍 I couldn't find a direct video match for "${query}".` },
@@ -622,11 +646,11 @@ const App: React.FC = () => {
           generateModelResponse(multiChatConfig.rightModel, currentInput, history, selectedImage || undefined)
         ]);
         
-        addAssistantMessage(sessionId, [{ type: 'text', content: leftResponse }], multiChatConfig.leftModel);
-        addAssistantMessage(sessionId, [{ type: 'text', content: rightResponse }], multiChatConfig.rightModel);
+        await processAssistantResponse(sessionId, leftResponse, multiChatConfig.leftModel);
+        await processAssistantResponse(sessionId, rightResponse, multiChatConfig.rightModel);
       } else {
         const responseText = await generateModelResponse(aiModel, currentInput, history, selectedImage || undefined);
-        addAssistantMessage(sessionId, [{ type: 'text', content: responseText }]);
+        await processAssistantResponse(sessionId, responseText);
       }
     } catch (err: any) {
       console.error("Chat error:", err);
@@ -688,6 +712,62 @@ const App: React.FC = () => {
     updateSessionMessages(sessionId, prev => [...prev, newMessage]);
   };
 
+  const processAssistantResponse = async (sessionId: string, text: string, modelId?: string) => {
+    // 1. Detect if the response contains a /youtube [query] command
+    const youtubeSearchMatch = text.match(/\/youtube\s+([^\n]+)/i);
+    // 2. Detect if the response contains a direct YouTube URL
+    const youtubeUrlMatch = text.match(/(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/i);
+
+    let parts: MessagePart[] = [];
+    let cleanText = text;
+
+    // Handle Search Command (/youtube ...)
+    if (youtubeSearchMatch) {
+      const query = youtubeSearchMatch[1].trim();
+      cleanText = text.replace(youtubeSearchMatch[0], '').trim();
+      
+      parts.push({ type: 'text', content: cleanText });
+      
+      try {
+        const video = await searchYouTubeVideo(query);
+        if (video) {
+          parts.push({ 
+            type: 'youtube', 
+            content: video.id,
+            metadata: { title: video.title, thumbnail: video.thumbnail, channelTitle: video.channelTitle }
+          });
+        }
+      } catch (e) {
+        console.error("Auto YouTube Search failed:", e);
+      }
+    } 
+    // Handle Direct URL
+    else if (youtubeUrlMatch) {
+      const videoId = youtubeUrlMatch[1];
+      // Keep the URL in text but also add the card
+      parts.push({ type: 'text', content: cleanText });
+      
+      try {
+        const video = await getVideoDetails(videoId);
+        if (video) {
+          parts.push({ 
+            type: 'youtube', 
+            content: videoId,
+            metadata: { title: video.title, thumbnail: video.thumbnail, channelTitle: video.channelTitle }
+          });
+        }
+      } catch (e) {
+        console.error("Auto YouTube Detail Fetch failed:", e);
+      }
+    }
+    // Default: Just text
+    else {
+      parts.push({ type: 'text', content: text });
+    }
+
+    addAssistantMessage(sessionId, parts, modelId);
+  };
+
   const generateModelResponse = async (model: string, input: string, history: any[], image?: any) => {
     if (model === 'groq') {
       const textOnlyHistory = history.map(h => ({
@@ -742,10 +822,10 @@ const App: React.FC = () => {
 
   return (
     <div className={`flex h-screen overflow-hidden transition-colors duration-500 relative ${theme === 'dark' ? 'bg-[#020617] text-white' : 'bg-white text-slate-900'}`}>
-      {/* Global Background Decor - Matches Plans screen exactly and covers full screen */}
+      {/* Global Background Decor - Unified Blue Theme for Dark Mode */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden z-0">
         <div className={`absolute top-[-20%] left-[-10%] w-[60%] h-[70%] rounded-full blur-[120px] opacity-20 transition-colors duration-1000 ${theme === 'dark' ? 'bg-blue-600' : 'bg-blue-300'}`}></div>
-        <div className={`absolute bottom-[-20%] right-[-10%] w-[60%] h-[70%] rounded-full blur-[120px] opacity-20 transition-colors duration-1000 ${theme === 'dark' ? 'bg-purple-600' : 'bg-purple-300'}`}></div>
+        <div className={`absolute bottom-[-20%] right-[-10%] w-[60%] h-[70%] rounded-full blur-[120px] opacity-20 transition-colors duration-1000 ${theme === 'dark' ? 'bg-indigo-600' : 'bg-blue-200'}`}></div>
       </div>
 
       <Sidebar 
@@ -1096,23 +1176,10 @@ const App: React.FC = () => {
 
                       <button 
                         type="button"
-                        onClick={() => { 
-                          if (!isPro) { 
-                            navigate('/plans');
-                            setIsModelMenuOpen(false);
-                            return; 
-                          }
-                          setAiModel('research'); setIsModelMenuOpen(false); 
-                        }}
+                        onClick={() => { setAiModel('research'); setIsModelMenuOpen(false); }}
                         className={`w-full flex items-start gap-4 p-4 rounded-2xl transition-all text-left group relative
                           ${aiModel === 'research' ? (theme === 'dark' ? 'bg-emerald-600/20' : 'bg-emerald-50') : (theme === 'dark' ? 'hover:bg-white/5' : 'hover:bg-slate-50')}`}
-                        title={!isPro ? "Upgrade to Pro to use Research Mode" : ""}
                       >
-                        {!isPro && (
-                          <div className="absolute top-4 right-4 flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-emerald-500 text-white text-[8px] font-black tracking-widest uppercase">
-                            <i className="fas fa-lock text-[7px]"></i> PRO
-                          </div>
-                        )}
                         <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-transform group-active:scale-90
                           ${aiModel === 'research' ? 'bg-emerald-600 text-white shadow-lg' : (theme === 'dark' ? 'bg-slate-800 text-slate-400' : 'bg-slate-200 text-slate-500')}`}>
                           <i className="fas fa-microscope text-sm"></i>
@@ -1125,23 +1192,10 @@ const App: React.FC = () => {
 
                       <button 
                         type="button"
-                        onClick={() => { 
-                          if (!isPro) { 
-                            navigate('/plans');
-                            setIsModelMenuOpen(false);
-                            return; 
-                          }
-                          setAiModel('imagine'); setIsModelMenuOpen(false); 
-                        }}
+                        onClick={() => { setAiModel('imagine'); setIsModelMenuOpen(false); }}
                         className={`w-full flex items-start gap-4 p-4 rounded-2xl transition-all text-left group relative
                           ${aiModel === 'imagine' ? (theme === 'dark' ? 'bg-pink-600/20' : 'bg-pink-50') : (theme === 'dark' ? 'hover:bg-white/5' : 'hover:bg-slate-50')}`}
-                        title={!isPro ? "Upgrade to Pro to use Imagine Mode" : ""}
                       >
-                        {!isPro && (
-                          <div className="absolute top-4 right-4 flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-pink-500 text-white text-[8px] font-black tracking-widest uppercase">
-                            <i className="fas fa-lock text-[7px]"></i> PRO
-                          </div>
-                        )}
                         <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-transform group-active:scale-90
                           ${aiModel === 'imagine' ? 'bg-pink-600 text-white shadow-lg' : (theme === 'dark' ? 'bg-slate-800 text-slate-400' : 'bg-slate-200 text-slate-500')}`}>
                           <i className="fas fa-magic text-sm"></i>
@@ -1154,23 +1208,10 @@ const App: React.FC = () => {
 
                       <button 
                         type="button"
-                        onClick={() => { 
-                          if (!isPro) { 
-                            navigate('/plans');
-                            setIsModelMenuOpen(false);
-                            return; 
-                          }
-                          setAiModel('gemini'); setIsModelMenuOpen(false); 
-                        }}
+                        onClick={() => { setAiModel('gemini'); setIsModelMenuOpen(false); }}
                         className={`w-full flex items-start gap-4 p-4 rounded-2xl transition-all text-left group relative
                           ${aiModel === 'gemini' ? (theme === 'dark' ? 'bg-indigo-600/20' : 'bg-indigo-50') : (theme === 'dark' ? 'hover:bg-white/5' : 'hover:bg-slate-50')}`}
-                        title={!isPro ? "Upgrade to Pro to use Detail Mode" : ""}
                       >
-                        {!isPro && (
-                          <div className="absolute top-4 right-4 flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-indigo-500 text-white text-[8px] font-black tracking-widest uppercase">
-                            <i className="fas fa-lock text-[7px]"></i> PRO
-                          </div>
-                        )}
                         <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-transform group-active:scale-90
                           ${aiModel === 'gemini' ? 'bg-indigo-600 text-white shadow-lg' : (theme === 'dark' ? 'bg-slate-800 text-slate-400' : 'bg-slate-200 text-slate-500')}`}>
                           <i className="fas fa-brain text-sm"></i>

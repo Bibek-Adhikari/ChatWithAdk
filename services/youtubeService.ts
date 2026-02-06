@@ -6,6 +6,7 @@ export interface YouTubeVideo {
   title: string;
   thumbnail: string;
   channelTitle: string;
+  description: string;
 }
 
 export async function searchYouTubeVideo(query: string): Promise<YouTubeVideo | null> {
@@ -38,7 +39,8 @@ export async function searchYouTubeVideo(query: string): Promise<YouTubeVideo | 
         id: item.id.videoId,
         title: item.snippet.title,
         thumbnail: item.snippet.thumbnails.medium.url,
-        channelTitle: item.snippet.channelTitle
+        channelTitle: item.snippet.channelTitle,
+        description: item.snippet.description
       };
     }
 
@@ -46,6 +48,34 @@ export async function searchYouTubeVideo(query: string): Promise<YouTubeVideo | 
     return null;
   } catch (error) {
     console.error('YouTube Search Exception:', error);
-    throw error; // Throw so the caller knows it failed
+    throw error;
+  }
+}
+
+export async function getVideoDetails(videoId: string): Promise<YouTubeVideo | null> {
+  const apiKey = import.meta.env.VITE_YOUTUBE_API_KEY;
+  if (!apiKey) return null;
+
+  try {
+    const url = `https://www.googleapis.com/youtube/v3/videos?part=snippet&id=${videoId}&key=${apiKey}`;
+    const response = await fetch(url);
+    if (!response.ok) return null;
+
+    const data = await response.json();
+    const item = data.items?.[0];
+
+    if (item) {
+      return {
+        id: videoId,
+        title: item.snippet.title,
+        thumbnail: item.snippet.thumbnails.medium?.url || item.snippet.thumbnails.default?.url,
+        channelTitle: item.snippet.channelTitle,
+        description: item.snippet.description
+      };
+    }
+    return null;
+  } catch (err) {
+    console.error('YouTube Detail Fetch Exception:', err);
+    return null;
   }
 }

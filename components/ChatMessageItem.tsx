@@ -283,9 +283,9 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
                 <div 
                   className={`px-4 sm:px-6 py-4 rounded-[24px] text-[15px] leading-[1.6] chat-shadow markdown-content relative break-words overflow-hidden
                     ${isUser 
-                      ? 'bg-blue-600 text-white rounded-tr-none shadow-blue-500/20' 
+                      ? 'bg-gradient-to-br from-blue-600 to-indigo-700 text-white rounded-tr-none shadow-blue-500/20' 
                       : theme === 'dark'
-                        ? 'bg-slate-800/40 text-slate-100 rounded-tl-none border border-white/5 backdrop-blur-md'
+                        ? 'bg-gradient-to-br from-[#1e293b]/80 to-[#1e293b]/40 text-slate-100 rounded-tl-none border border-blue-500/10 backdrop-blur-md shadow-lg shadow-blue-500/5'
                         : 'bg-white text-slate-800 rounded-tl-none border border-slate-200'}`}
                 >
                   
