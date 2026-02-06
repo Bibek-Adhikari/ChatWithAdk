@@ -4,6 +4,7 @@ import { ChatMessage, ChatSession, GenerationState, MessagePart } from './types'
 import ChatMessageItem from './components/ChatMessageItem';
 import Sidebar from './components/Sidebar';
 import AuthModal from './components/AuthModal';
+import Plans from './components/Plans';
 import SettingsModal from './components/SettingsModal';
 import UserProfileModal from './components/UserProfileModal';
 import { generateTextResponse } from './services/geminiService';
@@ -16,7 +17,7 @@ import { onAuthStateChanged, signOut, User, getRedirectResult } from 'firebase/a
 import { chatStorageService } from './services/chatStorageService';
 import AdminDashboardModal from './components/AdminDashboardModal';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
-import { adminService } from './services/adminService';
+import { adminService } from './services/adminService'; 
 
 
 const ADMIN_EMAILS = [

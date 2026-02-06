@@ -379,51 +379,68 @@ const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
                 />
               </div>
 
-              {/* Users Table */}
-              <div className={`
-                rounded-3xl border overflow-hidden
-                ${theme === 'dark' 
-                  ? 'bg-slate-800/40 border-white/5' 
-                  : 'bg-slate-50 border-slate-100'}
-              `}>
-                <div className="p-4 sm:p-6 border-b border-white/5 flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <h4 className="text-[11px] font-black uppercase tracking-widest text-slate-400">
-                      Authenticated Users Log
-                    </h4>
-                    <span className={`
-                      px-2 py-0.5 rounded-full text-[9px] font-bold
-                      ${theme === 'dark' ? 'bg-slate-700 text-slate-300' : 'bg-slate-200 text-slate-600'}
-                    `}>
-                      {latestUsers.length}
-                    </span>
-                  </div>
-                  <span className="text-[9px] font-bold text-slate-500 uppercase">
-                    Latest Activity
-                  </span>
-                </div>
-                
-                <div className="divide-y divide-white/5">
-                  {latestUsers.map((user) => (
-                    <UserListItem 
-                      key={user.id} 
-                      user={user} 
-                      theme={theme}
-                      isAdmin={isUserAdmin(user.email)}
-                      onSelect={handleUserSelect}
-                    />
-                  ))}
-                  
-                  {latestUsers.length === 0 && !loading && (
-                    <div className="p-12 text-center">
-                      <i className="fas fa-users text-4xl text-slate-600 mb-4 opacity-50" />
-                      <p className="text-slate-500 text-[11px] uppercase tracking-widest font-bold">
-                        No users tracked in Firestore yet
+                <div className="space-y-8">
+                  {loading && latestUsers.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-20 gap-4 opacity-50">
+                      <div className="relative">
+                        <i className="fas fa-circle-notch fa-spin text-4xl text-indigo-500" />
+                        <div className="absolute inset-0 blur-xl bg-indigo-500/30 rounded-full" />
+                      </div>
+                      <p className="text-[10px] font-black uppercase tracking-widest animate-pulse">
+                        Fetching Secure Data...
                       </p>
                     </div>
+                  ) : (
+                    (() => {
+                      const now = new Date();
+                      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                      const lastWeek = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+                      const lastMonth = new Date(today.getFullYear(), today.getMonth() - 1, today.getDate());
+
+                      const groups = [
+                        { label: 'Active Today', users: latestUsers.filter(u => u.lastLogin && new Date(u.lastLogin) >= today), color: 'text-emerald-500 bg-emerald-500/10' },
+                        { label: 'Past 7 Days', users: latestUsers.filter(u => u.lastLogin && new Date(u.lastLogin) < today && new Date(u.lastLogin) >= lastWeek), color: 'text-blue-500 bg-blue-500/10' },
+                        { label: 'This Month', users: latestUsers.filter(u => u.lastLogin && new Date(u.lastLogin) < lastWeek && new Date(u.lastLogin) >= lastMonth), color: 'text-indigo-500 bg-indigo-500/10' },
+                        { label: 'Earlier Activity', users: latestUsers.filter(u => !u.lastLogin || new Date(u.lastLogin) < lastMonth), color: 'text-slate-500 bg-slate-500/10' }
+                      ].filter(g => g.users.length > 0);
+
+                      if (groups.length === 0) return (
+                        <div className="p-12 text-center">
+                          <i className="fas fa-users text-4xl text-slate-600 mb-4 opacity-50" />
+                          <p className="text-slate-500 text-[11px] uppercase tracking-widest font-bold">
+                            No users tracked in Firestore yet
+                          </p>
+                        </div>
+                      );
+
+                      return groups.map(group => (
+                        <div key={group.label}>
+                          <div className="px-4 mb-4 flex items-center gap-3">
+                            <span className={`px-2 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-widest ${group.color}`}>
+                              {group.label}
+                            </span>
+                            <div className="h-[1px] flex-1 bg-white/5" />
+                            <span className="text-[9px] font-bold opacity-30 uppercase">{group.users.length} Users</span>
+                          </div>
+                          <div className={`
+                            rounded-3xl border overflow-hidden divide-y divide-white/5
+                            ${theme === 'dark' ? 'bg-slate-800/40 border-white/5' : 'bg-slate-50 border-slate-100'}
+                          `}>
+                            {group.users.map(user => (
+                              <UserListItem 
+                                key={user.id} 
+                                user={user} 
+                                theme={theme}
+                                isAdmin={isUserAdmin(user.email)}
+                                onSelect={handleUserSelect}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      ));
+                    })()
                   )}
                 </div>
-              </div>
             </>
           )}
         </div>
