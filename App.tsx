@@ -201,6 +201,15 @@ const App: React.FC = () => {
   }, [currentSessionId, navigate, location.pathname]);
 
   useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    if (params.get('admin') === 'true') {
+      setIsAdminDashboardOpen(true);
+      // Clean up the URL
+      navigate(location.pathname, { replace: true });
+    }
+  }, [location.search, navigate]);
+
+  useEffect(() => {
     // Handle redirect result (primarily for mobile)
     const handleRedirect = async () => {
       try {

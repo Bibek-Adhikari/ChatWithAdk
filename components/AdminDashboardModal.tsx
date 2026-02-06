@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, memo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { adminService } from '../services/adminService';
 
 // Proper TypeScript interfaces
@@ -68,15 +69,19 @@ interface UserListItemProps {
   user: User;
   theme: 'light' | 'dark';
   isAdmin: boolean;
+  onSelect: (userId: string) => void;
 }
 
-const UserListItem = memo(({ user, theme, isAdmin }: UserListItemProps) => {
+const UserListItem = memo(({ user, theme, isAdmin, onSelect }: UserListItemProps) => {
   const initials = user.displayName 
     ? user.displayName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
     : user.email?.[0].toUpperCase() || '?';
 
   return (
-    <div className="p-4 flex items-center justify-between hover:bg-white/5 transition-colors group">
+    <div 
+      onClick={() => onSelect(user.id)}
+      className="p-4 flex items-center justify-between hover:bg-white/5 transition-colors group cursor-pointer"
+    >
       <div className="flex items-center gap-4 min-w-0">
         <div className={`
           w-10 h-10 rounded-xl border overflow-hidden flex items-center justify-center shrink-0
@@ -152,7 +157,13 @@ const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
   onClose, 
   theme 
 }) => {
+  const navigate = useNavigate();
   const [stats, setStats] = useState<SystemStats>({ totalUsers: 0, totalSessions: 0 });
+  
+  const handleUserSelect = (userId: string) => {
+    onClose();
+    navigate(`/admin/usersData/${userId}`);
+  };
   const [latestUsers, setLatestUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -399,6 +410,7 @@ const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
                       user={user} 
                       theme={theme}
                       isAdmin={isUserAdmin(user.email)}
+                      onSelect={handleUserSelect}
                     />
                   ))}
                   
