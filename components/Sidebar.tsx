@@ -166,7 +166,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                 <p className="text-[10px] uppercase font-bold tracking-[0.2em]">Start a new conversation</p>
               </div>
             ) : (
-              sessions.sort((a, b) => b.updatedAt - a.updatedAt).map((session, index) => (
+              [...sessions].sort((a, b) => b.updatedAt - a.updatedAt).map((session, index) => (
                 <div 
                   key={session.id}
                   style={{ animationDelay: `${index * 40}ms` }}

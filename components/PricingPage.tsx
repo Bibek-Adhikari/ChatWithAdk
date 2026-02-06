@@ -24,7 +24,7 @@ const PRICING_TIERS: PricingTier[] = [
     description: 'Perfect for trying out ChatADK capabilities.',
     features: [
       'Access to Basic Models',
-      '10 Messages per Day',
+      '20 Messages per Day',
       'Standard Support',
       '1MB Image/File Uploads',
       'Web-only Access'

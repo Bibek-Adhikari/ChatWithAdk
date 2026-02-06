@@ -183,17 +183,42 @@ const App: React.FC = () => {
 
         // Subscribe to real-time updates from cloud
         unsubscribe = chatStorageService.subscribeToUserSessions(user.uid, (cloudSessions) => {
-          setSessions(cloudSessions);
-          
-          // After cloud sync, check if we need to select a session
-          if (urlSessionId && cloudSessions.some(s => s.id === urlSessionId)) {
+          setSessions(prev => {
+            // Map of cloud sessions for fast lookup
+            const cloudMap = new Map(cloudSessions.map(s => [s.id, s]));
+            
+            // Start with cloud sessions
+            const merged = [...cloudSessions];
+            
+            // Check current local sessions
+            prev.forEach(local => {
+              const cloud = cloudMap.get(local.id);
+              if (!cloud) {
+                // If not in cloud yet, it might be a brand new local session
+                merged.push(local);
+              } else if (local.updatedAt > cloud.updatedAt) {
+                // Local is newer (sync still pending), keep local version
+                const index = merged.findIndex(s => s.id === local.id);
+                merged[index] = local;
+              }
+            });
+
+            // Sort by most recent
+            const finalSessions = merged.sort((a, b) => b.updatedAt - a.updatedAt);
+            
+            // Persist the merged state to local cache
+            localStorage.setItem(key, JSON.stringify(finalSessions));
+            
+            return finalSessions;
+          });
+
+          // Handle initial current session selection
+          if (urlSessionId) {
             setCurrentSessionId(urlSessionId);
           } else if (!currentSessionId && cloudSessions.length > 0) {
             setCurrentSessionId(cloudSessions[0].id);
           }
           
-          // Persist to local cache
-          localStorage.setItem(getUserStorageKey(), JSON.stringify(cloudSessions));
           setStatus(prev => ({ ...prev, isSyncing: false }));
         });
       }
@@ -202,15 +227,6 @@ const App: React.FC = () => {
     syncSessions();
     return () => unsubscribe();
   }, [user?.uid]);
-
-  useEffect(() => {
-    // Only save guest sessions to localStorage. 
-    // Logged-in users are persisted via the Firestore snapshot listener.
-    if (!user && sessions.length >= 0) {
-      const key = getUserStorageKey();
-      localStorage.setItem(key, JSON.stringify(sessions));
-    }
-  }, [sessions, user]);
 
   // Sync session ID with URL
   useEffect(() => {
@@ -373,7 +389,7 @@ const App: React.FC = () => {
       id: newId,
       title: 'New Conversation',
       messages: [{
-        id: 'welcome',
+        id: `welcome_${newId}`,
         role: 'assistant',
         parts: [{ type: 'text', content: `${greeting} I am ChatAdk. How can I help you today?` }],
         timestamp: new Date().toISOString(),
@@ -390,6 +406,8 @@ const App: React.FC = () => {
 
     setSessions(prev => [newSession, ...prev]);
     setCurrentSessionId(newId);
+    setInputValue('');
+    setStatus(prev => ({ ...prev, error: null, isTyping: false }));
     navigate(`/chat/${newId}`);
     if (window.innerWidth < 1024) setIsSidebarOpen(false);
   };
@@ -602,6 +620,8 @@ const App: React.FC = () => {
   };
 
   const updateSessionMessages = async (sessionId: string, updater: (prev: ChatMessage[]) => ChatMessage[], firstInput?: string) => {
+    let latestSession: ChatSession | null = null;
+    
     setSessions(prev => {
       const updatedSessions = prev.map(s => {
         if (s.id === sessionId) {
@@ -610,32 +630,37 @@ const App: React.FC = () => {
             ? (firstInput.slice(0, 30) + (firstInput.length > 30 ? '...' : '')) 
             : s.title;
           
-          const updated = { 
+          latestSession = { 
             ...s, 
             messages: newMessages, 
             updatedAt: Date.now(),
             title: newTitle
           };
-
-          // Background sync to Firestore
-          if (user) {
-            setStatus(prev => ({ ...prev, isSyncing: true }));
-            chatStorageService.saveSession(user.uid, updated)
-              .catch(err => console.error("Cloud sync failed:", err))
-              .finally(() => setStatus(prev => ({ ...prev, isSyncing: false })));
-          }
-
-          return updated;
+          return latestSession;
         }
         return s;
       });
+      
+      localStorage.setItem(getUserStorageKey(), JSON.stringify(updatedSessions));
       return updatedSessions;
     });
+
+    // Use a small delay to ensure latestSession was populated by the setSessions callback
+    if (user) {
+      setTimeout(() => {
+        if (latestSession) {
+          setStatus(prev => ({ ...prev, isSyncing: true }));
+          chatStorageService.saveSession(user.uid, latestSession)
+            .catch(err => console.error("Cloud sync failed:", err))
+            .finally(() => setStatus(prev => ({ ...prev, isSyncing: false })));
+        }
+      }, 50);
+    }
   };
 
   const addAssistantMessage = (sessionId: string, parts: MessagePart[], modelId?: string) => {
     const newMessage: ChatMessage = {
-      id: (Date.now() + Math.random()).toString(), // Ensure unique ID even in parallel calls
+      id: `ai_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`, 
       role: 'assistant',
       parts,
       timestamp: new Date().toISOString(),
@@ -798,13 +823,14 @@ const App: React.FC = () => {
 
         {/* Main Chat Area */}
         <main 
+          key={currentSessionId}
           className={`flex-1 overflow-hidden relative flex flex-col ${theme === 'dark' ? 'bg-slate-950/20' : 'bg-slate-50'}`} 
           ref={scrollRef}
         >
           {aiModel !== 'multi' ? (
             <div className={`flex-1 overflow-y-auto px-3 sm:px-8 py-6 custom-scrollbar relative flex flex-col ${localizedMessages.length < 3 ? 'justify-center' : ''}`}>
               <div className={`max-w-3xl mx-auto space-y-2 w-full ${localizedMessages.length < 3 ? 'flex-1 flex flex-col justify-center' : ''}`}>
-                {!currentSession && (
+                {!currentSession && !currentSessionId && (
                   <div className="flex flex-col items-center justify-center h-full text-center space-y-4 py-20 opacity-50">
                     <i className="fas fa-comments text-6xl text-slate-800"></i>
                     <h3 className="text-xl font-medium">
@@ -819,6 +845,13 @@ const App: React.FC = () => {
                     >
                       Start Chatting
                     </button>
+                  </div>
+                )}
+
+                {currentSessionId && !currentSession && (
+                  <div className="flex flex-col items-center justify-center h-full py-20 animate-pulse">
+                    <div className="w-12 h-12 rounded-full border-4 border-blue-500/20 border-t-blue-500 animate-spin mb-4"></div>
+                    <p className="text-sm text-slate-500 font-medium uppercase tracking-widest">Loading Conversation...</p>
                   </div>
                 )}
                 
