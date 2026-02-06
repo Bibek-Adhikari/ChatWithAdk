@@ -283,7 +283,7 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
                 <div 
                   className={`px-4 sm:px-6 py-4 rounded-[24px] text-[15px] leading-[1.6] chat-shadow markdown-content relative break-words overflow-hidden
                     ${isUser 
-                      ? 'bg-gradient-to-br from-blue-600 to-blue-700 text-white rounded-tr-none shadow-blue-500/20' 
+                      ? 'bg-blue-600 text-white rounded-tr-none shadow-blue-500/20' 
                       : theme === 'dark'
                         ? 'bg-slate-800/40 text-slate-100 rounded-tl-none border border-white/5 backdrop-blur-md'
                         : 'bg-white text-slate-800 rounded-tl-none border border-slate-200'}`}

@@ -236,26 +236,25 @@ const App: React.FC = () => {
     return () => unsubscribe();
   }, [user?.uid]);
 
-  // Sync session ID with URL
+  // 1. Initial Load / URL Sync: Only runs on mount OR when user changes to sync state with URL browser actions
   useEffect(() => {
     if (urlSessionId && urlSessionId !== currentSessionId) {
       setCurrentSessionId(urlSessionId);
     }
-  }, [urlSessionId]);
+  }, [urlSessionId]); // If URL changes (browser back/forward or link click), update state
 
+  // 2. State to URL Sync: When state changes (handleNewChat, manual select), reflect in URL
   useEffect(() => {
     if (currentSessionId) {
-      if (location.pathname !== `/chat/${currentSessionId}`) {
-        navigate(`/chat/${currentSessionId}`);
+      const targetPath = `/chat/${currentSessionId}`;
+      if (location.pathname !== targetPath) {
+        navigate(targetPath, { replace: true });
       }
+      // Persistence
       const key = user ? `${STORAGE_KEY}_last_session_id_${user.uid}` : `${STORAGE_KEY}_last_session_id_guest`;
       localStorage.setItem(key, currentSessionId);
-    } else if (location.pathname.startsWith('/chat/')) {
-       // Optional: if URL is /chat/something but it's not in state, we might wait for syncSessions
-    } else {
-       navigate('/');
     }
-  }, [currentSessionId, navigate, location.pathname, user?.uid]);
+  }, [currentSessionId, navigate]); // Removed location/user dependencies to focus on the change event
 
   // Handle "relogin" (auth change) to reset sync state and trigger new chat
   useEffect(() => {
@@ -265,23 +264,19 @@ const App: React.FC = () => {
     }
   }, [user?.uid]);
 
-  // Fix loading hang if session not found after sync
+  // 3. Cleanup logic for missing sessions
   useEffect(() => {
-    if (!status.isSyncing && currentSessionId && sessions.length > 0) {
+    if (!status.isSyncing && currentSessionId && sessions.length > 0 && initialSyncRef.current) {
       const exists = sessions.some(s => s.id === currentSessionId);
-      if (!exists && !urlSessionId) {
-        // If the ID we have is not in the list and not in URL, pick the first one or new chat
-        setCurrentSessionId(sessions[0].id);
-      } else if (!exists && urlSessionId && !status.isTyping) {
-        // If it's in URL but doesn't exist even after sync... it's a dead link
-        // We could either redirect to home or show error
-        // Let's redirect to home to avoid the "never ending" loading
-        console.warn("Session ID not found, redirecting...");
-        navigate('/');
-        setCurrentSessionId('');
+      const isVirtual = currentSessionId.startsWith('new_');
+      
+      // Only auto-redirect if we are at a chat URL that doesn't exist anymore AND it's not a virtual session
+      if (!exists && !isVirtual && !status.isTyping && location.pathname.startsWith('/chat/')) {
+         console.warn("Session not found, starting handleNewChat...");
+         handleNewChat();
       }
     }
-  }, [sessions, currentSessionId, status.isSyncing, urlSessionId, navigate, status.isTyping]);
+  }, [sessions.length, currentSessionId, status.isSyncing]);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -415,31 +410,9 @@ const App: React.FC = () => {
   }, [isResizing, resize, stopResizing]);
 
   const handleNewChat = () => {
-    const newId = Date.now().toString();
-    const currentDisplayName = user?.displayName || auth.currentUser?.displayName;
-    const firstName = currentDisplayName ? currentDisplayName.split(' ')[0] : '';
-    const greeting = firstName ? `Hello, ${firstName}!` : 'Hello!';
-    
-    const newSession: ChatSession = {
-      id: newId,
-      title: 'New Conversation',
-      messages: [{
-        id: `welcome_${newId}`,
-        role: 'assistant',
-        parts: [{ type: 'text', content: `${greeting} I am ChatAdk. How can I help you today?` }],
-        timestamp: new Date().toISOString(),
-      }],
-      updatedAt: Date.now(),
-    };
-
-    // Immediate Cloud Sync
-    if (user) {
-      chatStorageService.saveSession(user.uid, newSession).catch(err => 
-        console.error("Failed to sync new chat to cloud:", err)
-      );
-    }
-
-    setSessions(prev => [newSession, ...prev]);
+    // Just set a fresh ID and clear state. 
+    // We DON'T add to sessions or save to cloud yet to avoid cluttering history with empty greetings.
+    const newId = `new_${Date.now()}`;
     setCurrentSessionId(newId);
     setInputValue('');
     setStatus(prev => ({ ...prev, error: null, isTyping: false }));
@@ -524,16 +497,26 @@ const App: React.FC = () => {
     let sessionId = currentSessionId;
     let currentSess = currentSession;
 
-    if (!sessionId || !currentSess) {
-      const newId = Date.now().toString();
+    // If this is a virtual session (not yet in 'sessions'), create it now
+    if (!currentSess) {
+      const newId = sessionId?.startsWith('new_') ? sessionId : Date.now().toString();
+      
+      const currentDisplayName = user?.displayName || auth.currentUser?.displayName;
+      const firstName = currentDisplayName ? currentDisplayName.split(' ')[0] : '';
+      const greeting = firstName ? `Hello, ${firstName}!` : 'Hello!';
+
       const newSession: ChatSession = {
         id: newId,
         title: inputValue.trim().slice(0, 30) + (inputValue.length > 30 ? '...' : ''),
-        messages: [],
+        messages: [{
+          id: `welcome_${newId}`,
+          role: 'assistant',
+          parts: [{ type: 'text', content: `${greeting} I am ChatAdk. How can I help you today?` }],
+          timestamp: new Date(Date.now() - 1000).toISOString(), // Set greeting slightly in past
+        }],
         updatedAt: Date.now(),
       };
       
-      // Persist new session immediately if user is logged in
       if (user) {
         chatStorageService.saveSession(user.uid, newSession).catch(err => 
           console.error("Failed to create initial session in cloud:", err)
@@ -543,6 +526,7 @@ const App: React.FC = () => {
       setSessions(prev => [newSession, ...prev]);
       setCurrentSessionId(newId);
       sessionId = newId;
+      currentSess = newSession;
     }
 
     const userMessage: ChatMessage = {
@@ -725,13 +709,26 @@ const App: React.FC = () => {
   };
 
   // Convert ISO timestamp string back to Date for the component
-  const localizedMessages = useMemo(() => 
-    (currentSession?.messages || []).map(m => ({
+  const localizedMessages = useMemo(() => {
+    // Virtual Greeting for un-persisted "New Chat" sessions
+    if (!currentSession && currentSessionId) {
+      const currentDisplayName = user?.displayName || auth.currentUser?.displayName;
+      const firstName = currentDisplayName ? currentDisplayName.split(' ')[0] : '';
+      const greeting = firstName ? `Hello, ${firstName}!` : 'Hello!';
+      
+      return [{
+        id: `welcome_virtual_${currentSessionId}`,
+        role: 'assistant' as const,
+        parts: [{ type: 'text' as const, content: `${greeting} I am ChatAdk. How can I help you today?` }],
+        timestamp: new Date(),
+      }];
+    }
+
+    return (currentSession?.messages || []).map(m => ({
       ...m,
       timestamp: new Date(m.timestamp)
-    })),
-    [currentSession?.messages]
-  );
+    }));
+  }, [currentSession, currentSessionId, user?.uid]);
   
   const leftMessages = useMemo(() => 
     localizedMessages.filter(m => m.role === 'user' || m.modelId === multiChatConfig.leftModel || !m.modelId),
@@ -744,7 +741,13 @@ const App: React.FC = () => {
   );
 
   return (
-    <div className={`flex h-screen overflow-hidden ${theme === 'dark' ? 'text-slate-200' : 'text-slate-800'}`}>
+    <div className={`flex h-screen overflow-hidden transition-colors duration-500 relative ${theme === 'dark' ? 'bg-[#020617] text-white' : 'bg-white text-slate-900'}`}>
+      {/* Global Background Decor - Matches Plans screen exactly and covers full screen */}
+      <div className="absolute inset-0 pointer-events-none overflow-hidden z-0">
+        <div className={`absolute top-[-20%] left-[-10%] w-[60%] h-[70%] rounded-full blur-[120px] opacity-20 transition-colors duration-1000 ${theme === 'dark' ? 'bg-blue-600' : 'bg-blue-300'}`}></div>
+        <div className={`absolute bottom-[-20%] right-[-10%] w-[60%] h-[70%] rounded-full blur-[120px] opacity-20 transition-colors duration-1000 ${theme === 'dark' ? 'bg-purple-600' : 'bg-purple-300'}`}></div>
+      </div>
+
       <Sidebar 
         sessions={sessions}
         currentSessionId={currentSessionId}
@@ -858,8 +861,7 @@ const App: React.FC = () => {
 
         {/* Main Chat Area */}
         <main 
-          key={currentSessionId}
-          className={`flex-1 overflow-hidden relative flex flex-col ${theme === 'dark' ? 'bg-slate-950/20' : 'bg-slate-50'}`} 
+          className="flex-1 overflow-hidden relative flex flex-col bg-transparent" 
           ref={scrollRef}
         >
           {aiModel !== 'multi' ? (
@@ -883,7 +885,7 @@ const App: React.FC = () => {
                   </div>
                 )}
 
-                {currentSessionId && !currentSession && (
+                {currentSessionId && !currentSession && !currentSessionId.startsWith('new_') && (
                   <div className="flex flex-col items-center justify-center h-full py-20 animate-pulse">
                     <div className="w-12 h-12 rounded-full border-4 border-blue-500/20 border-t-blue-500 animate-spin mb-4"></div>
                     <p className="text-sm text-slate-500 font-medium uppercase tracking-widest">Loading Conversation...</p>
