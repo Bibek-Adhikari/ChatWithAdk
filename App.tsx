@@ -18,6 +18,7 @@ import { chatStorageService } from './services/chatStorageService';
 import AdminDashboardModal from './components/AdminDashboardModal';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { adminService } from './services/adminService'; 
+import { fetchLatestNews, shouldFetchNews } from './services/newsService';
 
 
 const ADMIN_EMAILS = [
@@ -604,8 +605,6 @@ const App: React.FC = () => {
           try {
             const video = await searchYouTubeVideo(query);
             if (video) {
-              // Now that we have the video and its description, 
-              // let's ask Gemini to give a short intelligent "why I chose this" or summary
               try {
                 const aiSummary = await generateTextResponse(
                   `The user searched for "${query}" on YouTube. I found a video titled "${video.title}" by "${video.channelTitle}". 
@@ -627,7 +626,6 @@ const App: React.FC = () => {
                   }
                 ]);
               } catch (aiErr) {
-                // Fallback to basic message if AI summary fails
                 addAssistantMessage(sessionId, [
                   { type: 'text', content: `🎬 I found a relevant video: **${video.title}**` },
                   { 
@@ -655,17 +653,60 @@ const App: React.FC = () => {
             }]);
           }
         }
-      } else if (aiModel === 'multi') {
-        const [leftResponse, rightResponse] = await Promise.all([
-          generateModelResponse(multiChatConfig.leftModel, currentInput, history, selectedImage || undefined),
-          generateModelResponse(multiChatConfig.rightModel, currentInput, history, selectedImage || undefined)
-        ]);
-        
-        await processAssistantResponse(sessionId, leftResponse, multiChatConfig.leftModel);
-        await processAssistantResponse(sessionId, rightResponse, multiChatConfig.rightModel);
       } else {
-        const responseText = await generateModelResponse(aiModel, currentInput, history, selectedImage || undefined);
-        await processAssistantResponse(sessionId, responseText);
+        const currentDate = new Date().toLocaleString('en-US', { 
+          weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', 
+          hour: '2-digit', minute: '2-digit', timeZoneName: 'short' 
+        });
+        const dateContext = `[SERVER TIME] Today is ${currentDate}. YOUR INTERNAL KNOWLEDGE CUT-OFF IS EARLY 2024. YOU ARE CURRENTLY IN 2026.`;
+
+        if (aiModel === 'multi') {
+          let finalInput = `${dateContext}\n\nUSER QUESTION: ${currentInput}`;
+          if (shouldFetchNews(currentInput)) {
+            console.log("Fetching latest news for multi-chat context...");
+            try {
+              const news = await fetchLatestNews(currentInput);
+              if (news && news.length > 0) {
+                const newsContext = news.map((n, i) => `[STORY ${i+1}] (Source: ${n.url})\nCONTENT: ${n.text}`).join('\n\n');
+                finalInput = `${dateContext}\n\n!!!!! MANDATORY TRUTH OVERRIDE !!!!!\nToday is Feb 2026. Your 2024 training (PM Dahal) is OLD. \n\nCHECK THE NEWS BELOW FOR A NAME. If you see "PM [Name]" or "Nepal Prime Minister [Name]", use it. If no name is mentioned, say "The news confirms a 2026 update but does not mention the name."\n\n[LATEST NEWS]:\n${newsContext}\n\nUSER QUESTION: ${currentInput}\n(Instructions: PLEASE CITE THE SOURCE URLS FROM THE NEWS ABOVE AT THE END OF YOUR RESPONSE.)`;
+              } else {
+                finalInput = `${dateContext}\n\n[SYSTEM NOTE: No news found for this specific query. Answer based on 2024 knowledge but warn the user it might be outdated.]\n\nUSER QUESTION: ${currentInput}`;
+              }
+            } catch (newsErr) {
+              console.error("Multi-chat news fetch error:", newsErr);
+              finalInput = `${dateContext}\n\n[SYSTEM NOTE: News service unavailable.]\n\nUSER QUESTION: ${currentInput}`;
+            }
+          }
+
+          const [leftResponse, rightResponse] = await Promise.all([
+            generateModelResponse(multiChatConfig.leftModel, finalInput, history, selectedImage || undefined),
+            generateModelResponse(multiChatConfig.rightModel, finalInput, history, selectedImage || undefined)
+          ]);
+          
+          await processAssistantResponse(sessionId, leftResponse, multiChatConfig.leftModel);
+          await processAssistantResponse(sessionId, rightResponse, multiChatConfig.rightModel);
+        } else {
+          let finalInput = `${dateContext}\n\nUSER QUESTION: ${currentInput}`;
+          
+          if (shouldFetchNews(currentInput)) {
+            console.log("Fetching latest news for context...");
+            try {
+              const news = await fetchLatestNews(currentInput);
+              if (news && news.length > 0) {
+                const newsContext = news.map((n, i) => `[STORY ${i+1}] (Source: ${n.url})\nCONTENT: ${n.text}`).join('\n\n');
+                finalInput = `${dateContext}\n\n!!!!! MANDATORY TRUTH OVERRIDE !!!!!\nToday is Feb 2026. Your 2024 training (PM Dahal) is OLD. \n\nCHECK THE NEWS BELOW FOR A NAME. If you see "PM [Name]" or "Nepal Prime Minister [Name]", use it. If no name is mentioned, say "The news confirms a 2026 update but does not mention the name."\n\n[LATEST NEWS]:\n${newsContext}\n\nUSER QUESTION: ${currentInput}\n(Instructions: PLEASE CITE THE SOURCE URLS FROM THE NEWS ABOVE AT THE END OF YOUR RESPONSE.)`;
+              } else {
+                finalInput = `${dateContext}\n\n[SYSTEM NOTE: No news found for this specific query. Answer based on 2024 knowledge but warn the user it might be outdated.]\n\nUSER QUESTION: ${currentInput}`;
+              }
+            } catch (newsErr) {
+              console.error("News fetch error:", newsErr);
+              finalInput = `${dateContext}\n\n[SYSTEM NOTE: News service unavailable.]\n\nUSER QUESTION: ${currentInput}`;
+            }
+          }
+
+          const responseText = await generateModelResponse(aiModel, finalInput, history, selectedImage || undefined);
+          await processAssistantResponse(sessionId, responseText);
+        }
       }
     } catch (err: any) {
       console.error("Chat error:", err);

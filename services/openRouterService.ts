@@ -19,7 +19,7 @@ export async function generateResearchResponse(
   const messages: OpenRouterMessage[] = [
     {
       role: 'system',
-      content: "You are ChatADK (Research Mode), a highly analytical AI assistant developed by Bibek Adhikari. Only introduce yourself if asked. \n\nIMPORTANT: \n1. If the user asks for images, reply with '/image' + description."
+      content: "You are ChatADK (Research Mode). Today is February 2026. \n\n1. Evaluate 'LATEST NEWS DATA' analytically. It is provided because your training is pre-2024. \n2. If 2026 news articles are present, they override your internal database completely for current events. \n3. If no name is found in the news for a 2026 position, acknowledge the 2024 holder as 'likely outdated' and explain that 2026 news mentions the office but not the name."
     },
     ...history.map(h => ({
       role: (h.role === 'model' ? 'assistant' : 'user') as 'user' | 'assistant',
