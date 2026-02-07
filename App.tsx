@@ -582,7 +582,7 @@ const App: React.FC = () => {
       if (aiModel === 'imagine' || currentInput.toLowerCase().startsWith('/image')) {
         if (!user) {
           addAssistantMessage(sessionId, [{ type: 'text', content: "Please sign in to ChatADK to generate images and access premium features." }]);
-          handleAuthClick('signup');
+          handleAuthClick('signin');
         } else {
           const imagePrompt = currentInput.toLowerCase().startsWith('/image') 
             ? currentInput.substring(6).trim() 
@@ -872,8 +872,20 @@ const App: React.FC = () => {
         onAuthClick={handleAuthClick}
         theme={theme}
         onOpenSettings={() => setIsSettingsOpen(true)}
-        onOpenProfile={() => setIsProfileOpen({ open: true, showPricing: false })}
-        onOpenPlans={() => navigate('/plans')}
+        onOpenProfile={() => {
+          if (!user) {
+            handleAuthClick('signin');
+            return;
+          }
+          setIsProfileOpen({ open: true, showPricing: false });
+        }}
+        onOpenPlans={() => {
+          if (!user) {
+            handleAuthClick('signin');
+            return;
+          }
+          navigate('/plans');
+        }}
         isAdmin={isAdmin}
         onOpenAdmin={() => setIsAdminDashboardOpen(true)}
         usageCount={usageCount}
@@ -1191,7 +1203,13 @@ const App: React.FC = () => {
                     <div className="space-y-1">
                       <button 
                         type="button"
-                        onClick={() => { setAiModel('groq'); setIsModelMenuOpen(false); }}
+                        onClick={() => { 
+                          if (!user && aiModel !== 'groq') {
+                            // This button itself is groq, so no need for auth check here
+                          }
+                          setAiModel('groq'); 
+                          setIsModelMenuOpen(false); 
+                        }}
                         className={`w-full flex items-start gap-4 p-4 rounded-2xl transition-all text-left group
                           ${aiModel === 'groq' ? (theme === 'dark' ? 'bg-blue-600/20' : 'bg-blue-50') : (theme === 'dark' ? 'hover:bg-white/5' : 'hover:bg-slate-50')}`}
                       >
@@ -1207,10 +1225,23 @@ const App: React.FC = () => {
 
                       <button 
                         type="button"
-                        onClick={() => { setAiModel('research'); setIsModelMenuOpen(false); }}
+                        onClick={() => { 
+                          if (!user) {
+                            handleAuthClick('signin');
+                            setIsModelMenuOpen(false);
+                            return;
+                          }
+                          setAiModel('research'); 
+                          setIsModelMenuOpen(false); 
+                        }}
                         className={`w-full flex items-start gap-4 p-4 rounded-2xl transition-all text-left group relative
                           ${aiModel === 'research' ? (theme === 'dark' ? 'bg-emerald-600/20' : 'bg-emerald-50') : (theme === 'dark' ? 'hover:bg-white/5' : 'hover:bg-slate-50')}`}
                       >
+                        {!user && (
+                          <div className="absolute top-4 right-4 flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-slate-500 text-white text-[8px] font-black tracking-widest uppercase">
+                            <i className="fas fa-lock text-[7px]"></i> LOGIN
+                          </div>
+                        )}
                         <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-transform group-active:scale-90
                           ${aiModel === 'research' ? 'bg-emerald-600 text-white shadow-lg' : (theme === 'dark' ? 'bg-slate-800 text-slate-400' : 'bg-slate-200 text-slate-500')}`}>
                           <i className="fas fa-microscope text-sm"></i>
@@ -1223,10 +1254,23 @@ const App: React.FC = () => {
 
                       <button 
                         type="button"
-                        onClick={() => { setAiModel('imagine'); setIsModelMenuOpen(false); }}
+                        onClick={() => { 
+                          if (!user) {
+                            handleAuthClick('signin');
+                            setIsModelMenuOpen(false);
+                            return;
+                          }
+                          setAiModel('imagine'); 
+                          setIsModelMenuOpen(false); 
+                        }}
                         className={`w-full flex items-start gap-4 p-4 rounded-2xl transition-all text-left group relative
                           ${aiModel === 'imagine' ? (theme === 'dark' ? 'bg-pink-600/20' : 'bg-pink-50') : (theme === 'dark' ? 'hover:bg-white/5' : 'hover:bg-slate-50')}`}
                       >
+                        {!user && (
+                          <div className="absolute top-4 right-4 flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-slate-500 text-white text-[8px] font-black tracking-widest uppercase">
+                            <i className="fas fa-lock text-[7px]"></i> LOGIN
+                          </div>
+                        )}
                         <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-transform group-active:scale-90
                           ${aiModel === 'imagine' ? 'bg-pink-600 text-white shadow-lg' : (theme === 'dark' ? 'bg-slate-800 text-slate-400' : 'bg-slate-200 text-slate-500')}`}>
                           <i className="fas fa-magic text-sm"></i>
@@ -1239,10 +1283,23 @@ const App: React.FC = () => {
 
                       <button 
                         type="button"
-                        onClick={() => { setAiModel('gemini'); setIsModelMenuOpen(false); }}
+                        onClick={() => { 
+                          if (!user) {
+                            handleAuthClick('signin');
+                            setIsModelMenuOpen(false);
+                            return;
+                          }
+                          setAiModel('gemini'); 
+                          setIsModelMenuOpen(false); 
+                        }}
                         className={`w-full flex items-start gap-4 p-4 rounded-2xl transition-all text-left group relative
                           ${aiModel === 'gemini' ? (theme === 'dark' ? 'bg-indigo-600/20' : 'bg-indigo-50') : (theme === 'dark' ? 'hover:bg-white/5' : 'hover:bg-slate-50')}`}
                       >
+                        {!user && (
+                          <div className="absolute top-4 right-4 flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-slate-500 text-white text-[8px] font-black tracking-widest uppercase">
+                            <i className="fas fa-lock text-[7px]"></i> LOGIN
+                          </div>
+                        )}
                         <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-transform group-active:scale-90
                           ${aiModel === 'gemini' ? 'bg-indigo-600 text-white shadow-lg' : (theme === 'dark' ? 'bg-slate-800 text-slate-400' : 'bg-slate-200 text-slate-500')}`}>
                           <i className="fas fa-brain text-sm"></i>
@@ -1256,6 +1313,11 @@ const App: React.FC = () => {
                       <button 
                         type="button"
                         onClick={() => { 
+                          if (!user) {
+                            handleAuthClick('signin');
+                            setIsModelMenuOpen(false);
+                            return;
+                          }
                           if (!isPro) { 
                             navigate('/plans');
                             setIsModelMenuOpen(false);
@@ -1265,9 +1327,13 @@ const App: React.FC = () => {
                         }}
                         className={`w-full flex items-start gap-4 p-4 rounded-2xl transition-all text-left group relative
                           ${aiModel === 'motion' ? (theme === 'dark' ? 'bg-orange-600/20' : 'bg-orange-50') : (theme === 'dark' ? 'hover:bg-white/5' : 'hover:bg-slate-50')}`}
-                        title={!isPro ? "Upgrade to Pro to use Motion Mode" : ""}
+                        title={!user ? "Sign in to use Motion" : (!isPro ? "Upgrade to Pro to use Motion Mode" : "")}
                       >
-                        {!isPro && (
+                        {!user ? (
+                          <div className="absolute top-4 right-4 flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-slate-500 text-white text-[8px] font-black tracking-widest uppercase">
+                            <i className="fas fa-lock text-[7px]"></i> LOGIN
+                          </div>
+                        ) : !isPro && (
                           <div className="absolute top-4 right-4 flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-orange-500 text-white text-[8px] font-black tracking-widest uppercase">
                             <i className="fas fa-lock text-[7px]"></i> PRO
                           </div>
@@ -1284,6 +1350,11 @@ const App: React.FC = () => {
 
                       <div 
                         onClick={() => { 
+                          if (!user) {
+                            handleAuthClick('signin');
+                            setIsModelMenuOpen(false);
+                            return;
+                          }
                           if (!isPro) { 
                             navigate('/plans');
                             setIsModelMenuOpen(false);
@@ -1295,7 +1366,7 @@ const App: React.FC = () => {
                           ${aiModel === 'multi' ? (theme === 'dark' ? 'bg-amber-600/20' : 'bg-amber-50') : (theme === 'dark' ? 'hover:bg-white/5' : 'hover:bg-slate-50')}`}
                         role="button"
                         tabIndex={0}
-                        title={!isPro ? "Upgrade to Pro to use Multi Chat" : ""}
+                        title={!user ? "Sign in to use Multi Chat" : (!isPro ? "Upgrade to Pro to use Multi Chat" : "")}
                       >
                         {/* Video Preview on Hover with Fullscreen trigger */}
                         <div className="absolute inset-0 opacity-0 group-hover/multi-btn:opacity-100 transition-opacity duration-500 pointer-events-none">
@@ -1321,7 +1392,11 @@ const App: React.FC = () => {
                         </div>
 
                         <div className="relative z-10 flex items-start gap-4 w-full">
-                          {!isPro && (
+                          {!user ? (
+                            <div className="absolute top-0 right-0 flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-slate-500 text-white text-[8px] font-black tracking-widest uppercase shadow-lg">
+                              <i className="fas fa-lock text-[7px]"></i> LOGIN
+                            </div>
+                          ) : !isPro && (
                             <div className="absolute top-0 right-0 flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-amber-500 text-white text-[8px] font-black tracking-widest uppercase shadow-lg">
                               <i className="fas fa-lock text-[7px]"></i> PRO
                             </div>
@@ -1414,11 +1489,22 @@ const App: React.FC = () => {
                           />
                           <button 
                             type="button"
-                            onClick={() => fileInputRef.current?.click()}
-                            className={`w-8 h-8 shrink-0 flex items-center justify-center transition-all hover:scale-110 active:scale-95 ${theme === 'dark' ? 'text-slate-500 hover:text-white' : 'text-slate-400 hover:text-slate-600'}`}
-                            title="Attach Image"
+                            onClick={() => {
+                              if (!user) {
+                                handleAuthClick('signin');
+                                return;
+                              }
+                              fileInputRef.current?.click();
+                            }}
+                            className={`w-8 h-8 shrink-0 flex items-center justify-center transition-all hover:scale-110 active:scale-95 ${theme === 'dark' ? 'text-slate-500 hover:text-white' : 'text-slate-400 hover:text-slate-600'} relative`}
+                            title={user ? "Attach Image" : "Sign in to attach images"}
                           >
                             <i className="fas fa-image text-base"></i>
+                            {!user && (
+                              <div className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-blue-500 flex items-center justify-center border-2 border-slate-900">
+                                <i className="fas fa-lock text-[6px] text-white"></i>
+                              </div>
+                            )}
                           </button>
                         </>
                       )}
