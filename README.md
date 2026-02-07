@@ -1,4 +1,3 @@
-# DiscoverNepal 🇳🇵
 
 **ChatWithAdk** is a modern, real-time, full-stack chat application designed to empower seamless communication—tailored for the Nepali community and beyond. Combining robust authentication, intuitive UI/UX, and scalable backend technologies, it enables one-on-one and group conversations in a secure, responsive environment.
 
@@ -52,3 +51,4 @@
 ```bash
 git clone https://github.com/Bibek-Adhikari/ChatWithAdk.git
 cd ChatWithAdk
+
