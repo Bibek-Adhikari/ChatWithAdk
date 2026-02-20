@@ -5,6 +5,8 @@ import { useNavigate, Link } from 'react-router-dom';
 import { User, signOut } from 'firebase/auth';
 import { auth } from '../services/firebase';
 
+import VSCodeCompiler from './VSCodeCompiler'
+
 interface SidebarProps {
   sessions: ChatSession[];
   currentSessionId: string;
@@ -25,6 +27,7 @@ interface SidebarProps {
   usageCount: number;
   dailyLimit: number;
   isPro: boolean;
+  onOpenCompiler: () => void;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ 
@@ -46,7 +49,8 @@ const Sidebar: React.FC<SidebarProps> = ({
   onOpenPlans,
   usageCount,
   dailyLimit,
-  isPro
+  isPro,
+  onOpenCompiler
 }) => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
@@ -156,6 +160,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             >
               <i className="fas fa-plus-circle text-lg opacity-80 group-hover:scale-110 transition-transform"></i>
               <span>New Thread</span>
+              
             </button>
           </div>
 
@@ -191,6 +196,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                   <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 transition-all ${currentSessionId === session.id ? 'bg-blue-500/20 rotate-12' : 'bg-slate-800/30 group-hover:scale-110'}`}>
                      <i className={`fas ${currentSessionId === session.id ? 'fa-comment-dots text-blue-400' : 'fa-comment opacity-30 text-xs'}`}></i>
                   </div>
+                  
 
                   {editingId === session.id ? (
                     <input
@@ -307,10 +313,17 @@ const Sidebar: React.FC<SidebarProps> = ({
             )}
           </div>
 
+      
+<button 
+  onClick={onOpenCompiler}
+  className={`w-full mt-2 py-3 bg-blue-600/10 hover:bg-blue-600/20 text-blue-400 rounded-xl text-[10px] font-black tracking-widest border border-blue-600/20 transition-all active:scale-95 flex items-center justify-center gap-2`}
+>
+  <i className="fas fa-code"></i>
+  VSCODE COMPILER
+</button>
         </div>
       </aside>
     </>
   );
 };
-
 export default Sidebar;

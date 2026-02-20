@@ -19,6 +19,7 @@ import AdminDashboardModal from './components/AdminDashboardModal';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { adminService } from './services/adminService'; 
 import { fetchLatestNews, shouldFetchNews } from './services/newsService';
+import VSCodeCompiler from './components/VSCodeCompiler'
 
 
 const ADMIN_EMAILS = [
@@ -78,6 +79,7 @@ const App: React.FC = () => {
   const [isProfileOpen, setIsProfileOpen] = useState<{ open: boolean; showPricing: boolean }>({ open: false, showPricing: false });
   const [isAdminDashboardOpen, setIsAdminDashboardOpen] = useState(false);
   const [isPlansOpen, setIsPlansOpen] = useState(false);
+  const [isCompilerOpen, setIsCompilerOpen] = useState(false);
   const [imageError, setImageError] = useState(false);
 
   const [selectedVoiceURI, setSelectedVoiceURI] = useState<string>(() => {
@@ -932,6 +934,7 @@ const App: React.FC = () => {
         usageCount={usageCount}
         dailyLimit={isPro ? 1000 : dailyLimit}
         isPro={isPro}
+        onOpenCompiler={() => setIsCompilerOpen(true)}
       />
 
 
@@ -1647,6 +1650,13 @@ const App: React.FC = () => {
               <i className="fas fa-times text-xl"></i>
             </button>
           </div>
+        </div>
+      )}
+
+      {/* VSCode Compiler Overlay */}
+      {isCompilerOpen && (
+        <div className="fixed inset-0 z-[200] animate-in zoom-in-95 duration-200">
+          <VSCodeCompiler onClose={() => setIsCompilerOpen(false)} />
         </div>
       )}
 
