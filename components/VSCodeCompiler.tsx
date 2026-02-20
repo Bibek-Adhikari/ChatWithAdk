@@ -17,7 +17,8 @@ import {
   ExternalLink,
   MessageSquare,
   ChevronDown,
-  Layout
+  Layout,
+  Eye
 } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -138,6 +139,10 @@ export default function VSCodeCompiler({ onClose }: VSCodeCompilerProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
   const [isLanguageMenuOpen, setIsLanguageMenuOpen] = useState(false);
+  const [isPreviewVisible, setIsPreviewVisible] = useState(true);
+  const [isConsoleVisible, setIsConsoleVisible] = useState(true);
+  const [isEditorVisible, setIsEditorVisible] = useState(true);
+  const [activeOutputTab, setActiveOutputTab] = useState<'preview' | 'console'>('preview');
 
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -172,6 +177,15 @@ export default function VSCodeCompiler({ onClose }: VSCodeCompilerProps) {
   useEffect(() => {
     runCode();
   }, []);
+
+  // Auto-switch output tab based on language
+  useEffect(() => {
+    if (activeLanguage === 'web') {
+      setActiveOutputTab('preview');
+    } else {
+      setActiveOutputTab('console');
+    }
+  }, [activeLanguage]);
 
   // Handle Resizing Logic
   useEffect(() => {
@@ -487,10 +501,10 @@ ${jsCode}
       {/* --- Header --- */}
       <header className="h-14 bg-[#252526] border-b border-[#333] flex items-center justify-between px-4 shrink-0 z-20">
         <div className="flex items-center gap-2">
-          <div className="bg-blue-600 p-1.5 rounded-lg">
+          <div className="bg-blue-600 p-1.5 rounded-lg hidden lg:flex">
             <FileCode size={20} className="text-white" />
           </div>
-          <h1 className="font-bold text-white tracking-tight">CodeAdk</h1>
+          <h1 className="font-bold text-white tracking-tight hidden lg:block">CodeAdk</h1>
           <button 
             onClick={onClose}
             className="flex items-center gap-2 px-3 py-1.5 bg-blue-600/10 hover:bg-blue-600/20 text-blue-400 text-sm font-semibold rounded-lg transition-all border border-blue-500/20 active:scale-95"
@@ -562,32 +576,72 @@ ${jsCode}
             )}
           </div>
 
-        <div className="flex items-center gap-2">
-          <button onClick={loadTemplate} className="flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-[#3c3c3c] rounded transition-colors">
-            <LayoutTemplate size={16} /> Template
+        <div className="flex items-center gap-1 sm:gap-2">
+          {/* Global Toggles (Header) - Desktop Only */}
+          <div className="hidden lg:flex items-center gap-1 bg-[#1e1e1e] p-1 rounded-lg border border-[#333]">
+            <button 
+              onClick={() => setIsEditorVisible(!isEditorVisible)}
+              className={cn(
+                "p-1.5 rounded transition-all flex items-center gap-1 group",
+                isEditorVisible 
+                  ? "bg-blue-600/20 text-blue-400 border border-blue-500/30" 
+                  : "bg-orange-500/10 text-orange-400 border border-orange-500/30 hover:bg-orange-500/20"
+              )}
+              title={isEditorVisible ? "Hide Editor" : "Unhide Editor"}
+            >
+              <FileCode size={16} />
+              {!isEditorVisible && <span className="text-[10px] font-bold uppercase hidden sm:inline pr-1">Unhide</span>}
+            </button>
+            <button 
+              onClick={() => setIsPreviewVisible(!isPreviewVisible)}
+              className={cn(
+                "p-1.5 rounded transition-all flex items-center gap-1 group",
+                isPreviewVisible 
+                  ? "bg-blue-600/20 text-blue-400 border border-blue-500/30" 
+                  : "bg-orange-500/10 text-orange-400 border border-orange-500/30 hover:bg-orange-500/20"
+              )}
+              title={isPreviewVisible ? "Hide Preview" : "Unhide Preview"}
+            >
+              <Monitor size={16} />
+              {!isPreviewVisible && <span className="text-[10px] font-bold uppercase hidden sm:inline pr-1">Unhide</span>}
+            </button>
+            <button 
+              onClick={() => setIsConsoleVisible(!isConsoleVisible)}
+              className={cn(
+                "p-1.5 rounded transition-all flex items-center gap-1 group",
+                isConsoleVisible 
+                  ? "bg-blue-600/20 text-blue-400 border border-blue-500/30" 
+                  : "bg-orange-500/10 text-orange-400 border border-orange-500/30 hover:bg-orange-500/20"
+              )}
+              title={isConsoleVisible ? "Hide Console" : "Unhide Console"}
+            >
+              <Terminal size={16} />
+              {!isConsoleVisible && <span className="text-[10px] font-bold uppercase hidden sm:inline pr-1">Unhide</span>}
+            </button>
+          </div>
+
+          <div className="w-px h-6 bg-[#333] mx-0.5 sm:mx-1 hidden lg:block"></div>
+
+          <button onClick={loadTemplate} className="p-1.5 sm:px-3 sm:py-1.5 text-sm hover:bg-[#3c3c3c] rounded transition-colors" title="Load Template">
+            <LayoutTemplate size={16} /> <span className="hidden lg:inline text-xs font-semibold">Template</span>
           </button>
-          <button onClick={clearAll} className="flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-[#3c3c3c] rounded transition-colors text-red-400">
-            <Trash2 size={16} /> Clear
-          </button>
-          <button onClick={downloadCode} className="flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-[#3c3c3c] rounded transition-colors text-blue-400">
-            <Download size={16} /> Download
-          </button>
+          
           <button 
             onClick={runCode} 
             disabled={isRunning}
             className={cn(
-              "flex items-center gap-2 px-4 py-1.5 rounded-lg font-bold text-sm transition-all active:scale-95 shadow-lg",
+              "flex items-center gap-2 px-4 py-1.5 sm:px-5 sm:py-2 rounded-xl font-bold text-xs sm:text-sm transition-all active:scale-95 shadow-lg relative overflow-hidden group/run",
               isRunning
                 ? "bg-gray-600 text-gray-300 cursor-not-allowed"
-                : "bg-green-600 hover:bg-green-500 text-white shadow-green-600/20"
+                : "bg-blue-600 hover:bg-blue-500 text-white shadow-blue-600/30"
             )}
           >
             {isRunning ? (
-              <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+              <div className="w-3 h-3 sm:w-4 sm:h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
             ) : (
-              <Play size={16} fill="white" />
+              <Play size={14} fill="currentColor" className="sm:w-[16px] sm:h-[16px] group-hover/run:scale-110 transition-transform" />
             )}
-            {isRunning ? 'Running...' : 'Run'}
+            <span className="">{isRunning ? '...' : 'Run'}</span>
           </button>
           {onClose && (
             <button 
@@ -602,42 +656,58 @@ ${jsCode}
       </header>
 
       {/* --- Main Workspace --- */}
-      <div className="flex flex-1 overflow-hidden relative" ref={containerRef}>
+      <div className="flex flex-col lg:flex-row flex-1 overflow-hidden relative" ref={containerRef}>
         
         {/* Editor Section */}
-        {!isFullscreen && (
+        {isEditorVisible && !isFullscreen && (
           <div 
-            className="flex flex-col bg-[#1e1e1e] border-r border-[#333] relative"
-            style={{ width: `${splitRatio}%` }}
+            className={cn(
+              "flex flex-col bg-[#1e1e1e] border-[#333] relative order-2 lg:order-1 transition-all duration-300",
+              "border-t lg:border-t-0 lg:border-r"
+            )}
+            style={{ 
+              width: window.innerWidth >= 1024 ? (isPreviewVisible || isConsoleVisible ? `${splitRatio}%` : '100%') : '100%',
+              height: window.innerWidth < 1024 ? (isPreviewVisible || isConsoleVisible ? '50%' : '100%') : '100%'
+            }}
           >
-            {/* Tabs */}
-            <div className="flex bg-[#252526]">
-              {activeLanguage === 'web' ? (
-                (['html', 'css', 'js'] as Tab[]).map((tab) => (
+            {/* Tabs & Editor Header */}
+            <div className="flex items-center justify-between bg-[#252526] pr-2">
+              <div className="flex">
+                {activeLanguage === 'web' ? (
+                  (['html', 'css', 'js'] as Tab[]).map((tab) => (
+                    <button
+                      key={tab}
+                      onClick={() => setActiveTab(tab)}
+                      className={cn(
+                        "px-4 py-2 text-xs uppercase font-medium border-t-2 transition-colors flex items-center gap-2",
+                        activeTab === tab 
+                          ? "bg-[#1e1e1e] text-white border-blue-500"
+                          : "bg-[#2d2d2d] text-gray-500 border-transparent hover:bg-[#2a2d2e] hover:text-gray-300"
+                      )}
+                    >
+                      {tab === 'html' && <span className="text-orange-500">&lt;/&gt;</span>}
+                      {tab === 'css' && <span className="text-blue-400">#</span>}
+                      {tab === 'js' && <span className="text-yellow-400">JS</span>}
+                      {tab}
+                    </button>
+                  ))
+                ) : (
                   <button
-                    key={tab}
-                    onClick={() => setActiveTab(tab)}
-                    className={cn(
-                      "px-4 py-2 text-xs uppercase font-medium border-t-2 transition-colors flex items-center gap-2",
-                      activeTab === tab 
-                        ? "bg-[#1e1e1e] text-white border-blue-500"
-                        : "bg-[#2d2d2d] text-gray-500 border-transparent hover:bg-[#2a2d2e] hover:text-gray-300"
-                    )}
+                    className="px-4 py-2 text-xs uppercase font-medium border-t-2 transition-colors flex items-center gap-2 bg-[#1e1e1e] text-white border-blue-500"
                   >
-                    {tab === 'html' && <span className="text-orange-500">&lt;/&gt;</span>}
-                    {tab === 'css' && <span className="text-blue-400">#</span>}
-                    {tab === 'js' && <span className="text-yellow-400">JS</span>}
-                    {tab}
+                    <FileCode size={14} className="text-blue-400" />
+                    main.{activeLanguage === 'python' ? 'py' : activeLanguage === 'rust' ? 'rs' : activeLanguage === 'kotlin' ? 'kt' : activeLanguage === 'csharp' ? 'cs' : activeLanguage === 'typescript' ? 'ts' : activeLanguage}
                   </button>
-                ))
-              ) : (
-                <button
-                  className="px-4 py-2 text-xs uppercase font-medium border-t-2 transition-colors flex items-center gap-2 bg-[#1e1e1e] text-white border-blue-500"
-                >
-                  <FileCode size={14} className="text-blue-400" />
-                  main.{activeLanguage === 'python' ? 'py' : activeLanguage === 'rust' ? 'rs' : activeLanguage === 'kotlin' ? 'kt' : activeLanguage === 'csharp' ? 'cs' : activeLanguage === 'typescript' ? 'ts' : activeLanguage}
-                </button>
-              )}
+                )}
+              </div>
+              
+              <button 
+                onClick={() => setIsEditorVisible(false)}
+                className="p-1 hover:bg-[#3c3c3c] rounded text-gray-500 hover:text-white transition-colors"
+                title="Hide Editor"
+              >
+                <X size={14} />
+              </button>
             </div>
 
             {/* Monaco Editor */}
@@ -663,65 +733,106 @@ ${jsCode}
           </div>
         )}
 
-        {/* Resize Handle */}
-        {!isFullscreen && (
+        {/* Resize Handle (Desktop Only) */}
+        {!isFullscreen && isEditorVisible && (isPreviewVisible || isConsoleVisible) && (
           <div 
-            className="w-1 bg-[#333] hover:bg-blue-500 cursor-col-resize z-10 transition-colors"
+            className="hidden lg:block w-1 bg-[#333] hover:bg-blue-500 cursor-col-resize z-10 transition-colors"
             onMouseDown={() => setIsDragging(true)}
           />
         )}
 
-        {/* Preview Section */}
-        <div 
-          className="flex flex-col bg-white h-full transition-all duration-300"
-          style={{ width: isFullscreen ? '100%' : `${100 - splitRatio}%` }}
-        >
-          {/* Preview Toolbar */}
-          <div className="h-10 bg-[#f3f4f6] border-b border-gray-200 flex items-center justify-between px-4 shrink-0">
-            <div className="flex items-center gap-2 text-gray-600">
-              <span className="text-xs font-bold uppercase tracking-wider">Preview</span>
-            </div>
-            
-            <div className="flex items-center gap-1 bg-gray-200 p-1 rounded-lg">
+        {/* Preview & Console Section */}
+        {(isPreviewVisible || isConsoleVisible) && (
+          <div 
+            className="flex flex-col bg-white h-full transition-all duration-300 order-1 lg:order-2"
+            style={{ 
+              width: window.innerWidth >= 1024 ? (isFullscreen || !isEditorVisible ? '100%' : `${100 - splitRatio}%`) : '100%',
+              height: window.innerWidth < 1024 ? (isEditorVisible ? '50%' : '100%') : '100%'
+            }}
+          >
+            {/* Mobile Tab Switcher */}
+            <div className="flex lg:hidden bg-gray-100 border-b border-gray-200">
               <button 
-                onClick={openExternalPreview}
-                className="p-1.5 rounded transition-all text-gray-500 hover:text-blue-600 hover:bg-white active:scale-95"
-                title="Open in New Tab"
+                onClick={() => setActiveOutputTab('preview')}
+                className={cn(
+                  "flex-1 px-4 py-2 text-xs font-bold uppercase transition-all flex items-center justify-center gap-2",
+                  activeOutputTab === 'preview' ? "bg-white text-blue-600 shadow-inner" : "text-gray-500 hover:text-gray-700"
+                )}
               >
-                <ExternalLink size={16} />
-              </button>
-              <div className="w-px h-4 bg-gray-300 mx-1"></div>
-              <button 
-                onClick={() => setDevice('desktop')} 
-                className={cn("p-1.5 rounded transition-all", device === 'desktop' ? "bg-white shadow-sm text-blue-600" : "text-gray-500 hover:text-gray-700")}
-                title="Desktop View"
-              >
-                <Monitor size={16} />
+                <Monitor size={14} /> Preview
               </button>
               <button 
-                onClick={() => setDevice('tablet')} 
-                className={cn("p-1.5 rounded transition-all", device === 'tablet' ? "bg-white shadow-sm text-blue-600" : "text-gray-500 hover:text-gray-700")}
-                title="Tablet View"
+                onClick={() => setActiveOutputTab('console')}
+                className={cn(
+                  "flex-1 px-4 py-2 text-xs font-bold uppercase transition-all flex items-center justify-center gap-2 border-l border-gray-200",
+                  activeOutputTab === 'console' ? "bg-white text-blue-600 shadow-inner" : "text-gray-500 hover:text-gray-700"
+                )}
               >
-                <Tablet size={16} />
-              </button>
-              <button 
-                onClick={() => setDevice('mobile')} 
-                className={cn("p-1.5 rounded transition-all", device === 'mobile' ? "bg-white shadow-sm text-blue-600" : "text-gray-500 hover:text-gray-700")}
-                title="Mobile View"
-              >
-                <Smartphone size={16} />
+                <Terminal size={14} /> Console
               </button>
             </div>
 
-            <button 
-              onClick={() => setIsFullscreen(!isFullscreen)}
-              className="text-gray-500 hover:text-gray-800 transition-colors"
-              title={isFullscreen ? "Exit Fullscreen" : "Fullscreen Preview"}
-            >
-              {isFullscreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
-            </button>
-          </div>
+            {/* Preview Section */}
+            {isPreviewVisible && (activeOutputTab === 'preview' || window.innerWidth >= 1024) && (
+              <div className="flex flex-col flex-1 overflow-hidden">
+                {/* Preview Toolbar */}
+                <div className="h-10 bg-[#f3f4f6] border-b border-gray-200 flex items-center justify-between px-4 shrink-0">
+                  <div className="flex items-center gap-2 text-gray-600">
+                    <span className="text-xs font-bold uppercase tracking-wider">Preview</span>
+                  </div>
+                  
+                  <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1 bg-gray-200 p-1 rounded-lg">
+                      <button 
+                        onClick={openExternalPreview}
+                        className="p-1.5 rounded transition-all text-gray-500 hover:text-blue-600 hover:bg-white active:scale-95"
+                        title="Open in New Tab"
+                      >
+                        <ExternalLink size={16} />
+                      </button>
+                      <div className="w-px h-4 bg-gray-300 mx-1"></div>
+                      <button 
+                        onClick={() => setDevice('desktop')} 
+                        className={cn("p-1.5 rounded transition-all", device === 'desktop' ? "bg-white shadow-sm text-blue-600" : "text-gray-500 hover:text-gray-700")}
+                        title="Desktop View"
+                      >
+                        <Monitor size={16} />
+                      </button>
+                      <button 
+                        onClick={() => setDevice('tablet')} 
+                        className={cn("p-1.5 rounded transition-all", device === 'tablet' ? "bg-white shadow-sm text-blue-600" : "text-gray-500 hover:text-gray-700")}
+                        title="Tablet View"
+                      >
+                        <Tablet size={16} />
+                      </button>
+                      <button 
+                        onClick={() => setDevice('mobile')} 
+                        className={cn("p-1.5 rounded transition-all", device === 'mobile' ? "bg-white shadow-sm text-blue-600" : "text-gray-500 hover:text-gray-700")}
+                        title="Mobile View"
+                      >
+                        <Smartphone size={16} />
+                      </button>
+                    </div>
+
+                    <div className="w-px h-6 bg-gray-300 mx-1 hidden sm:block"></div>
+
+                    <button 
+                      onClick={() => setIsFullscreen(!isFullscreen)}
+                      className="text-gray-500 hover:text-gray-800 transition-colors p-1"
+                      title={isFullscreen ? "Exit Fullscreen" : "Fullscreen Preview"}
+                    >
+                      {isFullscreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
+                    </button>
+
+                    <button 
+                      onClick={() => setIsPreviewVisible(false)}
+                      className="p-1.5 hover:bg-gray-200 rounded text-gray-500 hover:text-red-500 transition-colors"
+                      title="Hide Preview"
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+                </div>
 
           {/* Iframe Container / Placeholder */}
           <div className="flex-1 bg-gray-100 flex justify-center overflow-auto p-4 relative">
@@ -759,20 +870,34 @@ ${jsCode}
               </div>
             )}
           </div>
+        </div>
+      )}
 
           {/* Console Panel */}
-          {!isFullscreen && (
-            <div className="h-48 bg-[#1e1e1e] border-t border-[#333] flex flex-col shrink-0">
+          {isConsoleVisible && !isFullscreen && (activeOutputTab === 'console' || window.innerWidth >= 1024) && (
+            <div className={cn(
+              "bg-[#1e1e1e] border-t border-[#333] flex flex-col shrink-0 transition-all",
+              window.innerWidth < 1024 ? "flex-1" : "h-48"
+            )}>
               <div className="h-8 bg-[#252526] flex items-center justify-between px-4 border-b border-[#333]">
                 <div className="flex items-center gap-2 text-xs text-gray-400 font-bold uppercase">
                   <Terminal size={12} /> Console
                 </div>
-                <button 
-                  onClick={clearConsole}
-                  className="text-[10px] text-gray-500 hover:text-white uppercase tracking-wider"
-                >
-                  Clear Console
-                </button>
+                <div className="flex items-center gap-3">
+                  <button 
+                    onClick={clearConsole}
+                    className="text-[10px] text-gray-500 hover:text-white uppercase tracking-wider"
+                  >
+                    Clear Console
+                  </button>
+                  <button 
+                    onClick={() => setIsConsoleVisible(false)}
+                    className="p-1 hover:bg-[#3c3c3c] rounded text-gray-500 hover:text-red-400 transition-colors"
+                    title="Hide Console"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
               </div>
               <div className="flex-1 overflow-y-auto p-2 font-mono text-xs space-y-1">
                 {logs.length === 0 && (
@@ -797,6 +922,30 @@ ${jsCode}
             </div>
           )}
         </div>
+      )}
+
+      {/* Fallback if everything is hidden */}
+      {!isEditorVisible && !isPreviewVisible && !isConsoleVisible && (
+        <div className="flex-1 flex flex-col items-center justify-center bg-[#1e1e1e] text-center p-8 animate-in fade-in zoom-in duration-300">
+          <div className="w-20 h-20 bg-[#252526] rounded-full flex items-center justify-center mb-6 border border-[#333] shadow-2xl">
+            <Layout size={40} className="text-gray-500" />
+          </div>
+          <h2 className="text-xl font-bold text-white mb-2">Workspace is Empty</h2>
+          <p className="text-gray-400 max-w-sm mb-8">
+            You've hidden all panels. Click the buttons in the header to unhide them, or use the shortcut below.
+          </p>
+          <button 
+            onClick={() => {
+              setIsEditorVisible(true);
+              setIsPreviewVisible(true);
+              setIsConsoleVisible(true);
+            }}
+            className="flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold transition-all active:scale-95 shadow-lg shadow-blue-600/20"
+          >
+            <Eye size={20} /> Show Everything
+          </button>
+        </div>
+      )}
       </div>
     </div>
   );
