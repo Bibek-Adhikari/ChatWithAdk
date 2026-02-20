@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import Editor from '@monaco-editor/react';
+import Editor, { OnMount } from '@monaco-editor/react';
+import { emmetHTML, emmetCSS, emmetJSX } from 'emmet-monaco-es';
 import { 
   Play, 
   Trash2, 
@@ -12,7 +13,11 @@ import {
   Minimize2,
   Terminal,
   LayoutTemplate,
-  X
+  X,
+  ExternalLink,
+  MessageSquare,
+  ChevronDown,
+  Layout
 } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -23,7 +28,8 @@ function cn(...inputs: ClassValue[]) {
 }
 
 // --- Types ---
-type Tab = 'html' | 'css' | 'js';
+type Tab = 'html' | 'css' | 'js' | 'code';
+type Language = 'web' | 'python' | 'php' | 'c' | 'cpp' | 'csharp' | 'rust' | 'kotlin' | 'java' | 'go' | 'ruby' | 'typescript';
 type Device = 'desktop' | 'tablet' | 'mobile';
 type LogType = 'log' | 'error' | 'warn' | 'info';
 
@@ -33,6 +39,20 @@ interface Log {
   message: string;
   timestamp: string;
 }
+
+const LANGUAGE_CONFIGS: Record<Exclude<Language, 'web'>, { label: string, monaco: string, compiler: string, template: string }> = {
+  python: { label: 'Python', monaco: 'python', compiler: 'cpython-3.14.0', template: 'print("Hello from Python! 🐍")' },
+  php: { label: 'PHP', monaco: 'php', compiler: 'php-8.3.12', template: '<?php\necho "Hello from PHP! 🐘";' },
+  c: { label: 'C', monaco: 'c', compiler: 'gcc-13.2.0-c', template: '#include <stdio.h>\n\nint main() {\n    printf("Hello from C! 🛠️\\n");\n    return 0;\n}' },
+  cpp: { label: 'C++', monaco: 'cpp', compiler: 'gcc-13.2.0', template: '#include <iostream>\n\nint main() {\n    std::cout << "Hello from C++! 🚀" << std::endl;\n    return 0;\n}' },
+  csharp: { label: 'C#', monaco: 'csharp', compiler: 'dotnetcore-8.0.402', template: 'using System;\n\nclass Program {\n    static void Main() {\n        Console.WriteLine("Hello from C#! ✨");\n    }\n}' },
+  rust: { label: 'Rust', monaco: 'rust', compiler: 'rust-1.82.0', template: 'fn main() {\n    println!("Hello from Rust! 🦀");\n}' },
+  kotlin: { label: 'Kotlin', monaco: 'kotlin', compiler: 'kotlin', template: 'fun main() {\n    println("Hello from Kotlin! 💜")\n}' },
+  java: { label: 'Java', monaco: 'java', compiler: 'openjdk-jdk-22+36', template: 'public class Main {\n    public static void main(String[] args) {\n        System.out.println("Hello from Java! ☕");\n    }\n}' },
+  go: { label: 'Go', monaco: 'go', compiler: 'go-1.23.2', template: 'package main\n\nimport "fmt"\n\nfunc main() {\n    fmt.Println("Hello from Go! 🐹")\n}' },
+  ruby: { label: 'Ruby', monaco: 'ruby', compiler: 'ruby-3.4.1', template: 'puts "Hello from Ruby! 💎"' },
+  typescript: { label: 'TypeScript', monaco: 'typescript', compiler: 'typescript-5.6.2', template: 'console.log("Hello from TypeScript! 📘");' }
+};
 
 interface VSCodeCompilerProps {
   onClose?: () => void;
@@ -96,18 +116,55 @@ console.info('System initialized.');`;
 export default function VSCodeCompiler({ onClose }: VSCodeCompilerProps) {
   // --- State ---
   const [activeTab, setActiveTab] = useState<Tab>('html');
+  const [activeLanguage, setActiveLanguage] = useState<Language>('web');
+  
   const [htmlCode, setHtmlCode] = useState(DEFAULT_HTML);
   const [cssCode, setCssCode] = useState(DEFAULT_CSS);
   const [jsCode, setJsCode] = useState(DEFAULT_JS);
+  
+  const [polyglotCode, setPolyglotCode] = useState<Record<string, string>>(() => {
+    const codes: Record<string, string> = {};
+    Object.entries(LANGUAGE_CONFIGS).forEach(([key, config]) => {
+      codes[key] = config.template;
+    });
+    return codes;
+  });
+
   const [srcDoc, setSrcDoc] = useState('');
   const [logs, setLogs] = useState<Log[]>([]);
   const [device, setDevice] = useState<Device>('desktop');
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [splitRatio, setSplitRatio] = useState(50); // Percentage for editor width
   const [isDragging, setIsDragging] = useState(false);
+  const [isRunning, setIsRunning] = useState(false);
+  const [isLanguageMenuOpen, setIsLanguageMenuOpen] = useState(false);
 
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const bcRef = useRef<BroadcastChannel | null>(null);
+
+  // Initialize BroadcastChannel
+  useEffect(() => {
+    bcRef.current = new BroadcastChannel('codeadk-preview');
+    
+    // Listen for "ready" message from new tabs
+    bcRef.current.onmessage = (event) => {
+      if (event.data.type === 'ready' && srcDoc) {
+        bcRef.current?.postMessage({ srcDoc });
+      }
+    };
+
+    return () => {
+      bcRef.current?.close();
+    };
+  }, [srcDoc]);
+
+  // Sync srcDoc to BroadcastChannel
+  useEffect(() => {
+    if (srcDoc && bcRef.current) {
+      bcRef.current.postMessage({ srcDoc });
+    }
+  }, [srcDoc]);
 
   // --- Effects ---
 
@@ -158,7 +215,82 @@ export default function VSCodeCompiler({ onClose }: VSCodeCompilerProps) {
 
   // --- Actions ---
 
-  const runCode = useCallback(() => {
+  const runCode = useCallback(async () => {
+    if (activeLanguage !== 'web') {
+      setIsRunning(true);
+      clearConsole();
+      addLog('info', `🚀 Compiling and running ${activeLanguage} code...`);
+      
+      const config = LANGUAGE_CONFIGS[activeLanguage as Exclude<Language, 'web'>];
+      const code = polyglotCode[activeLanguage];
+
+      try {
+        if (activeLanguage === 'kotlin') {
+          // Special case for Kotlin using the official playground API
+          const response = await fetch('https://api.kotlinlang.org/v1/compiler/run', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              args: "",
+              files: [{ name: "File.kt", text: code, publicId: "" }],
+              confType: "java"
+            })
+          });
+          const result = await response.json();
+          if (result.errors && Object.keys(result.errors).length > 0) {
+            Object.values(result.errors).flat().forEach((err: any) => {
+              addLog('error', `${err.message} (${err.interval.start.line}:${err.interval.start.ch})`);
+            });
+          }
+          if (result.text) {
+            // The output is usually colored/formatted, we might need to clean it
+            const cleanOutput = result.text.replace(/<[^>]*>/g, '');
+            addLog('log', cleanOutput);
+          }
+        } else {
+          // Use Wandbox for everything else
+          const response = await fetch('https://wandbox.org/api/compile.json', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              compiler: config.compiler,
+              code: code,
+              save: false
+            })
+          });
+
+          if (!response.ok) {
+            throw new Error(`API returned ${response.status}`);
+          }
+
+          const result = await response.json();
+          
+          if (result.program_output) {
+            addLog('log', result.program_output);
+          }
+          if (result.program_error) {
+            addLog('error', result.program_error);
+          }
+          if (result.compiler_output) {
+            addLog('info', result.compiler_output);
+          }
+          if (result.compiler_error) {
+            addLog('error', result.compiler_error);
+          }
+          if (!result.program_output && !result.program_error && !result.compiler_error) {
+            addLog('info', 'Program executed successfully with no output.');
+          }
+        }
+      } catch (err: any) {
+        addLog('error', `❌ Execution Error: ${err.message}`);
+        console.error('Polyglot Execution Error:', err);
+      } finally {
+        setIsRunning(false);
+      }
+      return;
+    }
+
+    // Web logic
     const doc = `
       <!DOCTYPE html>
       <html>
@@ -207,11 +339,16 @@ export default function VSCodeCompiler({ onClose }: VSCodeCompilerProps) {
         </body>
       </html>
     `;
-    setSrcDoc(doc);
-    addLog('info', 'Code execution started...');
-  }, [htmlCode, cssCode, jsCode]);
+    
+    setSrcDoc('');
+    
+    setTimeout(() => {
+      setSrcDoc(doc);
+      addLog('info', 'Web preview updated.');
+    }, 50);
+  }, [htmlCode, cssCode, jsCode, activeLanguage, polyglotCode]);
 
-  const addLog = (type: LogType, message: string) => {
+  const addLog = useCallback((type: LogType, message: string) => {
     const newLog: Log = {
       id: Math.random().toString(36).substr(2, 9),
       type,
@@ -219,22 +356,31 @@ export default function VSCodeCompiler({ onClose }: VSCodeCompilerProps) {
       timestamp: new Date().toLocaleTimeString()
     };
     setLogs(prev => [...prev, newLog]);
-  };
+  }, []);
 
   const clearConsole = () => setLogs([]);
 
   const clearAll = () => {
-    if (confirm('Are you sure you want to clear all editors?')) {
-      setHtmlCode('');
-      setCssCode('');
-      setJsCode('');
-      setSrcDoc('');
+    if (confirm('Are you sure you want to clear the current editor?')) {
+      if (activeLanguage === 'web') {
+        setHtmlCode('');
+        setCssCode('');
+        setJsCode('');
+        setSrcDoc('');
+      } else {
+        setPolyglotCode(prev => ({ ...prev, [activeLanguage]: '' }));
+      }
       clearConsole();
     }
   };
 
   const downloadCode = () => {
-    const fileContent = `<!DOCTYPE html>
+    let fileContent = '';
+    let fileName = '';
+    let mimeType = 'text/plain';
+
+    if (activeLanguage === 'web') {
+      fileContent = `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -249,37 +395,61 @@ ${jsCode}
 </script>
 </body>
 </html>`;
+      fileName = 'index.html';
+      mimeType = 'text/html';
+    } else {
+      fileContent = polyglotCode[activeLanguage];
+      const ext = activeLanguage === 'python' ? 'py' : activeLanguage === 'rust' ? 'rs' : activeLanguage === 'kotlin' ? 'kt' : activeLanguage === 'csharp' ? 'cs' : activeLanguage === 'typescript' ? 'ts' : activeLanguage;
+      fileName = `main.${ext}`;
+    }
     
-    const blob = new Blob([fileContent], { type: 'text/html' });
+    const blob = new Blob([fileContent], { type: mimeType });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'index.html';
+    a.download = fileName;
     a.click();
     URL.revokeObjectURL(url);
-    addLog('info', 'File downloaded successfully.');
+    addLog('info', `File ${fileName} downloaded successfully.`);
   };
 
   const loadTemplate = () => {
-    setHtmlCode(DEFAULT_HTML);
-    setCssCode(DEFAULT_CSS);
-    setJsCode(DEFAULT_JS);
+    if (activeLanguage === 'web') {
+      setHtmlCode(DEFAULT_HTML);
+      setCssCode(DEFAULT_CSS);
+      setJsCode(DEFAULT_JS);
+    } else {
+      setPolyglotCode(prev => ({ ...prev, [activeLanguage]: LANGUAGE_CONFIGS[activeLanguage as Exclude<Language, 'web'>].template }));
+    }
     // Small timeout to allow state update before running
     setTimeout(runCode, 100);
+  };
+
+  const openExternalPreview = () => {
+    window.open('/preview.html', '_blank');
+    addLog('info', 'Opening external preview tab...');
   };
 
   // --- Render Helpers ---
 
   const getEditorValue = () => {
+    if (activeLanguage !== 'web') {
+      return polyglotCode[activeLanguage];
+    }
     switch (activeTab) {
       case 'html': return htmlCode;
       case 'css': return cssCode;
       case 'js': return jsCode;
+      default: return '';
     }
   };
 
   const handleEditorChange = (value: string | undefined) => {
     if (value === undefined) return;
+    if (activeLanguage !== 'web') {
+      setPolyglotCode(prev => ({ ...prev, [activeLanguage]: value }));
+      return;
+    }
     switch (activeTab) {
       case 'html': setHtmlCode(value); break;
       case 'css': setCssCode(value); break;
@@ -288,11 +458,27 @@ ${jsCode}
   };
 
   const getLanguage = () => {
+    if (activeLanguage !== 'web') {
+      return LANGUAGE_CONFIGS[activeLanguage as Exclude<Language, 'web'>].monaco;
+    }
     switch (activeTab) {
       case 'html': return 'html';
       case 'css': return 'css';
       case 'js': return 'javascript';
+      default: return 'text';
     }
+  };
+
+  const handleEditorMount: OnMount = (editor, monaco) => {
+    // Enable Emmet for common modes
+    emmetHTML(monaco);
+    emmetCSS(monaco);
+    emmetJSX(monaco);
+    
+    // Attempt to broaden Emmet to all files (experimental)
+    // Note: emmet-monaco-es works by registering a provider for specific languages.
+    // We can't easily "enable for all" without listing them, but the ones above 
+    // cover the most requested "fast layout" use cases.
   };
 
   return (
@@ -304,8 +490,77 @@ ${jsCode}
           <div className="bg-blue-600 p-1.5 rounded-lg">
             <FileCode size={20} className="text-white" />
           </div>
-          <h1 className="font-bold text-white tracking-tight">VS Code Compiler</h1>
+          <h1 className="font-bold text-white tracking-tight">CodeAdk</h1>
+          <button 
+            onClick={onClose}
+            className="flex items-center gap-2 px-3 py-1.5 bg-blue-600/10 hover:bg-blue-600/20 text-blue-400 text-sm font-semibold rounded-lg transition-all border border-blue-500/20 active:scale-95"
+          >
+            <MessageSquare size={16} />
+            Back to ChatAdk
+          </button>
         </div>
+
+          <div className="relative">
+            <button 
+              onClick={() => setIsLanguageMenuOpen(!isLanguageMenuOpen)}
+              className="flex items-center gap-2 px-3 py-1.5 bg-[#1e1e1e] hover:bg-[#2d2d2d] text-gray-300 text-xs font-bold rounded-lg border border-[#333] transition-all active:scale-95"
+            >
+              <div className="w-2 h-2 rounded-full bg-blue-500" />
+              {activeLanguage === 'web' ? 'Web (HTML/CSS/JS)' : LANGUAGE_CONFIGS[activeLanguage as Exclude<Language, 'web'>].label}
+              <ChevronDown size={14} className={cn("transition-transform duration-200", isLanguageMenuOpen && "rotate-180")} />
+            </button>
+
+            {isLanguageMenuOpen && (
+              <>
+                <div 
+                  className="fixed inset-0 z-30" 
+                  onClick={() => setIsLanguageMenuOpen(false)} 
+                />
+                <div className="absolute top-full left-0 mt-2 w-56 bg-[#252526] border border-[#333] rounded-xl shadow-2xl overflow-hidden z-40 animate-in fade-in zoom-in duration-200">
+                  <div className="p-2 space-y-1">
+                    <button
+                      onClick={() => {
+                        setActiveLanguage('web');
+                        setActiveTab('html');
+                        setIsLanguageMenuOpen(false);
+                      }}
+                      className={cn(
+                        "w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors",
+                        activeLanguage === 'web' ? "bg-blue-600/20 text-blue-400" : "hover:bg-[#2d2d2d] text-gray-300"
+                      )}
+                    >
+                      <Layout size={16} />
+                      <span className="flex-1 text-left font-semibold">Web (HTML/CSS/JS)</span>
+                      {activeLanguage === 'web' && <div className="w-1.5 h-1.5 rounded-full bg-blue-400" />}
+                    </button>
+                    
+                    <div className="h-px bg-[#333] my-2 mx-2" />
+                    
+                    <div className="max-h-64 overflow-y-auto custom-scrollbar">
+                      {Object.entries(LANGUAGE_CONFIGS).map(([key, config]) => (
+                        <button
+                          key={key}
+                          onClick={() => {
+                            setActiveLanguage(key as Language);
+                            setActiveTab('code');
+                            setIsLanguageMenuOpen(false);
+                          }}
+                          className={cn(
+                            "w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors",
+                            activeLanguage === key ? "bg-blue-600/20 text-blue-400" : "hover:bg-[#2d2d2d] text-gray-300"
+                          )}
+                        >
+                          <Terminal size={16} />
+                          <span className="flex-1 text-left font-semibold">{config.label}</span>
+                          {activeLanguage === key && <div className="w-1.5 h-1.5 rounded-full bg-blue-400" />}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
 
         <div className="flex items-center gap-2">
           <button onClick={loadTemplate} className="flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-[#3c3c3c] rounded transition-colors">
@@ -319,9 +574,20 @@ ${jsCode}
           </button>
           <button 
             onClick={runCode} 
-            className="flex items-center gap-2 px-4 py-1.5 bg-green-600 hover:bg-green-700 text-white text-sm font-semibold rounded transition-all shadow-lg shadow-green-900/20 active:scale-95"
+            disabled={isRunning}
+            className={cn(
+              "flex items-center gap-2 px-4 py-1.5 rounded-lg font-bold text-sm transition-all active:scale-95 shadow-lg",
+              isRunning
+                ? "bg-gray-600 text-gray-300 cursor-not-allowed"
+                : "bg-green-600 hover:bg-green-500 text-white shadow-green-600/20"
+            )}
           >
-            <Play size={16} fill="currentColor" /> Run
+            {isRunning ? (
+              <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+            ) : (
+              <Play size={16} fill="white" />
+            )}
+            {isRunning ? 'Running...' : 'Run'}
           </button>
           {onClose && (
             <button 
@@ -346,23 +612,32 @@ ${jsCode}
           >
             {/* Tabs */}
             <div className="flex bg-[#252526]">
-              {(['html', 'css', 'js'] as Tab[]).map((tab) => (
+              {activeLanguage === 'web' ? (
+                (['html', 'css', 'js'] as Tab[]).map((tab) => (
+                  <button
+                    key={tab}
+                    onClick={() => setActiveTab(tab)}
+                    className={cn(
+                      "px-4 py-2 text-xs uppercase font-medium border-t-2 transition-colors flex items-center gap-2",
+                      activeTab === tab 
+                        ? "bg-[#1e1e1e] text-white border-blue-500"
+                        : "bg-[#2d2d2d] text-gray-500 border-transparent hover:bg-[#2a2d2e] hover:text-gray-300"
+                    )}
+                  >
+                    {tab === 'html' && <span className="text-orange-500">&lt;/&gt;</span>}
+                    {tab === 'css' && <span className="text-blue-400">#</span>}
+                    {tab === 'js' && <span className="text-yellow-400">JS</span>}
+                    {tab}
+                  </button>
+                ))
+              ) : (
                 <button
-                  key={tab}
-                  onClick={() => setActiveTab(tab)}
-                  className={cn(
-                    "px-4 py-2 text-xs uppercase font-medium border-t-2 transition-colors flex items-center gap-2",
-                    activeTab === tab 
-                      ? "bg-[#1e1e1e] text-white border-blue-500"
-                      : "bg-[#2d2d2d] text-gray-500 border-transparent hover:bg-[#2a2d2e] hover:text-gray-300"
-                  )}
+                  className="px-4 py-2 text-xs uppercase font-medium border-t-2 transition-colors flex items-center gap-2 bg-[#1e1e1e] text-white border-blue-500"
                 >
-                  {tab === 'html' && <span className="text-orange-500">&lt;/&gt;</span>}
-                  {tab === 'css' && <span className="text-blue-400">#</span>}
-                  {tab === 'js' && <span className="text-yellow-400">JS</span>}
-                  {tab}
+                  <FileCode size={14} className="text-blue-400" />
+                  main.{activeLanguage === 'python' ? 'py' : activeLanguage === 'rust' ? 'rs' : activeLanguage === 'kotlin' ? 'kt' : activeLanguage === 'csharp' ? 'cs' : activeLanguage === 'typescript' ? 'ts' : activeLanguage}
                 </button>
-              ))}
+              )}
             </div>
 
             {/* Monaco Editor */}
@@ -373,6 +648,7 @@ ${jsCode}
                 value={getEditorValue()}
                 onChange={handleEditorChange}
                 theme="vs-dark"
+                onMount={handleEditorMount}
                 options={{
                   minimap: { enabled: false },
                   fontSize: 14,
@@ -408,6 +684,14 @@ ${jsCode}
             
             <div className="flex items-center gap-1 bg-gray-200 p-1 rounded-lg">
               <button 
+                onClick={openExternalPreview}
+                className="p-1.5 rounded transition-all text-gray-500 hover:text-blue-600 hover:bg-white active:scale-95"
+                title="Open in New Tab"
+              >
+                <ExternalLink size={16} />
+              </button>
+              <div className="w-px h-4 bg-gray-300 mx-1"></div>
+              <button 
                 onClick={() => setDevice('desktop')} 
                 className={cn("p-1.5 rounded transition-all", device === 'desktop' ? "bg-white shadow-sm text-blue-600" : "text-gray-500 hover:text-gray-700")}
                 title="Desktop View"
@@ -439,22 +723,41 @@ ${jsCode}
             </button>
           </div>
 
-          {/* Iframe Container */}
-          <div className="flex-1 bg-gray-100 flex justify-center overflow-auto p-4">
-            <div 
-              className={cn(
-                "bg-white shadow-2xl transition-all duration-500 ease-in-out h-full",
-                device === 'mobile' ? 'w-[375px]' : device === 'tablet' ? 'w-[768px]' : 'w-full'
-              )}
-            >
-              <iframe
-                ref={iframeRef}
-                title="preview"
-                srcDoc={srcDoc}
-                className="w-full h-full border-0"
-                sandbox="allow-scripts allow-modals"
-              />
-            </div>
+          {/* Iframe Container / Placeholder */}
+          <div className="flex-1 bg-gray-100 flex justify-center overflow-auto p-4 relative">
+            {activeLanguage === 'web' ? (
+              <div 
+                className={cn(
+                  "bg-white shadow-2xl transition-all duration-500 ease-in-out h-full",
+                  device === 'mobile' ? 'w-[375px]' : device === 'tablet' ? 'w-[768px]' : 'w-full'
+                )}
+              >
+                <iframe
+                  ref={iframeRef}
+                  title="preview"
+                  srcDoc={srcDoc}
+                  className="w-full h-full border-0"
+                  sandbox="allow-scripts allow-modals allow-same-origin"
+                />
+              </div>
+            ) : (
+              <div className="w-full h-full flex flex-col items-center justify-center bg-gray-50 text-gray-400 p-8 text-center max-w-lg mx-auto rounded-2xl border-2 border-dashed border-gray-200">
+                <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+                  <Terminal size={32} />
+                </div>
+                <h3 className="text-lg font-bold text-gray-700 mb-2">{LANGUAGE_CONFIGS[activeLanguage as Exclude<Language, 'web'>].label} Mode</h3>
+                <p className="text-sm">
+                  This language requires a backend runtime. Your code will be sent to the Code Execution API.
+                </p>
+                <button 
+                  onClick={runCode}
+                  disabled={isRunning}
+                  className="mt-6 px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold transition-all active:scale-95 disabled:opacity-50"
+                >
+                  {isRunning ? 'Executing...' : 'Run main.py'}
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Console Panel */}

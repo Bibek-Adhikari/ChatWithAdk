@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CodeAdk Live Preview</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #1e1e1e;
+            color: #ccc;
+            font-family: sans-serif;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        #placeholder {
+            text-align: center;
+        }
+        iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+            background: white;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="placeholder">
+        <h2>🚀 Waiting for CodeAdk...</h2>
+        <p>Keep the editor tab open to sync changes.</p>
+    </div>
+    <iframe id="preview"></iframe>
+
+    <script>
+        const bc = new BroadcastChannel('codeadk-preview');
+        const iframe = document.getElementById('preview');
+        const placeholder = document.getElementById('placeholder');
+
+        bc.onmessage = (event) => {
+            if (event.data && event.data.srcDoc) {
+                iframe.srcdoc = event.data.srcDoc;
+                iframe.style.display = 'block';
+                placeholder.style.display = 'none';
+                document.title = "CodeAdk Preview (Live)";
+            }
+        };
+
+        // Let the opener know we are ready
+        bc.postMessage({ type: 'ready' });
+    </script>
+</body>
+</html>

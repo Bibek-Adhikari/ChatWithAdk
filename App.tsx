@@ -79,7 +79,10 @@ const App: React.FC = () => {
   const [isProfileOpen, setIsProfileOpen] = useState<{ open: boolean; showPricing: boolean }>({ open: false, showPricing: false });
   const [isAdminDashboardOpen, setIsAdminDashboardOpen] = useState(false);
   const [isPlansOpen, setIsPlansOpen] = useState(false);
-  const [isCompilerOpen, setIsCompilerOpen] = useState(false);
+  const [isCompilerOpen, setIsCompilerOpen] = useState(() => {
+    return window.location.pathname === '/chat/codeadk';
+  });
+  const [previousSessionId, setPreviousSessionId] = useState<string | null>(null);
   const [imageError, setImageError] = useState(false);
 
   const [selectedVoiceURI, setSelectedVoiceURI] = useState<string>(() => {
@@ -259,10 +262,24 @@ const App: React.FC = () => {
     if (urlSessionId && urlSessionId !== currentSessionId) {
       setCurrentSessionId(urlSessionId);
     }
-  }, [urlSessionId]); // If URL changes (browser back/forward or link click), update state
+    // Deep-link: If the route is /chat/codeadk, open the compiler
+    if (location.pathname === '/chat/codeadk' && !isCompilerOpen) {
+      setIsCompilerOpen(true);
+    } else if (location.pathname !== '/chat/codeadk' && isCompilerOpen) {
+      setIsCompilerOpen(false);
+    }
+  }, [urlSessionId, location.pathname]); // If URL changes (browser back/forward or link click), update state
 
   // 2. State to URL Sync: When state changes (handleNewChat, manual select), reflect in URL
   useEffect(() => {
+    if (isCompilerOpen) {
+      if (location.pathname !== '/chat/codeadk') {
+        setPreviousSessionId(currentSessionId);
+        navigate('/chat/codeadk', { replace: true });
+      }
+      return;
+    }
+
     if (currentSessionId) {
       const targetPath = `/chat/${currentSessionId}`;
       if (location.pathname !== targetPath) {
@@ -272,7 +289,7 @@ const App: React.FC = () => {
       const key = user ? `${STORAGE_KEY}_last_session_id_${user.uid}` : `${STORAGE_KEY}_last_session_id_guest`;
       localStorage.setItem(key, currentSessionId);
     }
-  }, [currentSessionId, navigate]); // Removed location/user dependencies to focus on the change event
+  }, [currentSessionId, navigate, isCompilerOpen]); // Removed location/user dependencies to focus on the change event
 
   // Handle "relogin" (auth change) to reset sync state and trigger new chat
   useEffect(() => {
@@ -289,7 +306,7 @@ const App: React.FC = () => {
       const isVirtual = currentSessionId.startsWith('new_');
       
       // Only auto-redirect if we are at a chat URL that doesn't exist anymore AND it's not a virtual session
-      if (!exists && !isVirtual && !status.isTyping && location.pathname.startsWith('/chat/')) {
+      if (!exists && !isVirtual && !status.isTyping && location.pathname.startsWith('/chat/') && location.pathname !== '/chat/codeadk') {
          console.warn("Session not found, starting handleNewChat...");
          handleNewChat();
       }
@@ -934,7 +951,10 @@ const App: React.FC = () => {
         usageCount={usageCount}
         dailyLimit={isPro ? 1000 : dailyLimit}
         isPro={isPro}
-        onOpenCompiler={() => setIsCompilerOpen(true)}
+        onOpenCompiler={() => {
+          setPreviousSessionId(currentSessionId);
+          setIsCompilerOpen(true);
+        }}
       />
 
 
@@ -1656,7 +1676,12 @@ const App: React.FC = () => {
       {/* VSCode Compiler Overlay */}
       {isCompilerOpen && (
         <div className="fixed inset-0 z-[200] animate-in zoom-in-95 duration-200">
-          <VSCodeCompiler onClose={() => setIsCompilerOpen(false)} />
+          <VSCodeCompiler onClose={() => {
+            setIsCompilerOpen(false);
+            if (previousSessionId) {
+              setCurrentSessionId(previousSessionId);
+            }
+          }} />
         </div>
       )}
 

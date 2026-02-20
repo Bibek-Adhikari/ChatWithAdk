@@ -319,7 +319,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   className={`w-full mt-2 py-3 bg-blue-600/10 hover:bg-blue-600/20 text-blue-400 rounded-xl text-[10px] font-black tracking-widest border border-blue-600/20 transition-all active:scale-95 flex items-center justify-center gap-2`}
 >
   <i className="fas fa-code"></i>
-  VSCODE COMPILER
+  CodeAdk
 </button>
         </div>
       </aside>
