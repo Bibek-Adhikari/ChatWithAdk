@@ -135,14 +135,27 @@ export default function VSCodeCompiler({ onClose }: VSCodeCompilerProps) {
   const [logs, setLogs] = useState<Log[]>([]);
   const [device, setDevice] = useState<Device>('desktop');
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [splitRatio, setSplitRatio] = useState(50); // Percentage for editor width
-  const [isDragging, setIsDragging] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
   const [isLanguageMenuOpen, setIsLanguageMenuOpen] = useState(false);
   const [isPreviewVisible, setIsPreviewVisible] = useState(true);
   const [isConsoleVisible, setIsConsoleVisible] = useState(true);
   const [isEditorVisible, setIsEditorVisible] = useState(true);
   const [activeOutputTab, setActiveOutputTab] = useState<'preview' | 'console'>('preview');
+  
+  // Resize States
+  const [isDragging, setIsDragging] = useState<'horizontal' | 'vertical' | 'mobile' | false>(false);
+  const [splitRatio, setSplitRatio] = useState(() => {
+    const saved = localStorage.getItem('codeadk_split_ratio');
+    return saved ? parseFloat(saved) : 50;
+  });
+  const [consoleHeight, setConsoleHeight] = useState(() => {
+    const saved = localStorage.getItem('codeadk_console_height');
+    return saved ? parseFloat(saved) : 200; // default 200px
+  });
+  const [mobileOutputHeight, setMobileOutputHeight] = useState(() => {
+    const saved = localStorage.getItem('codeadk_mobile_output_height');
+    return saved ? parseFloat(saved) : 50; // default 50%
+  });
 
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -192,11 +205,27 @@ export default function VSCodeCompiler({ onClose }: VSCodeCompilerProps) {
     const handleMouseMove = (e: MouseEvent) => {
       if (!isDragging || !containerRef.current) return;
       const containerRect = containerRef.current.getBoundingClientRect();
-      const newWidth = ((e.clientX - containerRect.left) / containerRect.width) * 100;
-      
-      // Constrain between 20% and 80%
-      if (newWidth > 20 && newWidth < 80) {
-        setSplitRatio(newWidth);
+
+      if (isDragging === 'horizontal') {
+        const newWidth = ((e.clientX - containerRect.left) / containerRect.width) * 100;
+        if (newWidth > 15 && newWidth < 85) {
+          setSplitRatio(newWidth);
+          localStorage.setItem('codeadk_split_ratio', newWidth.toString());
+        }
+      } else if (isDragging === 'vertical') {
+        // Vertical Console Resize (Desktop)
+        const newHeight = containerRect.bottom - e.clientY;
+        if (newHeight > 100 && newHeight < containerRect.height - 100) {
+          setConsoleHeight(newHeight);
+          localStorage.setItem('codeadk_console_height', newHeight.toString());
+        }
+      } else if (isDragging === 'mobile') {
+        // Vertical Mobile Resize
+        const newHeight = ((e.clientY - containerRect.top) / containerRect.height) * 100;
+        if (newHeight > 20 && newHeight < 80) {
+          setMobileOutputHeight(newHeight);
+          localStorage.setItem('codeadk_mobile_output_height', newHeight.toString());
+        }
       }
     };
 
@@ -207,11 +236,16 @@ export default function VSCodeCompiler({ onClose }: VSCodeCompilerProps) {
     if (isDragging) {
       window.addEventListener('mousemove', handleMouseMove);
       window.addEventListener('mouseup', handleMouseUp);
+      // Disable text selection during drag
+      document.body.style.userSelect = 'none';
+      document.body.style.cursor = isDragging === 'horizontal' ? 'col-resize' : 'row-resize';
     }
 
     return () => {
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.userSelect = '';
+      document.body.style.cursor = '';
     };
   }, [isDragging]);
 
@@ -363,13 +397,18 @@ export default function VSCodeCompiler({ onClose }: VSCodeCompilerProps) {
   }, [htmlCode, cssCode, jsCode, activeLanguage, polyglotCode]);
 
   const addLog = useCallback((type: LogType, message: string) => {
-    const newLog: Log = {
-      id: Math.random().toString(36).substr(2, 9),
-      type,
-      message,
-      timestamp: new Date().toLocaleTimeString()
-    };
-    setLogs(prev => [...prev, newLog]);
+    const lines = message.split('\n');
+    const timestamp = new Date().toLocaleTimeString();
+    
+    setLogs(prev => [
+      ...prev, 
+      ...lines.map(line => ({
+        id: Math.random().toString(36).substr(2, 9),
+        type,
+        message: line,
+        timestamp
+      }))
+    ]);
   }, []);
 
   const clearConsole = () => setLogs([]);
@@ -577,46 +616,46 @@ ${jsCode}
           </div>
 
         <div className="flex items-center gap-1 sm:gap-2">
-          {/* Global Toggles (Header) - Desktop Only */}
-          <div className="hidden lg:flex items-center gap-1 bg-[#1e1e1e] p-1 rounded-lg border border-[#333]">
+          {/* Global Toggles (Header) - Visible everywhere for Unhide visibility */}
+          <div className="flex items-center gap-0.5 sm:gap-1 bg-[#1e1e1e] p-1 rounded-lg border border-[#333]">
             <button 
               onClick={() => setIsEditorVisible(!isEditorVisible)}
               className={cn(
-                "p-1.5 rounded transition-all flex items-center gap-1 group",
+                "p-1 rounded transition-all flex items-center gap-1 group",
                 isEditorVisible 
                   ? "bg-blue-600/20 text-blue-400 border border-blue-500/30" 
-                  : "bg-orange-500/10 text-orange-400 border border-orange-500/30 hover:bg-orange-500/20"
+                  : "bg-orange-500/20 text-orange-400 border border-orange-500/50 hover:bg-orange-500/30 shadow-[0_0_10px_rgba(249,115,22,0.2)]"
               )}
               title={isEditorVisible ? "Hide Editor" : "Unhide Editor"}
             >
-              <FileCode size={16} />
-              {!isEditorVisible && <span className="text-[10px] font-bold uppercase hidden sm:inline pr-1">Unhide</span>}
+              <FileCode size={14} className="sm:w-4 sm:h-4" />
+              {!isEditorVisible && <span className="text-[10px] font-bold uppercase hidden sm:inline pr-1">Editor</span>}
             </button>
             <button 
               onClick={() => setIsPreviewVisible(!isPreviewVisible)}
               className={cn(
-                "p-1.5 rounded transition-all flex items-center gap-1 group",
+                "p-1 rounded transition-all flex items-center gap-1 group",
                 isPreviewVisible 
                   ? "bg-blue-600/20 text-blue-400 border border-blue-500/30" 
-                  : "bg-orange-500/10 text-orange-400 border border-orange-500/30 hover:bg-orange-500/20"
+                  : "bg-orange-500/20 text-orange-400 border border-orange-500/50 hover:bg-orange-500/30 shadow-[0_0_10px_rgba(249,115,22,0.2)]"
               )}
               title={isPreviewVisible ? "Hide Preview" : "Unhide Preview"}
             >
-              <Monitor size={16} />
-              {!isPreviewVisible && <span className="text-[10px] font-bold uppercase hidden sm:inline pr-1">Unhide</span>}
+              <Monitor size={14} className="sm:w-4 sm:h-4" />
+              {!isPreviewVisible && <span className="text-[10px] font-bold uppercase hidden sm:inline pr-1">Output</span>}
             </button>
             <button 
               onClick={() => setIsConsoleVisible(!isConsoleVisible)}
               className={cn(
-                "p-1.5 rounded transition-all flex items-center gap-1 group",
+                "p-1 rounded transition-all flex items-center gap-1 group",
                 isConsoleVisible 
                   ? "bg-blue-600/20 text-blue-400 border border-blue-500/30" 
-                  : "bg-orange-500/10 text-orange-400 border border-orange-500/30 hover:bg-orange-500/20"
+                  : "bg-orange-500/20 text-orange-400 border border-orange-500/50 hover:bg-orange-500/30 shadow-[0_0_10px_rgba(249,115,22,0.2)]"
               )}
               title={isConsoleVisible ? "Hide Console" : "Unhide Console"}
             >
-              <Terminal size={16} />
-              {!isConsoleVisible && <span className="text-[10px] font-bold uppercase hidden sm:inline pr-1">Unhide</span>}
+              <Terminal size={14} className="sm:w-4 sm:h-4" />
+              {!isConsoleVisible && <span className="text-[10px] font-bold uppercase hidden sm:inline pr-1">Debug</span>}
             </button>
           </div>
 
@@ -667,7 +706,7 @@ ${jsCode}
             )}
             style={{ 
               width: window.innerWidth >= 1024 ? (isPreviewVisible || isConsoleVisible ? `${splitRatio}%` : '100%') : '100%',
-              height: window.innerWidth < 1024 ? (isPreviewVisible || isConsoleVisible ? '50%' : '100%') : '100%'
+              height: window.innerWidth < 1024 ? (isPreviewVisible || isConsoleVisible ? `${100 - mobileOutputHeight}%` : '100%') : '100%'
             }}
           >
             {/* Tabs & Editor Header */}
@@ -733,21 +772,35 @@ ${jsCode}
           </div>
         )}
 
-        {/* Resize Handle (Desktop Only) */}
+        {/* Resize Handle (Desktop Only - Horizontal) */}
         {!isFullscreen && isEditorVisible && (isPreviewVisible || isConsoleVisible) && (
           <div 
-            className="hidden lg:block w-1 bg-[#333] hover:bg-blue-500 cursor-col-resize z-10 transition-colors"
-            onMouseDown={() => setIsDragging(true)}
-          />
+            className="hidden lg:block w-1 hover:w-1.5 bg-blue-600/30 hover:bg-blue-600 cursor-col-resize z-30 transition-all relative group"
+            onMouseDown={() => setIsDragging('horizontal')}
+          >
+            <div className="absolute inset-y-0 -left-2 -right-2 cursor-col-resize z-40" />
+            <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 w-px bg-white/10 group-hover:bg-white/40" />
+          </div>
+        )}
+
+        {/* Resize Handle (Mobile Only - Vertical) */}
+        {!isFullscreen && isEditorVisible && (isPreviewVisible || isConsoleVisible) && (
+          <div 
+            className="lg:hidden h-1.5 bg-[#2d2d2d] hover:bg-blue-600 cursor-row-resize z-10 transition-colors relative"
+            onMouseDown={() => setIsDragging('mobile')}
+          >
+            <div className="absolute inset-x-0 -top-2 -bottom-2 cursor-row-resize" />
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-1 rounded-full bg-gray-600/50" />
+          </div>
         )}
 
         {/* Preview & Console Section */}
         {(isPreviewVisible || isConsoleVisible) && (
           <div 
-            className="flex flex-col bg-white h-full transition-all duration-300 order-1 lg:order-2"
+            className="flex flex-col bg-[#0d0d0e] h-full transition-all duration-300 order-1 lg:order-2"
             style={{ 
               width: window.innerWidth >= 1024 ? (isFullscreen || !isEditorVisible ? '100%' : `${100 - splitRatio}%`) : '100%',
-              height: window.innerWidth < 1024 ? (isEditorVisible ? '50%' : '100%') : '100%'
+              height: window.innerWidth < 1024 ? (isEditorVisible ? `${mobileOutputHeight}%` : '100%') : '100%'
             }}
           >
             {/* Mobile Tab Switcher */}
@@ -774,7 +827,7 @@ ${jsCode}
 
             {/* Preview Section */}
             {isPreviewVisible && (activeOutputTab === 'preview' || window.innerWidth >= 1024) && (
-              <div className="flex flex-col flex-1 overflow-hidden">
+              <div className={cn("flex flex-col overflow-hidden", activeLanguage === 'web' || !isConsoleVisible ? "flex-1" : "h-auto shrink-0")}>
                 {/* Preview Toolbar */}
                 <div className="h-10 bg-[#f3f4f6] border-b border-gray-200 flex items-center justify-between px-4 shrink-0">
                   <div className="flex items-center gap-2 text-gray-600">
@@ -835,7 +888,7 @@ ${jsCode}
                 </div>
 
           {/* Iframe Container / Placeholder */}
-          <div className="flex-1 bg-gray-100 flex justify-center overflow-auto p-4 relative">
+          <div className="flex-1 bg-[#121214] flex justify-center overflow-auto relative">
             {activeLanguage === 'web' ? (
               <div 
                 className={cn(
@@ -852,20 +905,20 @@ ${jsCode}
                 />
               </div>
             ) : (
-              <div className="w-full h-full flex flex-col items-center justify-center bg-gray-50 text-gray-400 p-8 text-center max-w-lg mx-auto rounded-2xl border-2 border-dashed border-gray-200">
-                <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+              <div className="w-full h-full flex flex-col items-center justify-center bg-[#0d0d0e] text-gray-500 p-8 text-center max-w-lg mx-auto">
+                <div className="w-16 h-16 bg-[#1a1a1b] rounded-full flex items-center justify-center mb-4 border border-[#333]">
                   <Terminal size={32} />
                 </div>
-                <h3 className="text-lg font-bold text-gray-700 mb-2">{LANGUAGE_CONFIGS[activeLanguage as Exclude<Language, 'web'>].label} Mode</h3>
-                <p className="text-sm">
-                  This language requires a backend runtime. Your code will be sent to the Code Execution API.
+                <h3 className="text-lg font-bold text-gray-300 mb-2">{LANGUAGE_CONFIGS[activeLanguage as Exclude<Language, 'web'>].label} Mode</h3>
+                <p className="text-sm text-gray-500">
+                  This language requires a backend runtime. Results will appear in the console below.
                 </p>
                 <button 
                   onClick={runCode}
                   disabled={isRunning}
-                  className="mt-6 px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold transition-all active:scale-95 disabled:opacity-50"
+                  className="mt-6 px-6 py-2 bg-blue-600/20 hover:bg-blue-600/40 text-blue-400 rounded-xl font-bold transition-all active:scale-95 disabled:opacity-50 border border-blue-500/30"
                 >
-                  {isRunning ? 'Executing...' : 'Run main.py'}
+                  {isRunning ? 'Executing...' : `Run ${activeLanguage} code`}
                 </button>
               </div>
             )}
@@ -873,12 +926,25 @@ ${jsCode}
         </div>
       )}
 
+          {/* Console Resize Handle (Desktop Vertical) */}
+          {!isFullscreen && isPreviewVisible && isConsoleVisible && window.innerWidth >= 1024 && (
+            <div 
+              className="h-1 bg-blue-600/30 hover:bg-blue-600 cursor-row-resize z-30 transition-all relative group"
+              onMouseDown={() => setIsDragging('vertical')}
+            >
+              <div className="absolute inset-x-0 -top-2 -bottom-2 cursor-row-resize z-40" />
+            </div>
+          )}
+
           {/* Console Panel */}
           {isConsoleVisible && !isFullscreen && (activeOutputTab === 'console' || window.innerWidth >= 1024) && (
-            <div className={cn(
-              "bg-[#1e1e1e] border-t border-[#333] flex flex-col shrink-0 transition-all",
-              window.innerWidth < 1024 ? "flex-1" : "h-48"
-            )}>
+            <div 
+              className={cn(
+                "bg-[#0d0d0e] border-t border-[#333] flex flex-col shrink-0 transition-all",
+                window.innerWidth < 1024 ? "flex-1" : ""
+              )}
+              style={window.innerWidth >= 1024 && isPreviewVisible && activeLanguage === 'web' ? { height: `${consoleHeight}px` } : { flex: 1 }}
+            >
               <div className="h-8 bg-[#252526] flex items-center justify-between px-4 border-b border-[#333]">
                 <div className="flex items-center gap-2 text-xs text-gray-400 font-bold uppercase">
                   <Terminal size={12} /> Console
@@ -907,7 +973,7 @@ ${jsCode}
                   <div key={log.id} className="flex gap-2 border-b border-[#333]/50 pb-1 last:border-0">
                     <span className="text-gray-600 shrink-0">[{log.timestamp}]</span>
                     <span className={cn(
-                      "break-all",
+                      "break-all whitespace-pre-wrap",
                       log.type === 'error' ? "text-red-400" : 
                       log.type === 'warn' ? "text-yellow-400" : 
                       log.type === 'info' ? "text-blue-400" : "text-gray-300"
