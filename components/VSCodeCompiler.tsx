@@ -18,20 +18,22 @@ import {
   MessageSquare,
   ChevronDown,
   Layout,
-  Eye
+  Eye,
+  Palette
 } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
 // Utility for cleaner tailwind classes
 function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs));
+  return twMerge(clsx(inputs));  
 }
 
 // --- Types ---
 type Tab = 'html' | 'css' | 'js' | 'code';
 type Language = 'web' | 'python' | 'php' | 'c' | 'cpp' | 'csharp' | 'rust' | 'kotlin' | 'java' | 'go' | 'ruby' | 'typescript';
 type Device = 'desktop' | 'tablet' | 'mobile';
+type Theme = 'vs-dark' | 'vs' | 'github-dark' | 'github-light' | 'monokai';
 type LogType = 'log' | 'error' | 'warn' | 'info';
 
 interface Log {
@@ -141,6 +143,11 @@ export default function VSCodeCompiler({ onClose }: VSCodeCompilerProps) {
   const [isConsoleVisible, setIsConsoleVisible] = useState(true);
   const [isEditorVisible, setIsEditorVisible] = useState(true);
   const [activeOutputTab, setActiveOutputTab] = useState<'preview' | 'console'>('preview');
+  const [activeTheme, setActiveTheme] = useState<Theme>(() => {
+    const saved = localStorage.getItem('codeadk_theme');
+    return (saved as Theme) || 'vs-dark';
+  });
+  const [isThemeMenuOpen, setIsThemeMenuOpen] = useState(false);
   
   // Resize States
   const [isDragging, setIsDragging] = useState<'horizontal' | 'vertical' | 'mobile' | false>(false);
@@ -523,15 +530,55 @@ ${jsCode}
   };
 
   const handleEditorMount: OnMount = (editor, monaco) => {
+    // Define Professional Themes
+    monaco.editor.defineTheme('github-dark', {
+      base: 'vs-dark',
+      inherit: true,
+      rules: [],
+      colors: {
+        'editor.background': '#0d1117',
+        'editor.foreground': '#c9d1d9',
+        'editor.lineHighlightBackground': '#161b22',
+        'editor.selectionBackground': '#1f6feb44',
+        'editorCursor.foreground': '#58a6ff',
+        'editorWhitespace.foreground': '#484f58',
+      }
+    });
+
+    monaco.editor.defineTheme('github-light', {
+      base: 'vs',
+      inherit: true,
+      rules: [],
+      colors: {
+        'editor.background': '#ffffff',
+        'editor.foreground': '#24292e',
+        'editor.lineHighlightBackground': '#f6f8fa',
+        'editor.selectionBackground': '#0366d622',
+        'editorCursor.foreground': '#0366d6',
+      }
+    });
+
+    monaco.editor.defineTheme('monokai', {
+      base: 'vs-dark',
+      inherit: true,
+      rules: [
+        { token: 'comment', foreground: '75715e' },
+        { token: 'keyword', foreground: 'f92672' },
+        { token: 'string', foreground: 'e6db74' },
+      ],
+      colors: {
+        'editor.background': '#272822',
+        'editor.foreground': '#f8f8f2',
+        'editor.lineHighlightBackground': '#3e3d32',
+        'editor.selectionBackground': '#49483e',
+        'editorCursor.foreground': '#f8f8f0',
+      }
+    });
+
     // Enable Emmet for common modes
     emmetHTML(monaco);
     emmetCSS(monaco);
     emmetJSX(monaco);
-    
-    // Attempt to broaden Emmet to all files (experimental)
-    // Note: emmet-monaco-es works by registering a provider for specific languages.
-    // We can't easily "enable for all" without listing them, but the ones above 
-    // cover the most requested "fast layout" use cases.
   };
 
   return (
@@ -609,6 +656,55 @@ ${jsCode}
                         </button>
                       ))}
                     </div>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Theme Switcher */}
+          <div className="relative">
+            <button 
+              onClick={() => setIsThemeMenuOpen(!isThemeMenuOpen)}
+              className="flex items-center gap-2 px-3 py-1.5 bg-[#1e1e1e] hover:bg-[#2d2d2d] text-gray-300 text-xs font-bold rounded-lg border border-[#333] transition-all active:scale-95 shadow-sm"
+              title="Change Editor Theme"
+            >
+              <Palette size={14} className="text-blue-400" />
+              <span className="hidden sm:inline text-gray-400">Theme</span>
+              <ChevronDown size={14} className={cn("transition-transform duration-200 text-gray-500", isThemeMenuOpen && "rotate-180")} />
+            </button>
+
+            {isThemeMenuOpen && (
+              <>
+                <div 
+                  className="fixed inset-0 z-30" 
+                  onClick={() => setIsThemeMenuOpen(false)} 
+                />
+                <div className="absolute top-full left-0 mt-2 w-48 bg-[#252526] border border-[#333] rounded-xl shadow-2xl overflow-hidden z-40 animate-in fade-in zoom-in duration-200">
+                  <div className="p-2 space-y-1 text-[10px] font-bold uppercase tracking-wider text-gray-500 px-3 py-1">
+                    Select Theme
+                  </div>
+                  <div className="p-2 space-y-1">
+                    {(['vs-dark', 'vs', 'github-dark', 'github-light', 'monokai'] as Theme[]).map((t) => (
+                      <button
+                        key={t}
+                        onClick={() => {
+                          setActiveTheme(t);
+                          localStorage.setItem('codeadk_theme', t);
+                          setIsThemeMenuOpen(false);
+                        }}
+                        className={cn(
+                          "w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-semibold transition-colors",
+                          activeTheme === t ? "bg-blue-600/20 text-blue-400" : "hover:bg-[#2d2d2d] text-gray-300"
+                        )}
+                      >
+                        {t === 'vs-dark' ? 'VS Code Dark' : 
+                         t === 'vs' ? 'VS Code Light' : 
+                         t === 'github-dark' ? 'GitHub Dark' : 
+                         t === 'github-light' ? 'GitHub Light' : 'Monokai'}
+                        {activeTheme === t && <div className="w-1.5 h-1.5 rounded-full bg-blue-400" />}
+                      </button>
+                    ))}
                   </div>
                 </div>
               </>
@@ -756,7 +852,7 @@ ${jsCode}
                 language={getLanguage()}
                 value={getEditorValue()}
                 onChange={handleEditorChange}
-                theme="vs-dark"
+                theme={activeTheme}
                 onMount={handleEditorMount}
                 options={{
                   minimap: { enabled: false },
