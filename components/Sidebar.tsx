@@ -28,6 +28,7 @@ interface SidebarProps {
   dailyLimit: number;
   isPro: boolean;
   onOpenCompiler: () => void;
+  onOpenConverter: () => void;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ 
@@ -50,7 +51,8 @@ const Sidebar: React.FC<SidebarProps> = ({
   usageCount,
   dailyLimit,
   isPro,
-  onOpenCompiler
+  onOpenCompiler,
+  onOpenConverter
 }) => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
@@ -320,6 +322,14 @@ const Sidebar: React.FC<SidebarProps> = ({
 >
   <i className="fas fa-code"></i>
   CodeAdk
+</button>
+
+<button 
+  onClick={onOpenConverter}
+  className="w-full mt-2 py-3 bg-purple-600/10 hover:bg-purple-600/20 text-purple-400 rounded-xl text-[10px] font-black tracking-widest border border-purple-600/20 transition-all active:scale-95 flex items-center justify-center gap-2"
+>
+  <i className="fas fa-sync"></i>
+  ConverterAdk
 </button>
         </div>
       </aside>

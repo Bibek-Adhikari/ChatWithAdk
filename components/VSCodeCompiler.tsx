@@ -25,7 +25,7 @@ import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
 // Utility for cleaner tailwind classes
-function cn(...inputs: ClassValue[]) {
+export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));  
 }
 
@@ -145,7 +145,7 @@ export default function VSCodeCompiler({ onClose }: VSCodeCompilerProps) {
   const [activeOutputTab, setActiveOutputTab] = useState<'preview' | 'console'>('preview');
   const [activeTheme, setActiveTheme] = useState<Theme>(() => {
     const saved = localStorage.getItem('codeadk_theme');
-    return (saved as Theme) || 'vs-dark';
+    return (saved as Theme) || 'github-dark';
   });
   const [isThemeMenuOpen, setIsThemeMenuOpen] = useState(false);
   

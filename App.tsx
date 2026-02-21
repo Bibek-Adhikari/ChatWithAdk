@@ -20,6 +20,7 @@ import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { adminService } from './services/adminService'; 
 import { fetchLatestNews, shouldFetchNews } from './services/newsService';
 import VSCodeCompiler from './components/VSCodeCompiler'
+import LanguageConverter from './components/LanguageConverter'
 
 
 const ADMIN_EMAILS = [
@@ -81,6 +82,9 @@ const App: React.FC = () => {
   const [isPlansOpen, setIsPlansOpen] = useState(false);
   const [isCompilerOpen, setIsCompilerOpen] = useState(() => {
     return window.location.pathname === '/chat/codeadk';
+  });
+  const [isConverterOpen, setIsConverterOpen] = useState(() => {
+    return window.location.pathname === '/chat/converteradk';
   });
   const [previousSessionId, setPreviousSessionId] = useState<string | null>(null);
   const [imageError, setImageError] = useState(false);
@@ -268,14 +272,30 @@ const App: React.FC = () => {
     } else if (location.pathname !== '/chat/codeadk' && isCompilerOpen) {
       setIsCompilerOpen(false);
     }
+
+    if (location.pathname === '/chat/converteradk' && !isConverterOpen) {
+      setIsConverterOpen(true);
+    } else if (location.pathname !== '/chat/converteradk' && isConverterOpen) {
+      setIsConverterOpen(false);
+    }
   }, [urlSessionId, location.pathname]); // If URL changes (browser back/forward or link click), update state
 
   // 2. State to URL Sync: When state changes (handleNewChat, manual select), reflect in URL
   useEffect(() => {
     if (isCompilerOpen) {
       if (location.pathname !== '/chat/codeadk') {
-        setPreviousSessionId(currentSessionId);
+        const currentId = currentSessionId || urlSessionId;
+        if (currentId && currentId !== 'codeadk') setPreviousSessionId(currentId);
         navigate('/chat/codeadk', { replace: true });
+      }
+      return;
+    }
+
+    if (isConverterOpen) {
+      if (location.pathname !== '/chat/converteradk') {
+        const currentId = currentSessionId || urlSessionId;
+        if (currentId && currentId !== 'converteradk') setPreviousSessionId(currentId);
+        navigate('/chat/converteradk', { replace: true });
       }
       return;
     }
@@ -385,6 +405,8 @@ const App: React.FC = () => {
         setIsProfileOpen(prev => ({ ...prev, open: false }));
         setIsAdminDashboardOpen(false);
         setIsModelMenuOpen(false);
+        setIsCompilerOpen(false);
+        setIsConverterOpen(false);
       }
 
     };
@@ -954,6 +976,10 @@ const App: React.FC = () => {
         onOpenCompiler={() => {
           setPreviousSessionId(currentSessionId);
           setIsCompilerOpen(true);
+        }}
+        onOpenConverter={() => {
+          setPreviousSessionId(currentSessionId);
+          setIsConverterOpen(true);
         }}
       />
 
@@ -1679,9 +1705,42 @@ const App: React.FC = () => {
           <VSCodeCompiler onClose={() => {
             setIsCompilerOpen(false);
             if (previousSessionId) {
-              setCurrentSessionId(previousSessionId);
+              const target = previousSessionId;
+              setPreviousSessionId(null);
+              if (target === 'converteradk') {
+                setIsConverterOpen(true);
+              } else {
+                setCurrentSessionId(target);
+                navigate(`/chat/${target}`);
+              }
+            } else {
+              navigate('/');
             }
           }} />
+        </div>
+      )}
+
+      {/* Language Converter Overlay */}
+      {isConverterOpen && (
+        <div className="fixed inset-0 z-[200] animate-in zoom-in-95 duration-200">
+          <LanguageConverter 
+            theme={theme === 'dark' ? 'vs-dark' : 'vs'} 
+            onClose={() => {
+              setIsConverterOpen(false);
+              if (previousSessionId) {
+                const target = previousSessionId;
+                setPreviousSessionId(null);
+                if (target === 'codeadk') {
+                  setIsCompilerOpen(true);
+                } else {
+                  setCurrentSessionId(target);
+                  navigate(`/chat/${target}`);
+                }
+              } else {
+                navigate('/');
+              }
+            }} 
+          />
         </div>
       )}
 
