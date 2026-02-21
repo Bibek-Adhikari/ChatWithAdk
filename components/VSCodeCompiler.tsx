@@ -167,6 +167,7 @@ export default function VSCodeCompiler({ onClose }: VSCodeCompilerProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const bcRef = useRef<BroadcastChannel | null>(null);
+  const retryCount = useRef(0);
 
   // Initialize BroadcastChannel
   useEffect(() => {
@@ -268,6 +269,51 @@ export default function VSCodeCompiler({ onClose }: VSCodeCompilerProps) {
     return () => window.removeEventListener('message', handleMessage);
   }, []);
 
+  // Force iframe reload when device changes
+  useEffect(() => {
+    if (activeLanguage === 'web' && srcDoc) {
+      // Small delay to ensure iframe is ready
+      const timeoutId = setTimeout(() => {
+        setSrcDoc(prev => prev); // Trigger re-render
+      }, 100);
+      
+      return () => clearTimeout(timeoutId);
+    }
+  }, [device]);
+
+  // Handle iframe load failures with retry mechanism
+  useEffect(() => {
+    const iframe = iframeRef.current;
+    if (!iframe) return;
+
+    const handleLoad = () => {
+      retryCount.current = 0; // Reset retry count on successful load
+      console.log('Iframe loaded successfully');
+    };
+
+    const handleError = () => {
+      if (retryCount.current < 3 && srcDoc) {
+        retryCount.current++;
+        console.log(`Retrying iframe load (${retryCount.current}/3)...`);
+        
+        // Retry loading with exponential backoff
+        setTimeout(() => {
+          setSrcDoc(prev => prev); // Trigger re-render
+        }, 1000 * retryCount.current);
+      } else if (retryCount.current >= 3) {
+        addLog('error', 'Failed to load preview after multiple attempts');
+      }
+    };
+
+    iframe.addEventListener('load', handleLoad);
+    iframe.addEventListener('error', handleError);
+
+    return () => {
+      iframe.removeEventListener('load', handleLoad);
+      iframe.removeEventListener('error', handleError);
+    };
+  }, [srcDoc]);
+
   // --- Actions ---
 
   const runCode = useCallback(async () => {
@@ -345,17 +391,20 @@ export default function VSCodeCompiler({ onClose }: VSCodeCompilerProps) {
       return;
     }
 
-    // Web logic
+    // Web logic with improved error handling and features
     const doc = `
       <!DOCTYPE html>
       <html>
         <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
           <style>${cssCode}</style>
         </head>
         <body>
           ${htmlCode}
           <script>
             (function() {
+              // Store original console methods
               const originalConsole = {
                 log: console.log,
                 error: console.error,
@@ -367,23 +416,61 @@ export default function VSCodeCompiler({ onClose }: VSCodeCompilerProps) {
                 try {
                   const message = Array.from(args).map(arg => {
                     if (typeof arg === 'object') {
-                      try { return JSON.stringify(arg); } catch(e) { return String(arg); }
+                      try { 
+                        return JSON.stringify(arg, null, 2); 
+                      } catch(e) { 
+                        return String(arg); 
+                      }
                     }
                     return String(arg);
                   }).join(' ');
-                  window.parent.postMessage({ type: 'console', method: type, message }, '*');
-                } catch(e) {}
+                  
+                  window.parent.postMessage({ 
+                    type: 'console', 
+                    method: type, 
+                    message: message,
+                    timestamp: new Date().toISOString()
+                  }, '*');
+                } catch(e) {
+                  // Fallback to original console if postMessage fails
+                  originalConsole.error('Failed to send to parent:', e);
+                }
               }
 
-              console.log = function(...args) { originalConsole.log(...args); sendToParent('log', args); };
-              console.error = function(...args) { originalConsole.error(...args); sendToParent('error', args); };
-              console.warn = function(...args) { originalConsole.warn(...args); sendToParent('warn', args); };
-              console.info = function(...args) { originalConsole.info(...args); sendToParent('info', args); };
-
-              window.onerror = function(msg, url, line) {
-                sendToParent('error', [msg + ' (Line: ' + line + ')']);
+              // Override console methods
+              console.log = function(...args) { 
+                originalConsole.log(...args); 
+                sendToParent('log', args); 
+              };
+              
+              console.error = function(...args) { 
+                originalConsole.error(...args); 
+                sendToParent('error', args); 
+              };
+              
+              console.warn = function(...args) { 
+                originalConsole.warn(...args); 
+                sendToParent('warn', args); 
+              };
+              
+              console.info = function(...args) { 
+                originalConsole.info(...args); 
+                sendToParent('info', args); 
               };
 
+              // Global error handler
+              window.onerror = function(msg, url, line, col, error) {
+                const errorMsg = msg + ' (Line: ' + line + ', Column: ' + col + ')';
+                sendToParent('error', [errorMsg]);
+                return false;
+              };
+
+              // Handle unhandled promise rejections
+              window.addEventListener('unhandledrejection', function(event) {
+                sendToParent('error', ['Unhandled Promise Rejection: ' + event.reason]);
+              });
+
+              // Execute user code
               try {
                 ${jsCode}
               } catch (err) {
@@ -395,12 +482,14 @@ export default function VSCodeCompiler({ onClose }: VSCodeCompilerProps) {
       </html>
     `;
     
-    setSrcDoc('');
+    // Clear and reload iframe
+    setSrcDoc(''); // Clear first
     
-    setTimeout(() => {
+    // Use requestAnimationFrame to ensure DOM updates
+    requestAnimationFrame(() => {
       setSrcDoc(doc);
       addLog('info', 'Web preview updated.');
-    }, 50);
+    });
   }, [htmlCode, cssCode, jsCode, activeLanguage, polyglotCode]);
 
   const addLog = useCallback((type: LogType, message: string) => {
@@ -995,131 +1084,142 @@ ${jsCode}
                   </div>
                 </div>
 
-          {/* Iframe Container / Placeholder */}
-          <div className="flex-1 bg-[#121214] flex justify-center overflow-auto relative">
-            {activeLanguage === 'web' ? (
+                {/* Iframe Container / Placeholder */}
+                <div className="flex-1 bg-[#121214] flex justify-center overflow-auto relative">
+                  {activeLanguage === 'web' ? (
+                    <div 
+                      className={cn(
+                        "bg-white shadow-2xl transition-all duration-500 ease-in-out h-full",
+                        device === 'mobile' ? 'w-[375px]' : device === 'tablet' ? 'w-[768px]' : 'w-full'
+                      )}
+                    >
+                      <iframe
+                        key={srcDoc} // Force re-render when srcDoc changes
+                        ref={iframeRef}
+                        title="preview"
+                        srcDoc={srcDoc}
+                        className="w-full h-full border-0"
+                        sandbox="allow-scripts allow-modals allow-same-origin allow-forms allow-popups allow-presentation"
+                        allow="accelerometer; camera; encrypted-media; geolocation; gyroscope; microphone; midi; clipboard-read; clipboard-write"
+                        loading="lazy"
+                        onLoad={() => {
+                          // Notify that iframe is loaded
+                          console.log('Iframe loaded successfully');
+                        }}
+                        onError={(e) => {
+                          console.error('Iframe error:', e);
+                          addLog('error', 'Failed to load preview');
+                        }}
+                      />
+                    </div>
+                  ) : (
+                    <div className="w-full h-full flex flex-col items-center justify-center bg-[#0d0d0e] text-gray-500 p-8 text-center max-w-lg mx-auto">
+                      <div className="w-16 h-16 bg-[#1a1a1b] rounded-full flex items-center justify-center mb-4 border border-[#333]">
+                        <Terminal size={32} />
+                      </div>
+                      <h3 className="text-lg font-bold text-gray-300 mb-2">{LANGUAGE_CONFIGS[activeLanguage as Exclude<Language, 'web'>].label} Mode</h3>
+                      <p className="text-sm text-gray-500">
+                        This language requires a backend runtime. Results will appear in the console below.
+                      </p>
+                      <button 
+                        onClick={runCode}
+                        disabled={isRunning}
+                        className="mt-6 px-6 py-2 bg-blue-600/20 hover:bg-blue-600/40 text-blue-400 rounded-xl font-bold transition-all active:scale-95 disabled:opacity-50 border border-blue-500/30"
+                      >
+                        {isRunning ? 'Executing...' : `Run ${activeLanguage} code`}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Console Resize Handle (Desktop Vertical) */}
+            {!isFullscreen && isPreviewVisible && isConsoleVisible && window.innerWidth >= 1024 && (
+              <div 
+                className="h-1 bg-blue-600/30 hover:bg-blue-600 cursor-row-resize z-30 transition-all relative group"
+                onMouseDown={() => setIsDragging('vertical')}
+              >
+                <div className="absolute inset-x-0 -top-2 -bottom-2 cursor-row-resize z-40" />
+              </div>
+            )}
+
+            {/* Console Panel */}
+            {isConsoleVisible && !isFullscreen && (activeOutputTab === 'console' || window.innerWidth >= 1024) && (
               <div 
                 className={cn(
-                  "bg-white shadow-2xl transition-all duration-500 ease-in-out h-full",
-                  device === 'mobile' ? 'w-[375px]' : device === 'tablet' ? 'w-[768px]' : 'w-full'
+                  "bg-[#0d0d0e] border-t border-[#333] flex flex-col shrink-0 transition-all",
+                  window.innerWidth < 1024 ? "flex-1" : ""
                 )}
+                style={window.innerWidth >= 1024 && isPreviewVisible && activeLanguage === 'web' ? { height: `${consoleHeight}px` } : { flex: 1 }}
               >
-                <iframe
-                  ref={iframeRef}
-                  title="preview"
-                  srcDoc={srcDoc}
-                  className="w-full h-full border-0"
-                  sandbox="allow-scripts allow-modals allow-same-origin"
-                />
-              </div>
-            ) : (
-              <div className="w-full h-full flex flex-col items-center justify-center bg-[#0d0d0e] text-gray-500 p-8 text-center max-w-lg mx-auto">
-                <div className="w-16 h-16 bg-[#1a1a1b] rounded-full flex items-center justify-center mb-4 border border-[#333]">
-                  <Terminal size={32} />
+                <div className="h-8 bg-[#252526] flex items-center justify-between px-4 border-b border-[#333]">
+                  <div className="flex items-center gap-2 text-xs text-gray-400 font-bold uppercase">
+                    <Terminal size={12} /> Console
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <button 
+                      onClick={clearConsole}
+                      className="text-[10px] text-gray-500 hover:text-white uppercase tracking-wider"
+                    >
+                      Clear Console
+                    </button>
+                    <button 
+                      onClick={() => setIsConsoleVisible(false)}
+                      className="p-1 hover:bg-[#3c3c3c] rounded text-gray-500 hover:text-red-400 transition-colors"
+                      title="Hide Console"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
                 </div>
-                <h3 className="text-lg font-bold text-gray-300 mb-2">{LANGUAGE_CONFIGS[activeLanguage as Exclude<Language, 'web'>].label} Mode</h3>
-                <p className="text-sm text-gray-500">
-                  This language requires a backend runtime. Results will appear in the console below.
-                </p>
-                <button 
-                  onClick={runCode}
-                  disabled={isRunning}
-                  className="mt-6 px-6 py-2 bg-blue-600/20 hover:bg-blue-600/40 text-blue-400 rounded-xl font-bold transition-all active:scale-95 disabled:opacity-50 border border-blue-500/30"
-                >
-                  {isRunning ? 'Executing...' : `Run ${activeLanguage} code`}
-                </button>
+                <div className="flex-1 overflow-y-auto p-2 font-mono text-xs space-y-1">
+                  {logs.length === 0 && (
+                    <div className="text-gray-600 italic p-2">Console is empty. Run code to see logs.</div>
+                  )}
+                  {logs.map((log) => (
+                    <div key={log.id} className="flex gap-2 border-b border-[#333]/50 pb-1 last:border-0">
+                      <span className="text-gray-600 shrink-0">[{log.timestamp}]</span>
+                      <span className={cn(
+                        "break-all whitespace-pre-wrap",
+                        log.type === 'error' ? "text-red-400" : 
+                        log.type === 'warn' ? "text-yellow-400" : 
+                        log.type === 'info' ? "text-blue-400" : "text-gray-300"
+                      )}>
+                        {log.type === 'error' && '❌ '}
+                        {log.type === 'warn' && '⚠️ '}
+                        {log.message}
+                      </span>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </div>
-        </div>
-      )}
+        )}
 
-          {/* Console Resize Handle (Desktop Vertical) */}
-          {!isFullscreen && isPreviewVisible && isConsoleVisible && window.innerWidth >= 1024 && (
-            <div 
-              className="h-1 bg-blue-600/30 hover:bg-blue-600 cursor-row-resize z-30 transition-all relative group"
-              onMouseDown={() => setIsDragging('vertical')}
-            >
-              <div className="absolute inset-x-0 -top-2 -bottom-2 cursor-row-resize z-40" />
+        {/* Fallback if everything is hidden */}
+        {!isEditorVisible && !isPreviewVisible && !isConsoleVisible && (
+          <div className="flex-1 flex flex-col items-center justify-center bg-[#1e1e1e] text-center p-8 animate-in fade-in zoom-in duration-300">
+            <div className="w-20 h-20 bg-[#252526] rounded-full flex items-center justify-center mb-6 border border-[#333] shadow-2xl">
+              <Layout size={40} className="text-gray-500" />
             </div>
-          )}
-
-          {/* Console Panel */}
-          {isConsoleVisible && !isFullscreen && (activeOutputTab === 'console' || window.innerWidth >= 1024) && (
-            <div 
-              className={cn(
-                "bg-[#0d0d0e] border-t border-[#333] flex flex-col shrink-0 transition-all",
-                window.innerWidth < 1024 ? "flex-1" : ""
-              )}
-              style={window.innerWidth >= 1024 && isPreviewVisible && activeLanguage === 'web' ? { height: `${consoleHeight}px` } : { flex: 1 }}
+            <h2 className="text-xl font-bold text-white mb-2">Workspace is Empty</h2>
+            <p className="text-gray-400 max-w-sm mb-8">
+              You've hidden all panels. Click the buttons in the header to unhide them, or use the shortcut below.
+            </p>
+            <button 
+              onClick={() => {
+                setIsEditorVisible(true);
+                setIsPreviewVisible(true);
+                setIsConsoleVisible(true);
+              }}
+              className="flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold transition-all active:scale-95 shadow-lg shadow-blue-600/20"
             >
-              <div className="h-8 bg-[#252526] flex items-center justify-between px-4 border-b border-[#333]">
-                <div className="flex items-center gap-2 text-xs text-gray-400 font-bold uppercase">
-                  <Terminal size={12} /> Console
-                </div>
-                <div className="flex items-center gap-3">
-                  <button 
-                    onClick={clearConsole}
-                    className="text-[10px] text-gray-500 hover:text-white uppercase tracking-wider"
-                  >
-                    Clear Console
-                  </button>
-                  <button 
-                    onClick={() => setIsConsoleVisible(false)}
-                    className="p-1 hover:bg-[#3c3c3c] rounded text-gray-500 hover:text-red-400 transition-colors"
-                    title="Hide Console"
-                  >
-                    <X size={14} />
-                  </button>
-                </div>
-              </div>
-              <div className="flex-1 overflow-y-auto p-2 font-mono text-xs space-y-1">
-                {logs.length === 0 && (
-                  <div className="text-gray-600 italic p-2">Console is empty. Run code to see logs.</div>
-                )}
-                {logs.map((log) => (
-                  <div key={log.id} className="flex gap-2 border-b border-[#333]/50 pb-1 last:border-0">
-                    <span className="text-gray-600 shrink-0">[{log.timestamp}]</span>
-                    <span className={cn(
-                      "break-all whitespace-pre-wrap",
-                      log.type === 'error' ? "text-red-400" : 
-                      log.type === 'warn' ? "text-yellow-400" : 
-                      log.type === 'info' ? "text-blue-400" : "text-gray-300"
-                    )}>
-                      {log.type === 'error' && '❌ '}
-                      {log.type === 'warn' && '⚠️ '}
-                      {log.message}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Fallback if everything is hidden */}
-      {!isEditorVisible && !isPreviewVisible && !isConsoleVisible && (
-        <div className="flex-1 flex flex-col items-center justify-center bg-[#1e1e1e] text-center p-8 animate-in fade-in zoom-in duration-300">
-          <div className="w-20 h-20 bg-[#252526] rounded-full flex items-center justify-center mb-6 border border-[#333] shadow-2xl">
-            <Layout size={40} className="text-gray-500" />
+              <Eye size={20} /> Show Everything
+            </button>
           </div>
-          <h2 className="text-xl font-bold text-white mb-2">Workspace is Empty</h2>
-          <p className="text-gray-400 max-w-sm mb-8">
-            You've hidden all panels. Click the buttons in the header to unhide them, or use the shortcut below.
-          </p>
-          <button 
-            onClick={() => {
-              setIsEditorVisible(true);
-              setIsPreviewVisible(true);
-              setIsConsoleVisible(true);
-            }}
-            className="flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold transition-all active:scale-95 shadow-lg shadow-blue-600/20"
-          >
-            <Eye size={20} /> Show Everything
-          </button>
-        </div>
-      )}
+        )}
       </div>
     </div>
   );

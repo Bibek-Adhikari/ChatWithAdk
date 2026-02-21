@@ -88,13 +88,13 @@ const Sidebar: React.FC<SidebarProps> = ({
       `}>
         {/* Fixed width inner container to prevent content compression */}
         <div className="w-72 h-full flex flex-col shrink-0">
-          <div className="p-6 flex flex-col gap-6 shrink-0">
+          <div className="p-2 flex flex-col gap-6 shrink-0">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <img src="/assets/logo.webp" alt="ChatADK" className="w-12 h-12 rounded-xl shadow-2xl object-cover mb-1" />
+              <div className="flex items-center">
+                <img src="/assets/logo.webp" alt="ChatADK" className="w-10 h-8 mt-4 rounded-xl shadow-2xl object-cover " />
                 <div className="flex flex-col">
                   <h2 className="text-[12px] font-black uppercase tracking-[0.2em] text-white">ChatADK</h2>
-                  <p className="text-[8px] font-bold text-blue-500 uppercase tracking-widest opacity-80">Intelligence App</p>
+                  <p className="text-[10px] font-bold text-blue-500 uppercase tracking-widest opacity-80">Intelligence App</p>
                 </div>
               </div>
               <div className="flex items-center gap-1">
@@ -122,6 +122,16 @@ const Sidebar: React.FC<SidebarProps> = ({
               </div>
             </div>
 
+            
+            
+            <button 
+              onClick={onNewChat}
+              className="group relative w-full overflow-hidden flex items-center justify-center gap-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold py-2 px-6 rounded-4xl transition-all shadow-xl shadow-blue-500/20 active:scale-95"
+            >
+              <i className="fas fa-plus-circle text-lg opacity-80 group-hover:scale-110 transition-transform"></i>
+              <span>New Chat</span>
+              
+            </button>
             {/* Daily Limit Tracker - Hidden for Pro/Admin */}
             {!isPro && (
               <div className={`p-4 rounded-2xl border ${theme === 'dark' ? 'bg-white/5 border-white/5' : 'bg-slate-50 border-slate-200'}`}>
@@ -155,15 +165,6 @@ const Sidebar: React.FC<SidebarProps> = ({
                 </button>
               </div>
             )}
-            
-            <button 
-              onClick={onNewChat}
-              className="group relative w-full overflow-hidden flex items-center justify-center gap-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold py-4 px-6 rounded-2xl transition-all shadow-xl shadow-blue-500/20 active:scale-95"
-            >
-              <i className="fas fa-plus-circle text-lg opacity-80 group-hover:scale-110 transition-transform"></i>
-              <span>New Thread</span>
-              
-            </button>
           </div>
 
           <div className="flex-1 overflow-y-auto custom-scrollbar px-4 py-2 space-y-2">
@@ -237,7 +238,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             )}
           </div>
 
-          <div className="p-6 border-t border-white/5 bg-black/5">
+          <div className="p-2 border-t border-white/5 bg-black/5">
             {user ? (
               <div 
                 className="flex items-center justify-between p-3 rounded-2xl bg-slate-800/20 border border-white/5 hover:bg-slate-800/40 transition-all cursor-pointer group/user"
@@ -313,10 +314,12 @@ const Sidebar: React.FC<SidebarProps> = ({
                 ADMIN DASHBOARD
               </button>
             )}
+            
           </div>
 
       
-<button 
+<div className='flex mb-2 gap-2'>
+  <button 
   onClick={onOpenCompiler}
   className={`w-full mt-2 py-3 bg-blue-600/10 hover:bg-blue-600/20 text-blue-400 rounded-xl text-[10px] font-black tracking-widest border border-blue-600/20 transition-all active:scale-95 flex items-center justify-center gap-2`}
 >
@@ -331,6 +334,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   <i className="fas fa-sync"></i>
   ConverterAdk
 </button>
+</div>
         </div>
       </aside>
     </>
