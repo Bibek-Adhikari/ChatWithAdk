@@ -397,28 +397,50 @@ export default function LanguageConverter({ onClose, theme = 'vs-dark' }: Langua
     return converted;
   };
 
-  // Smart conversion using API (simulated)
+  // Smart conversion using Express backend API
   const smartConvert = async (code: string, from: SourceLanguage, to: TargetLanguage): Promise<ConversionResult> => {
-    // Simulate API call with progress
-    return new Promise((resolve) => {
-      let progress = 0;
-      const interval = setInterval(() => {
-        progress += 10;
-        setConversionProgress(progress);
-        if (progress >= 100) {
-          clearInterval(interval);
-          
-          // Simulate conversion result
-          const result: ConversionResult = {
-            success: true,
-            code: generateSmartConversion(code, from, to),
-            confidence: Math.floor(Math.random() * 30) + 70, // 70-100%
-            explanation: `Converted using AI-powered pattern recognition and ${from} to ${to} best practices.`
-          };
-          resolve(result);
-        }
-      }, 200);
-    });
+    try {
+      setConversionProgress(20);
+
+      const response = await fetch('/api/convert', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          code,
+          sourceLanguage: from,
+          targetLanguage: to
+        })
+      });
+
+      setConversionProgress(70);
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Server conversion failed');
+      }
+
+      setConversionProgress(90);
+
+      return {
+        success: true,
+        code: data.code,
+        confidence: data.confidence || 95,
+        explanation: `Converted via Express backend using ${data.model || 'Gemini AI'}.`
+      };
+    } catch (error: any) {
+      console.error('Smart Conversion Error:', error);
+      // Fallback to pattern-based conversion
+      const fallbackCode = convertWithPatterns(code, from, to);
+      return {
+        success: true,
+        code: fallbackCode,
+        confidence: 60,
+        explanation: `AI conversion failed (${error.message}). Used pattern-based fallback.`
+      };
+    } finally {
+      setConversionProgress(100);
+    }
   };
 
   // Generate smart conversion (simulated - in real app, this would be an API call)
@@ -518,8 +540,14 @@ ${code
           <span className="text-xs bg-purple-600/20 text-purple-400 px-2 py-1 rounded-full">
             Beta
           </span>
-        </div>
-
+ <button
+              onClick={onClose}
+              className="flex items-center gap-2 px-3 py-1.5 bg-blue-600/10 text-blue-400 hover:bg-blue-600/20 rounded-lg text-xs font-bold transition-all border border-blue-500/20"
+            >
+              <ArrowLeftRight size={16} className="rotate-180" />
+              Back to ChatAdk
+            </button>
+            </div>
         <div className="flex items-center gap-2">
           <button
             onClick={() => setAutoConvert(!autoConvert)}
@@ -541,16 +569,6 @@ ${code
             <GitBranch size={14} />
             History
           </button>
-
-          {onClose && (
-            <button
-              onClick={onClose}
-              className="flex items-center gap-2 px-3 py-1.5 bg-red-600/10 text-red-400 hover:bg-red-600/20 rounded-lg text-xs font-bold transition-all border border-red-500/20"
-            >
-              <ArrowLeftRight size={14} className="rotate-180" />
-              Back to Chat
-            </button>
-          )}
         </div>
       </div>
 

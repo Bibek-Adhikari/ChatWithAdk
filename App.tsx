@@ -261,31 +261,47 @@ const App: React.FC = () => {
     return () => unsubscribe();
   }, [user?.uid]);
 
-  // 1. Initial Load / URL Sync: Only runs on mount OR when user changes to sync state with URL browser actions
+  // 1. URL → State Sync: When URL changes externally (browser back/forward, direct link), update component state.
+  //    We use a ref to prevent circular updates: this effect ONLY reacts to URL, never to state it sets.
+  const isRouteSyncingRef = React.useRef(false);
+
   useEffect(() => {
-    if (urlSessionId && urlSessionId !== currentSessionId) {
+    // Sync Session ID (ignore overlay paths)
+    if (urlSessionId && urlSessionId !== currentSessionId && 
+        urlSessionId !== 'codeadk' && urlSessionId !== 'converteradk') {
       setCurrentSessionId(urlSessionId);
     }
-    // Deep-link: If the route is /chat/codeadk, open the compiler
-    if (location.pathname === '/chat/codeadk' && !isCompilerOpen) {
+
+    // Sync Overlays from URL — only if we're not the ones who just changed the URL
+    if (isRouteSyncingRef.current) {
+      isRouteSyncingRef.current = false;
+      return;
+    }
+
+    const path = location.pathname;
+    if (path === '/chat/codeadk' && !isCompilerOpen) {
       setIsCompilerOpen(true);
-    } else if (location.pathname !== '/chat/codeadk' && isCompilerOpen) {
+    } else if (path !== '/chat/codeadk' && isCompilerOpen && path !== '/chat/converteradk') {
       setIsCompilerOpen(false);
     }
 
-    if (location.pathname === '/chat/converteradk' && !isConverterOpen) {
+    if (path === '/chat/converteradk' && !isConverterOpen) {
       setIsConverterOpen(true);
-    } else if (location.pathname !== '/chat/converteradk' && isConverterOpen) {
+    } else if (path !== '/chat/converteradk' && isConverterOpen && path !== '/chat/codeadk') {
       setIsConverterOpen(false);
     }
-  }, [urlSessionId, location.pathname]); // If URL changes (browser back/forward or link click), update state
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [urlSessionId, location.pathname]);
 
-  // 2. State to URL Sync: When state changes (handleNewChat, manual select), reflect in URL
+  // 2. State → URL Sync: When overlay/session state changes programmatically (sidebar click), update URL.
   useEffect(() => {
     if (isCompilerOpen) {
       if (location.pathname !== '/chat/codeadk') {
         const currentId = currentSessionId || urlSessionId;
-        if (currentId && currentId !== 'codeadk') setPreviousSessionId(currentId);
+        if (currentId && currentId !== 'codeadk' && currentId !== 'converteradk' && !previousSessionId) {
+          setPreviousSessionId(currentId);
+        }
+        isRouteSyncingRef.current = true;
         navigate('/chat/codeadk', { replace: true });
       }
       return;
@@ -294,22 +310,28 @@ const App: React.FC = () => {
     if (isConverterOpen) {
       if (location.pathname !== '/chat/converteradk') {
         const currentId = currentSessionId || urlSessionId;
-        if (currentId && currentId !== 'converteradk') setPreviousSessionId(currentId);
+        if (currentId && currentId !== 'codeadk' && currentId !== 'converteradk' && !previousSessionId) {
+          setPreviousSessionId(currentId);
+        }
+        isRouteSyncingRef.current = true;
         navigate('/chat/converteradk', { replace: true });
       }
       return;
     }
 
-    if (currentSessionId) {
+    // Otherwise, sync the current session
+    if (currentSessionId && currentSessionId !== 'codeadk' && currentSessionId !== 'converteradk') {
       const targetPath = `/chat/${currentSessionId}`;
       if (location.pathname !== targetPath) {
+        isRouteSyncingRef.current = true;
         navigate(targetPath, { replace: true });
       }
       // Persistence
       const key = user ? `${STORAGE_KEY}_last_session_id_${user.uid}` : `${STORAGE_KEY}_last_session_id_guest`;
       localStorage.setItem(key, currentSessionId);
     }
-  }, [currentSessionId, navigate, isCompilerOpen]); // Removed location/user dependencies to focus on the change event
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentSessionId, isCompilerOpen, isConverterOpen]);
 
   // Handle "relogin" (auth change) to reset sync state and trigger new chat
   useEffect(() => {
@@ -326,7 +348,7 @@ const App: React.FC = () => {
       const isVirtual = currentSessionId.startsWith('new_');
       
       // Only auto-redirect if we are at a chat URL that doesn't exist anymore AND it's not a virtual session
-      if (!exists && !isVirtual && !status.isTyping && location.pathname.startsWith('/chat/') && location.pathname !== '/chat/codeadk') {
+      if (!exists && !isVirtual && !status.isTyping && location.pathname.startsWith('/chat/') && location.pathname !== '/chat/codeadk' && location.pathname !== '/chat/converteradk') {
          console.warn("Session not found, starting handleNewChat...");
          handleNewChat();
       }
