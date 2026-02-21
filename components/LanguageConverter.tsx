@@ -536,10 +536,8 @@ ${code
           <div className="bg-purple-600 p-1.5 rounded-lg">
             <Workflow size={20} className="text-white" />
           </div>
-          <h1 className="font-bold text-white">ConverterAdk</h1>
-          <span className="text-xs bg-purple-600/20 text-purple-400 px-2 py-1 rounded-full">
-            Beta
-          </span>
+          <h1 className="font-bold text-white"></h1>
+          
  <button
               onClick={onClose}
               className="flex items-center gap-2 px-3 py-1.5 bg-blue-600/10 text-blue-400 hover:bg-blue-600/20 rounded-lg text-xs font-bold transition-all border border-blue-500/20"

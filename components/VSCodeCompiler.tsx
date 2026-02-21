@@ -529,11 +529,9 @@ ${jsCode}
     }
   };
 
-  const handleEditorMount: OnMount = (editor, monaco) => {
-    // Enable Emmet for common modes
-    emmetHTML(monaco);
-    emmetCSS(monaco);
-    emmetJSX(monaco);
+  const handleEditorMount: OnMount = (editor) => {
+    // Focus the editor on mount
+    editor.focus();
   };
 
   // Define themes BEFORE mount so the editor renders with the correct theme from the start
@@ -581,6 +579,11 @@ ${jsCode}
         'editorCursor.foreground': '#f8f8f0',
       }
     });
+
+    // Enable Emmet abbreviations (h1 => <h1></h1>, etc.)
+    emmetHTML(monaco);
+    emmetCSS(monaco);
+    emmetJSX(monaco);
   };
 
   return (
@@ -866,6 +869,11 @@ ${jsCode}
                   padding: { top: 16 },
                   renderLineHighlight: 'all',
                   mouseWheelZoom: true,
+                  tabCompletion: 'on',
+                  suggestOnTriggerCharacters: true,
+                  quickSuggestions: { other: true, comments: false, strings: true },
+                  acceptSuggestionOnEnter: 'on',
+                  wordBasedSuggestions: 'currentDocument',
                 }}
               />
             </div>
