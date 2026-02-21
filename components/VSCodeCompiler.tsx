@@ -530,7 +530,14 @@ ${jsCode}
   };
 
   const handleEditorMount: OnMount = (editor, monaco) => {
-    // Define Professional Themes
+    // Enable Emmet for common modes
+    emmetHTML(monaco);
+    emmetCSS(monaco);
+    emmetJSX(monaco);
+  };
+
+  // Define themes BEFORE mount so the editor renders with the correct theme from the start
+  const handleBeforeMount = (monaco: any) => {
     monaco.editor.defineTheme('github-dark', {
       base: 'vs-dark',
       inherit: true,
@@ -574,11 +581,6 @@ ${jsCode}
         'editorCursor.foreground': '#f8f8f0',
       }
     });
-
-    // Enable Emmet for common modes
-    emmetHTML(monaco);
-    emmetCSS(monaco);
-    emmetJSX(monaco);
   };
 
   return (
@@ -853,6 +855,7 @@ ${jsCode}
                 value={getEditorValue()}
                 onChange={handleEditorChange}
                 theme={activeTheme}
+                beforeMount={handleBeforeMount}
                 onMount={handleEditorMount}
                 options={{
                   minimap: { enabled: false },
@@ -862,6 +865,7 @@ ${jsCode}
                   scrollBeyondLastLine: false,
                   padding: { top: 16 },
                   renderLineHighlight: 'all',
+                  mouseWheelZoom: true,
                 }}
               />
             </div>
