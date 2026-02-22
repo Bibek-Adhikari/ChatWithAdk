@@ -326,7 +326,7 @@ const LandingPage: React.FC = () => {
             whileHover={{ scale: 1.04, boxShadow: '0 0 40px rgba(59,130,246,0.4)' }}
             whileTap={{ scale: 0.96 }}
             onClick={() => startChat()}
-            className="group flex items-center gap-3 bg-slate-800/60 hover:bg-slate-800 border border-white/8 text-white px-8 py-3.5 rounded-2xl text-sm font-black shadow-lg transition-all"
+            className="group flex items-center gap-3 bg-slate-800/60 hover:bg-slate-800 border border-white/8 text-white px-8 py-3.5 mb-4 rounded-2xl text-sm font-black shadow-lg transition-all"
           >
             <Plus size={18} className="group-hover:rotate-90 transition-transform duration-300" strokeWidth={2.5} />
             New Chat

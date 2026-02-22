@@ -4,6 +4,7 @@ import { ChatSession } from '../types';
 import { useNavigate, Link } from 'react-router-dom';
 import { User, signOut } from 'firebase/auth';
 import { auth } from '../services/firebase';
+import { motion } from 'framer-motion';
 
 interface SidebarProps {
   sessions: ChatSession[];
@@ -86,11 +87,24 @@ const Sidebar: React.FC<SidebarProps> = ({
           <div className="p-2 flex flex-col gap-6 shrink-0">
             <div className="flex items-center justify-between">
               <div className="flex items-center">
-                <img src="/assets/logo.webp" alt="ChatADK" className="w-10 h-8 mt-4 rounded-xl shadow-2xl object-cover " />
+            <motion.div
+                            initial={{ opacity: 0, scale: 0.85 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            transition={{ delay: 0.1 }}
+                            className="relative"
+                          >
+                            <div className="absolute inset-0 bg-blue-500/20 blur-2xl rounded-full scale-150 pointer-events-none" />
+                            <img
+                              src="/assets/logo.webp"
+                              alt="ChatADK"
+                              className="relative w-10 h-10 rounded-2xl object-cover shadow-2xl "
+                            />
+                          </motion.div>
                 <div className="flex flex-col">
                   <h2 className="text-[12px] font-black uppercase tracking-[0.2em] text-white">ChatADK</h2>
                   <p className="text-[10px] font-bold text-blue-500 uppercase tracking-widest opacity-80">Intelligence App</p>
                 </div>
+                
               </div>
               <div className="flex items-center gap-1">
                 <Link 
