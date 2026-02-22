@@ -58,45 +58,7 @@ const LANGUAGE_PAIRS: Record<string, { name: string, icon: string, color: string
   'kotlin': { name: 'Kotlin', icon: '💜', color: 'text-violet-400' }
 };
 
-// Conversion templates for common patterns
-const CONVERSION_PATTERNS: Record<string, any> = {
-  'javascript:typescript': {
-    patterns: [
-      { from: /function\s+(\w+)\s*\(([^)]*)\)\s*{/g, to: 'function $1($2) {' },
-      { from: /const\s+(\w+)\s*=\s*{/g, to: 'const $1 = {' },
-      { from: /(\w+)\s*=\s*\(([^)]*)\)\s*=>/g, to: 'const $1 = ($2) =>' }
-    ],
-    addTypes: true
-  },
-  'python:rust': {
-    patterns: [
-      { from: /def\s+(\w+)\s*\(([^)]*)\):/g, to: 'fn $1($2) {\\n    // TODO: Add return type\\n}' },
-      { from: /print\((.*)\)/g, to: 'println!("{}", $1);' },
-      { from: /#(.*)/g, to: '//$1' }
-    ]
-  },
-  'javascript:python': {
-    patterns: [
-      { from: /function\s+(\w+)\s*\(([^)]*)\)\s*{/g, to: 'def $1($2):' },
-      { from: /const\s+(\w+)\s*=\s*/g, to: '$1 = ' },
-      { from: /let\s+(\w+)\s*=\s*/g, to: '$1 = ' },
-      { from: /var\s+(\w+)\s*=\s*/g, to: '$1 = ' },
-      { from: /console\.log\((.*)\)/g, to: 'print($1)' },
-      { from: /\/\/(.*)/g, to: '#$1' },
-      { from: /}\s*$/gm, to: '' }
-    ]
-  },
-  'python:javascript': {
-    patterns: [
-      { from: /def\s+(\w+)\s*\(([^)]*)\):/g, to: 'function $1($2) {' },
-      { from: /print\((.*)\)/g, to: 'console.log($1)' },
-      { from: /#(.*)/g, to: '//$1' },
-      { from: /if\s+(.*):/g, to: 'if ($1) {' },
-      { from: /else:/g, to: 'else {' },
-      { from: /elif\s+(.*):/g, to: 'else if ($1) {' }
-    ]
-  }
-};
+// --- End of Types ---
 
 // Example code templates
 const EXAMPLE_CODE = {
@@ -305,7 +267,6 @@ export default function LanguageConverter({ onClose, theme = 'vs-dark' }: Langua
   const [conversionResult, setConversionResult] = useState<ConversionResult | null>(null);
   const [copied, setCopied] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const [conversionMode, setConversionMode] = useState<'smart' | 'strict' | 'pattern'>('smart');
   const [history, setHistory] = useState<ConversionHistory[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const [autoConvert, setAutoConvert] = useState(false);
@@ -391,22 +352,7 @@ export default function LanguageConverter({ onClose, theme = 'vs-dark' }: Langua
     setConversionResult(null);
   };
 
-  // Basic pattern-based conversion
-  const convertWithPatterns = (code: string, from: SourceLanguage, to: TargetLanguage): string => {
-    const key = `${from}:${to}`;
-    const patterns = CONVERSION_PATTERNS[key];
-    
-    if (!patterns) return `// Direct conversion from ${from} to ${to} not yet implemented\n// Using basic template\n\n${code}`;
 
-    let converted = code;
-    patterns.patterns.forEach((pattern: any) => {
-      // Handle \n in replacement strings
-      const to = pattern.to.replace(/\\n/g, '\n');
-      converted = converted.replace(pattern.from, to);
-    });
-
-    return converted;
-  };
 
   // Smart conversion using Groq AI
   const smartConvert = async (code: string, from: SourceLanguage, to: TargetLanguage): Promise<ConversionResult> => {
@@ -425,17 +371,18 @@ Your task is to convert code from ${from} to ${to}.
 
 CRITICAL RULES:
 1. DO NOT use 'any' in TypeScript. Infer proper types or create interfaces/types.
-2. If converting from JavaScript to TypeScript, create detailed interfaces for objects.
-3. Preserve comments and logic exactly.
-4. Use the most idiomatic patterns for the target language (e.g., arrow functions in modern JS, traits in Rust, etc.).
-5. Ensure the resulting code is valid and syntactically correct.
+2. Provide a DEEP explanation that references specific logic, variables, and architectural changes from the input code.
+3. If converting from JavaScript to TypeScript, create detailed interfaces for objects.
+4. Preserve comments and original business logic intent exactly.
+5. Use the most idiomatic patterns for the target language.
 6. Return a JSON object with strictly this format:
 {
   "code": "the converted code here",
   "confidence": 0-100,
-  "explanation": "brief summary of key changes",
+  "explanation": "detailed reasoning referencing specific variable names from the input",
   "warnings": ["any potential issues"]
-}`;
+}
+Note: Your explanation must prove this is a custom conversion for THIS specific snippet.`;
 
       const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
         method: 'POST',
@@ -492,7 +439,7 @@ CRITICAL RULES:
   const convertCode = async () => {
     if (!sourceCode.trim()) return;
     
-    if (conversionMode === 'smart' && !currentUser) {
+    if (!currentUser) {
       alert('AI Conversion is locked for guests. Please sign in to unlock "Smart Mode".');
       return;
     }
@@ -504,17 +451,7 @@ CRITICAL RULES:
     try {
       let result: ConversionResult;
 
-      if (conversionMode === 'smart') {
-        result = await smartConvert(sourceCode, sourceLang, targetLang);
-      } else {
-        // Use pattern-based conversion
-        const converted = convertWithPatterns(sourceCode, sourceLang, targetLang);
-        result = {
-          success: true,
-          code: converted,
-          confidence: conversionMode === 'strict' ? 100 : 80
-        };
-      }
+      result = await smartConvert(sourceCode, sourceLang, targetLang);
 
       setTargetCode(result.code);
       setConversionResult(result);
@@ -733,11 +670,11 @@ CRITICAL RULES:
                     ? "bg-gray-600/50 text-gray-400 cursor-not-allowed"
                     : "bg-purple-600 hover:bg-purple-500 text-white shadow-lg shadow-purple-600/20 hover:scale-105 active:scale-95"
                 )}
-                title={!currentUser && conversionMode === 'smart' ? "Login to unlock AI conversion" : "Convert"}
+                title={!currentUser ? "Login to unlock AI conversion" : "Convert"}
               >
                 {isConverting ? (
                   <Loader2 size={20} className="animate-spin" />
-                ) : !currentUser && conversionMode === 'smart' ? (
+                ) : !currentUser ? (
                   <Lock size={20} />
                 ) : (
                   <Sparkles size={20} />
@@ -772,7 +709,7 @@ CRITICAL RULES:
                   <span className="text-xs text-gray-600">Target</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  {conversionResult?.confidence && (
+                  {conversionResult?.confidence !== undefined && (
                     <span className="text-xs text-gray-400">
                       Confidence: {conversionResult.confidence}%
                     </span>
@@ -880,22 +817,11 @@ CRITICAL RULES:
 
           <div className="flex gap-6">
             <div>
-              <label className="text-xs text-gray-500 block mb-2">Conversion Mode</label>
+              <label className="text-xs text-gray-500 block mb-2">Conversion Status</label>
               <div className="flex gap-2">
-                {(['smart', 'strict', 'pattern'] as const).map((mode) => (
-                  <button
-                    key={mode}
-                    onClick={() => setConversionMode(mode)}
-                    className={cn(
-                      "px-3 py-1.5 rounded-lg text-xs font-bold capitalize transition-all",
-                      conversionMode === mode
-                        ? "bg-purple-600/20 text-purple-400 border border-purple-500/30"
-                        : "bg-[#1e1e1e] text-gray-400 border border-[#333] hover:bg-[#2d2d2d]"
-                    )}
-                  >
-                    {mode}
-                  </button>
-                ))}
+                <div className="px-3 py-1.5 rounded-lg text-xs font-bold bg-purple-600/20 text-purple-400 border border-purple-500/30 flex items-center gap-2">
+                  <Brain size={14} /> AI Powered (High Precision)
+                </div>
               </div>
             </div>
 
