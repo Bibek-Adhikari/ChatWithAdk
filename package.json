@@ -13,6 +13,7 @@
   "dependencies": {
     "@google/genai": "^1.39.0",
     "@monaco-editor/react": "^4.7.0",
+    "@supabase/supabase-js": "^2.97.0",
     "@types/react-syntax-highlighter": "^15.5.13",
     "@typescript/ata": "^0.9.8",
     "@wasmer/wasm-transformer": "^0.12.0",
