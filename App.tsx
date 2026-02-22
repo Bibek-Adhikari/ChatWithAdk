@@ -256,8 +256,9 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
             if (urlSessionId) {
               setCurrentSessionId(urlSessionId);
             } else {
-              // Always start fresh on relogin/start as requested
-              handleNewChat();
+              // If we're on a tool route, we need a session ID but shouldn't navigate away from the tool URL
+              const isToolRoute = overlayPaths.includes(location.pathname.slice(1));
+              handleNewChat(!isToolRoute);
             }
           } else if (!currentSessionId && cloudSessions.length > 0) {
             setCurrentSessionId(cloudSessions[0].id);
@@ -272,7 +273,8 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
           if (urlSessionId) {
             setCurrentSessionId(urlSessionId);
           } else if (!currentSessionId) {
-            handleNewChat();
+            const isToolRoute = overlayPaths.includes(location.pathname.slice(1));
+            handleNewChat(!isToolRoute);
           }
         }
       }
@@ -463,14 +465,16 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
     };
   }, [isResizing, resize, stopResizing]);
 
-  const handleNewChat = () => {
+  const handleNewChat = (shouldNavigate = true) => {
     // Just set a fresh ID and clear state. 
     // We DON'T add to sessions or save to cloud yet to avoid cluttering history with empty greetings.
     const newId = `new_${Date.now()}`;
     setCurrentSessionId(newId);
     setInputValue('');
     setStatus(prev => ({ ...prev, error: null, isTyping: false }));
-    navigate(`/chat/${newId}`);
+    if (shouldNavigate) {
+      navigate(`/chat/${newId}`);
+    }
     if (window.innerWidth < 1024) setIsSidebarOpen(false);
   };
 
