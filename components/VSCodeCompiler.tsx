@@ -175,6 +175,8 @@ export default function VSCodeCompiler({ onClose }: VSCodeCompilerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const bcRef = useRef<BroadcastChannel | null>(null);
   const retryCount = useRef(0);
+  const mobileHeaderRef = useRef<HTMLElement>(null);
+  const mobileHeaderDragRef = useRef({ isDragging: false, startX: 0, scrollLeft: 0 });
 
   // Initialize BroadcastChannel
   useEffect(() => {
@@ -705,11 +707,39 @@ ${jsCode}
     emmetJSX(monaco);
   };
 
+  const handleHeaderPointerDown = useCallback((e: React.PointerEvent<HTMLElement>) => {
+    if (window.innerWidth >= 1024 || !mobileHeaderRef.current) return;
+    mobileHeaderDragRef.current = {
+      isDragging: true,
+      startX: e.clientX,
+      scrollLeft: mobileHeaderRef.current.scrollLeft
+    };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  }, []);
+
+  const handleHeaderPointerMove = useCallback((e: React.PointerEvent<HTMLElement>) => {
+    if (window.innerWidth >= 1024 || !mobileHeaderRef.current || !mobileHeaderDragRef.current.isDragging) return;
+    const deltaX = e.clientX - mobileHeaderDragRef.current.startX;
+    mobileHeaderRef.current.scrollLeft = mobileHeaderDragRef.current.scrollLeft - deltaX;
+  }, []);
+
+  const handleHeaderPointerEnd = useCallback(() => {
+    mobileHeaderDragRef.current.isDragging = false;
+  }, []);
+
   return (
     <div className="flex flex-col h-screen bg-[#1e1e1e] text-gray-300 font-sans overflow-hidden">
 
       {/* --- Header --- */}
-      <header className="h-14 bg-[#252526] border-b border-[#333] flex items-center justify-between px-4 shrink-0 z-20">
+      <header
+        ref={mobileHeaderRef}
+        onPointerDown={handleHeaderPointerDown}
+        onPointerMove={handleHeaderPointerMove}
+        onPointerUp={handleHeaderPointerEnd}
+        onPointerCancel={handleHeaderPointerEnd}
+        className="h-14 bg-[#252526] border-b border-[#333] flex items-center lg:justify-between gap-2 px-2 sm:px-4 shrink-0 z-20 overflow-x-auto overflow-y-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-x' }}
+      >
         <div className="flex items-center gap-2">
          <div className="w-9 h-9 rounded-xl overflow-hidden shrink-0 shadow-lg shadow-blue-500/10">
             <img src="/assets/logo.webp" alt="CodeADK" className="w-full h-full object-cover" />
@@ -834,7 +864,7 @@ ${jsCode}
           )}
         </div>
 
-        <div className="flex items-center gap-1 sm:gap-2">
+        <div className="flex items-center gap-1 sm:gap-2 lg:ml-auto">
           {/* AI Explain Button */}
           <button
             onClick={explainCode}
