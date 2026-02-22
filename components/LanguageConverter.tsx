@@ -277,6 +277,9 @@ export default function LanguageConverter({ onClose, theme = 'vs-dark', showHist
   const [showHistoryLocal, setShowHistoryLocal] = useState(false);
   const [autoConvert, setAutoConvert] = useState(false);
   const [conversionProgress, setConversionProgress] = useState(0);
+  const [isGeneratingFlow, setIsGeneratingFlow] = useState(false);
+  const [flowchartText, setFlowchartText] = useState('');
+  const [flowchartError, setFlowchartError] = useState<string | null>(null);
 
   // Combined showHistory state - use prop if provided (from route), otherwise use local state
   const isShowingHistory = showHistory || showHistoryLocal;
@@ -602,6 +605,46 @@ Note: Your explanation must prove this is a custom conversion for THIS specific 
     }
   };
 
+  const downloadFlowchart = () => {
+    if (!flowchartText) return;
+    const blob = new Blob([flowchartText], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'converter_flow.txt';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const generateFlowchart = async () => {
+    if (!sourceCode.trim()) return;
+
+    setIsGeneratingFlow(true);
+    setFlowchartError(null);
+
+    try {
+      const response = await fetch('/api/flowchart', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ code: sourceCode })
+      });
+
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Failed to generate flowchart');
+      }
+
+      setFlowchartText(data.flowchart || '');
+    } catch (error: any) {
+      setFlowchartError(error.message || 'Unable to generate flowchart');
+      setFlowchartText('');
+    } finally {
+      setIsGeneratingFlow(false);
+    }
+  };
+
   // Auto-convert on code change with debounce
   useEffect(() => {
     if (autoConvert && sourceCode.trim() && !isConverting) {
@@ -816,6 +859,24 @@ Note: Your explanation must prove this is a custom conversion for THIS specific 
               </button>
 
               <button
+                onClick={generateFlowchart}
+                disabled={isGeneratingFlow || !sourceCode.trim()}
+                className={cn(
+                  "p-2.5 rounded-xl font-bold transition-all relative overflow-hidden",
+                  isGeneratingFlow || !sourceCode.trim()
+                    ? "bg-gray-600/50 text-gray-400 cursor-not-allowed"
+                    : "bg-cyan-600 hover:bg-cyan-500 text-white shadow-lg shadow-cyan-600/20 hover:scale-105 active:scale-95"
+                )}
+                title="Generate Flow Chart"
+              >
+                {isGeneratingFlow ? (
+                  <Loader2 size={18} className="animate-spin" />
+                ) : (
+                  <Workflow size={18} />
+                )}
+              </button>
+
+              <button
                 onClick={() => setShowAdvanced(!showAdvanced)}
                 className={cn(
                   "p-2 rounded-lg transition-all",
@@ -928,6 +989,46 @@ Note: Your explanation must prove this is a custom conversion for THIS specific 
                         </p>
                       </div>
                     </div>
+                  </div>
+                )}
+
+                {flowchartText && (
+                  <div className="absolute left-3 right-3 bottom-3 z-40 bg-[#111827]/95 border border-cyan-500/30 rounded-xl p-3 shadow-2xl">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[11px] font-black uppercase tracking-widest text-cyan-400">Flow Chart Output</span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => copyToClipboard(flowchartText)}
+                          className="p-1.5 rounded bg-[#1e1e1e] text-gray-300 hover:text-white"
+                          title="Copy Flowchart"
+                        >
+                          <Copy size={14} />
+                        </button>
+                        <button
+                          onClick={downloadFlowchart}
+                          className="p-1.5 rounded bg-[#1e1e1e] text-gray-300 hover:text-white"
+                          title="Download Flowchart"
+                        >
+                          <Download size={14} />
+                        </button>
+                        <button
+                          onClick={() => setFlowchartText('')}
+                          className="p-1.5 rounded bg-[#1e1e1e] text-gray-300 hover:text-white"
+                          title="Close"
+                        >
+                          <RotateCcw size={14} />
+                        </button>
+                      </div>
+                    </div>
+                    <pre className="max-h-40 overflow-auto text-[11px] leading-relaxed text-cyan-100 whitespace-pre-wrap break-words">
+                      {flowchartText}
+                    </pre>
+                  </div>
+                )}
+
+                {flowchartError && (
+                  <div className="absolute left-3 right-3 bottom-3 z-40 bg-red-900/30 border border-red-500/40 rounded-xl p-3">
+                    <p className="text-xs text-red-200">{flowchartError}</p>
                   </div>
                 )}
               </div>

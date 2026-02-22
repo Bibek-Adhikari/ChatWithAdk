@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import { spawn } from 'child_process';
 
 dotenv.config({ path: '../.env.local' });
 
@@ -173,11 +174,76 @@ ${code}`;
   }
 });
 
+const runFlowchartGenerator = (code) => {
+  const pythonScript = `
+import sys
+from pyflowchart import Flowchart
+
+source = sys.stdin.read()
+if not source.strip():
+    print("No code provided", file=sys.stderr)
+    sys.exit(1)
+
+try:
+    flow = Flowchart.from_code(source)
+    print(flow.flowchart())
+except Exception as e:
+    print(str(e), file=sys.stderr)
+    sys.exit(2)
+`;
+
+  const runWith = (command, args = []) => new Promise((resolve, reject) => {
+    const proc = spawn(command, [...args, '-c', pythonScript], { windowsHide: true });
+    let stdout = '';
+    let stderr = '';
+
+    proc.stdout.on('data', (chunk) => {
+      stdout += chunk.toString();
+    });
+    proc.stderr.on('data', (chunk) => {
+      stderr += chunk.toString();
+    });
+    proc.on('error', reject);
+    proc.on('close', (exitCode) => {
+      if (exitCode === 0 && stdout.trim()) {
+        resolve(stdout.trim());
+      } else {
+        reject(new Error(stderr.trim() || 'Failed to generate flowchart'));
+      }
+    });
+
+    proc.stdin.write(code);
+    proc.stdin.end();
+  });
+
+  return runWith('python').catch(() => runWith('py', ['-3']));
+};
+
+app.post('/api/flowchart', async (req, res) => {
+  const { code } = req.body || {};
+
+  if (!code || typeof code !== 'string') {
+    return res.status(400).json({ success: false, error: 'Missing required field: code' });
+  }
+
+  try {
+    const flowchart = await runFlowchartGenerator(code);
+    return res.json({ success: true, flowchart });
+  } catch (error) {
+    console.error('Flowchart generation error:', error.message);
+    return res.status(500).json({
+      success: false,
+      error: error.message || 'Unable to generate flowchart. Ensure Python and pyflowchart are installed.'
+    });
+  }
+});
+
 // ─── Start Server ────────────────────────────────────────────────
 app.listen(PORT, () => {
   console.log(`\n🚀 ChatADK Express Server running on http://localhost:${PORT}`);
   console.log(`   Health: http://localhost:${PORT}/api/health`);
   console.log(`   Keys:   http://localhost:${PORT}/api/keys/status`);
-  console.log(`   Convert: POST http://localhost:${PORT}/api/convert\n`);
+  console.log(`   Convert: POST http://localhost:${PORT}/api/convert`);
+  console.log(`   Flowchart: POST http://localhost:${PORT}/api/flowchart\n`);
 });
 
