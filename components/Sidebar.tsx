@@ -5,8 +5,6 @@ import { useNavigate, Link } from 'react-router-dom';
 import { User, signOut } from 'firebase/auth';
 import { auth } from '../services/firebase';
 
-import VSCodeCompiler from './VSCodeCompiler'
-
 interface SidebarProps {
   sessions: ChatSession[];
   currentSessionId: string;
@@ -29,6 +27,7 @@ interface SidebarProps {
   isPro: boolean;
   onOpenCompiler: () => void;
   onOpenConverter: () => void;
+  onOpenPhotoAdk: () => void;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ 
@@ -52,7 +51,8 @@ const Sidebar: React.FC<SidebarProps> = ({
   dailyLimit,
   isPro,
   onOpenCompiler,
-  onOpenConverter
+  onOpenConverter,
+  onOpenPhotoAdk
 }) => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
@@ -84,7 +84,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         fixed lg:relative inset-y-0 left-0 z-40 sidebar-transition flex flex-col shrink-0 overflow-hidden
         ${isOpen ? 'w-72 opacity-100 translate-x-0' : 'w-0 opacity-0 -translate-x-full lg:translate-x-0'}
         ${theme === 'dark' ? 'bg-[#0f172a] border-r border-white/5' : 'bg-[#ffffff] border-r border-slate-200'}
-        ${isOpen && window.innerWidth < 1024 ? 'shadow-[0_0_40px_rgba(0,0,0,0.5)]' : ''}
+        ${isOpen ? 'shadow-[0_0_40px_rgba(0,0,0,0.5)] lg:shadow-none' : ''}
       `}>
         {/* Fixed width inner container to prevent content compression */}
         <div className="w-72 h-full flex flex-col shrink-0">
@@ -318,26 +318,35 @@ const Sidebar: React.FC<SidebarProps> = ({
           </div>
 
       
-<div className='flex mb-2 gap-2'>
+<div className='flex flex-wrap mb-2 gap-2'>
   <button 
   onClick={onOpenCompiler}
-  className={`w-full mt-2 py-3 bg-blue-600/10 hover:bg-blue-600/20 text-blue-400 rounded-xl text-[10px] font-black tracking-widest border border-blue-600/20 transition-all active:scale-95 flex items-center justify-center gap-2`}
+  className={`w-[48%] mt-2 p-3 bg-blue-600/10 hover:bg-blue-600/20 text-blue-400 rounded-xl text-[10px] font-black tracking-widest border border-blue-600/20 transition-all active:scale-95 flex items-center justify-center gap-2`}
 >
   <i className="fas fa-code"></i>
   CodeAdk
 </button>
+<button 
+  onClick={onOpenPhotoAdk}
+  className="w-[48%] mt-2 p-3 bg-emerald-600/10 hover:bg-emerald-600/20 text-emerald-400 rounded-xl text-[10px] font-black tracking-widest border border-emerald-600/20 transition-all active:scale-95 flex items-center justify-center gap-2"
+>
+  <i className="fas fa-image"></i>
+  PhotoAdk
+</button>
 
 <button 
   onClick={onOpenConverter}
-  className="w-full mt-2 py-3 bg-purple-600/10 hover:bg-purple-600/20 text-purple-400 rounded-xl text-[10px] font-black tracking-widest border border-purple-600/20 transition-all active:scale-95 flex items-center justify-center gap-2"
+  className=" mt-2 w-full p-3 bg-purple-600/10 hover:bg-purple-600/20 text-purple-400 rounded-xl text-[10px] font-black tracking-widest border border-purple-600/20 transition-all active:scale-95 flex items-center justify-center gap-2"
 >
   <i className="fas fa-sync"></i>
   ConverterAdk
 </button>
+
+
 </div>
         </div>
       </aside>
     </>
   );
 };
-export default Sidebar;
+export default Sidebar;  

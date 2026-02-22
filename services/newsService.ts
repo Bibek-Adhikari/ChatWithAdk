@@ -1,6 +1,12 @@
 
 const WORLD_NEWS_KEY = import.meta.env.VITE_WORLD_NEWS_API_KEY || "52baf80a5b2d43feb817cf585def1cc1";
 const NEWSDATA_KEY = import.meta.env.VITE_NEWSDATA_API_KEY || "pub_11299103b1234c4ab2663e91ce5f4cba";
+const TAVILY_KEY = import.meta.env.VITE_TAVILY_API_KEY;
+
+// Warn if Tavily API key is not configured
+if (!TAVILY_KEY) {
+  console.warn('[NewsService] Tavily API key not configured. Set VITE_TAVILY_API_KEY in .env');
+}
 
 export interface NewsArticle {
   title: string;
@@ -45,19 +51,79 @@ export async function fetchLatestNews(input: string): Promise<NewsArticle[]> {
   try {
     const isPolitical = lowerInput.includes('prime minister') || lowerInput.includes('president') || lowerInput.includes('leader') || lowerInput.includes('pm') || lowerInput.includes('nepal');
     
-    // Fetch in parallel across all generated queries
-    const allTasks = subjectQueries.flatMap(q => [
+    // Helper to limit concurrent API calls to avoid rate limiting
+    const limitedFetch = async <T,>(tasks: (() => Promise<T>)[], concurrency: number = 3): Promise<T[]> => {
+      const results: T[] = [];
+      const executing: Promise<void>[] = [];
+      
+      for (const task of tasks) {
+        const promise = task().then(result => {
+          results.push(result);
+        });
+        
+        executing.push(promise);
+        
+        if (executing.length >= concurrency) {
+          await Promise.race(executing);
+          executing.splice(executing.findIndex(p => p === promise), 1);
+        }
+      }
+      
+      await Promise.all(executing);
+      return results;
+    };
+    
+    // Fetch in parallel across all generated queries - WITH RATE LIMITING
+    // Build task array - conditionally include Tavily based on API key
+    const getTavilyTask = (q: string): (() => Promise<any[]>) => {
+      if (!TAVILY_KEY) return () => Promise.resolve([]);
+      
+      return () => fetch('https://api.tavily.com/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          api_key: TAVILY_KEY,
+          query: q,
+          search_depth: 'basic',
+          max_results: 10,
+          include_answer: false,
+          include_raw_content: false
+        })
+      })
+        .then(r => r.ok ? r.json() : { results: [] })
+        .then(data => {
+          // eslint-disable-next-line no-console
+          console.log(`[NewsService] Tavily response for "${q}":`, data.results?.length || 0, 'results');
+          return (data.results || []).map((r: any) => ({
+            title: r.title || '',
+            text: r.content || r.snippet || '',
+            url: r.url || '',
+            publish_date: r.published_date || r.date || ''
+          }));
+        })
+        .catch(() => []);
+    };
+    
+    const getWorldNewsTask = (q: string): (() => Promise<any[]>) => () =>
       fetch(`https://api.worldnewsapi.com/search-news?api-key=${WORLD_NEWS_KEY}&text=${encodeURIComponent(q)}&number=10&language=en&sort=publish-time&sort-direction=DESC`)
         .then(r => r.ok ? r.json() : { news: [] })
         .then(data => data.news || [])
-        .catch(() => []),
+        .catch(() => []);
+    
+    const getNewsDataTask = (q: string): (() => Promise<any[]>) => () =>
       fetch(`https://newsdata.io/api/1/latest?apikey=${NEWSDATA_KEY}&q=${encodeURIComponent(q)}&language=en&size=10${isPolitical ? '&category=politics' : ''}`)
         .then(r => r.ok ? r.json() : { results: [] })
         .then(data => data.results || [])
-        .catch(() => [])
+        .catch(() => []);
+    
+    const allTasks: (() => Promise<any[]>)[] = subjectQueries.flatMap(q => [
+      getTavilyTask(q),
+      getWorldNewsTask(q),
+      getNewsDataTask(q)
     ]);
 
-    const results = await Promise.all(allTasks);
+    // Use limited concurrency to avoid rate limiting
+    const results = await limitedFetch(allTasks, 3);
     const combined = results.flat();
 
     const normalized = combined.map((n: any) => ({
@@ -67,10 +133,16 @@ export async function fetchLatestNews(input: string): Promise<NewsArticle[]> {
       publish_date: n.publish_date || n.pubDate || ''
     }));
 
-    // RELEVANCE SCORING: Avoid generic listicles like "UPSC Current Affairs" if possible
+    // RELEVANCE SCORING: Prioritize Tavily results (more up-to-date) then avoid generic listicles like "UPSC Current Affairs" if possible
     const scored = normalized.map(a => {
       const content = (a.title + ' ' + a.text).toLowerCase();
       let score = 0;
+      
+      // TAVILY BOOST: Give higher priority to Tavily results (they tend to be more current)
+      // Check if content looks recent (Tavily provides more real-time data)
+      const currentYear = new Date().getFullYear();
+      const hasCurrentYear = content.includes(currentYear.toString()) || content.includes((currentYear - 1).toString());
+      if (hasCurrentYear) score += 5;
       
       // Core subject match
       if (lowerInput.includes('nepal')) {

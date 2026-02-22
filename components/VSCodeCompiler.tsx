@@ -1,15 +1,15 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Editor, { OnMount } from '@monaco-editor/react';
 import { emmetHTML, emmetCSS, emmetJSX } from 'emmet-monaco-es';
-import { 
-  Play, 
-  Trash2, 
-  Download, 
-  FileCode, 
-  Monitor, 
-  Smartphone, 
-  Tablet, 
-  Maximize2, 
+import {
+  Play,
+  Trash2,
+  Download,
+  FileCode,
+  Monitor,
+  Smartphone,
+  Tablet,
+  Maximize2,
   Minimize2,
   Terminal,
   LayoutTemplate,
@@ -26,7 +26,7 @@ import { twMerge } from 'tailwind-merge';
 
 // Utility for cleaner tailwind classes
 export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs));  
+  return twMerge(clsx(inputs));
 }
 
 // --- Types ---
@@ -48,10 +48,10 @@ const LANGUAGE_CONFIGS: Record<Exclude<Language, 'web'>, { label: string, monaco
   php: { label: 'PHP', monaco: 'php', compiler: 'php-8.3.12', template: '<?php\necho "Hello from PHP! 🐘";' },
   c: { label: 'C', monaco: 'c', compiler: 'gcc-13.2.0-c', template: '#include <stdio.h>\n\nint main() {\n    printf("Hello from C! 🛠️\\n");\n    return 0;\n}' },
   cpp: { label: 'C++', monaco: 'cpp', compiler: 'gcc-13.2.0', template: '#include <iostream>\n\nint main() {\n    std::cout << "Hello from C++! 🚀" << std::endl;\n    return 0;\n}' },
-  csharp: { label: 'C#', monaco: 'csharp', compiler: 'dotnetcore-8.0.402', template: 'using System;\n\nclass Program {\n    static void Main() {\n        Console.WriteLine("Hello from C#! ✨");\n    }\n}' },
+  csharp: { label: 'C#', monaco: 'csharp', compiler: 'mono-6.12.0.199', template: 'using System;\n\nclass Program {\n    static void Main() {\n        Console.WriteLine("Hello from C#! ✨");\n    }\n}' },
   rust: { label: 'Rust', monaco: 'rust', compiler: 'rust-1.82.0', template: 'fn main() {\n    println!("Hello from Rust! 🦀");\n}' },
   kotlin: { label: 'Kotlin', monaco: 'kotlin', compiler: 'kotlin', template: 'fun main() {\n    println("Hello from Kotlin! 💜")\n}' },
-  java: { label: 'Java', monaco: 'java', compiler: 'openjdk-jdk-22+36', template: 'public class Main {\n    public static void main(String[] args) {\n        System.out.println("Hello from Java! ☕");\n    }\n}' },
+  java: { label: 'Java', monaco: 'java', compiler: 'openjdk-jdk-22+36', template: 'class Prog {\n    public static void main(String[] args) {\n        System.out.println("Hello from Java! ☕");\n    }\n}' },
   go: { label: 'Go', monaco: 'go', compiler: 'go-1.23.2', template: 'package main\n\nimport "fmt"\n\nfunc main() {\n    fmt.Println("Hello from Go! 🐹")\n}' },
   ruby: { label: 'Ruby', monaco: 'ruby', compiler: 'ruby-3.4.1', template: 'puts "Hello from Ruby! 💎"' },
   typescript: { label: 'TypeScript', monaco: 'typescript', compiler: 'typescript-5.6.2', template: 'console.log("Hello from TypeScript! 📘");' }
@@ -86,7 +86,7 @@ const DEFAULT_CSS = `body {
   background: #1e293b;
   padding: 2rem;
   border-radius: 1rem;
-  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+ box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
   text-align: center;
   max-width: 400px;
   border: 1px solid #334155;
@@ -114,17 +114,17 @@ btn.addEventListener('click', () => {
   console.log('Button interaction logged at:', new Date().toLocaleTimeString());
 });
 
-console.info('System initialized.');`;
+c onsole.info('System initialized.');`;
 
 export default function VSCodeCompiler({ onClose }: VSCodeCompilerProps) {
   // --- State ---
-  const [activeTab, setActiveTab] = useState<Tab>('html');
+   const [activeTab, setActiveTab] = useState<Tab>('html');
   const [activeLanguage, setActiveLanguage] = useState<Language>('web');
-  
+
   const [htmlCode, setHtmlCode] = useState(DEFAULT_HTML);
   const [cssCode, setCssCode] = useState(DEFAULT_CSS);
   const [jsCode, setJsCode] = useState(DEFAULT_JS);
-  
+
   const [polyglotCode, setPolyglotCode] = useState<Record<string, string>>(() => {
     const codes: Record<string, string> = {};
     Object.entries(LANGUAGE_CONFIGS).forEach(([key, config]) => {
@@ -148,7 +148,7 @@ export default function VSCodeCompiler({ onClose }: VSCodeCompilerProps) {
     return (saved as Theme) || 'github-dark';
   });
   const [isThemeMenuOpen, setIsThemeMenuOpen] = useState(false);
-  
+
   // Resize States
   const [isDragging, setIsDragging] = useState<'horizontal' | 'vertical' | 'mobile' | false>(false);
   const [splitRatio, setSplitRatio] = useState(() => {
@@ -172,7 +172,7 @@ export default function VSCodeCompiler({ onClose }: VSCodeCompilerProps) {
   // Initialize BroadcastChannel
   useEffect(() => {
     bcRef.current = new BroadcastChannel('codeadk-preview');
-    
+
     // Listen for "ready" message from new tabs
     bcRef.current.onmessage = (event) => {
       if (event.data.type === 'ready' && srcDoc) {
@@ -276,7 +276,7 @@ export default function VSCodeCompiler({ onClose }: VSCodeCompilerProps) {
       const timeoutId = setTimeout(() => {
         setSrcDoc(prev => prev); // Trigger re-render
       }, 100);
-      
+
       return () => clearTimeout(timeoutId);
     }
   }, [device]);
@@ -295,7 +295,7 @@ export default function VSCodeCompiler({ onClose }: VSCodeCompilerProps) {
       if (retryCount.current < 3 && srcDoc) {
         retryCount.current++;
         console.log(`Retrying iframe load (${retryCount.current}/3)...`);
-        
+
         // Retry loading with exponential backoff
         setTimeout(() => {
           setSrcDoc(prev => prev); // Trigger re-render
@@ -321,7 +321,7 @@ export default function VSCodeCompiler({ onClose }: VSCodeCompilerProps) {
       setIsRunning(true);
       clearConsole();
       addLog('info', `🚀 Compiling and running ${activeLanguage} code...`);
-      
+
       const config = LANGUAGE_CONFIGS[activeLanguage as Exclude<Language, 'web'>];
       const code = polyglotCode[activeLanguage];
 
@@ -333,14 +333,15 @@ export default function VSCodeCompiler({ onClose }: VSCodeCompilerProps) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               args: "",
-              files: [{ name: "File.kt", text: code, publicId: "" }],
+              files: [{ name: "Prog.kt", text: code, publicId: "" }],
               confType: "java"
+            
             })
           });
           const result = await response.json();
           if (result.errors && Object.keys(result.errors).length > 0) {
             Object.values(result.errors).flat().forEach((err: any) => {
-              addLog('error', `${err.message} (${err.interval.start.line}:${err.interval.start.ch})`);
+            addLog('error', `${err.message} (${err.interval.start.line}:${err.interval.start.ch})`);
             });
           }
           if (result.text) {
@@ -365,7 +366,7 @@ export default function VSCodeCompiler({ onClose }: VSCodeCompilerProps) {
           }
 
           const result = await response.json();
-          
+
           if (result.program_output) {
             addLog('log', result.program_output);
           }
@@ -481,10 +482,10 @@ export default function VSCodeCompiler({ onClose }: VSCodeCompilerProps) {
         </body>
       </html>
     `;
-    
+
     // Clear and reload iframe
     setSrcDoc(''); // Clear first
-    
+
     // Use requestAnimationFrame to ensure DOM updates
     requestAnimationFrame(() => {
       setSrcDoc(doc);
@@ -495,9 +496,9 @@ export default function VSCodeCompiler({ onClose }: VSCodeCompilerProps) {
   const addLog = useCallback((type: LogType, message: string) => {
     const lines = message.split('\n');
     const timestamp = new Date().toLocaleTimeString();
-    
+
     setLogs(prev => [
-      ...prev, 
+      ...prev,
       ...lines.map(line => ({
         id: Math.random().toString(36).substr(2, 9),
         type,
@@ -551,7 +552,7 @@ ${jsCode}
       const ext = activeLanguage === 'python' ? 'py' : activeLanguage === 'rust' ? 'rs' : activeLanguage === 'kotlin' ? 'kt' : activeLanguage === 'csharp' ? 'cs' : activeLanguage === 'typescript' ? 'ts' : activeLanguage;
       fileName = `main.${ext}`;
     }
-    
+
     const blob = new Blob([fileContent], { type: mimeType });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -677,7 +678,7 @@ ${jsCode}
 
   return (
     <div className="flex flex-col h-screen bg-[#1e1e1e] text-gray-300 font-sans overflow-hidden">
-      
+
       {/* --- Header --- */}
       <header className="h-14 bg-[#252526] border-b border-[#333] flex items-center justify-between px-4 shrink-0 z-20">
         <div className="flex items-center gap-2">
@@ -685,7 +686,7 @@ ${jsCode}
             <FileCode size={20} className="text-white" />
           </div>
           <h1 className="font-bold text-white tracking-tight hidden lg:block">CodeAdk</h1>
-          <button 
+          <button
             onClick={onClose}
             className="flex items-center gap-2 px-3 py-1.5 bg-blue-600/10 hover:bg-blue-600/20 text-blue-400 text-sm font-semibold rounded-lg transition-all border border-blue-500/20 active:scale-95"
           >
@@ -694,126 +695,126 @@ ${jsCode}
           </button>
         </div>
 
-          <div className="relative">
-            <button 
-              onClick={() => setIsLanguageMenuOpen(!isLanguageMenuOpen)}
-              className="flex items-center gap-2 px-3 py-1.5 bg-[#1e1e1e] hover:bg-[#2d2d2d] text-gray-300 text-xs font-bold rounded-lg border border-[#333] transition-all active:scale-95"
-            >
-              <div className="w-2 h-2 rounded-full bg-blue-500" />
-              {activeLanguage === 'web' ? 'Web (HTML/CSS/JS)' : LANGUAGE_CONFIGS[activeLanguage as Exclude<Language, 'web'>].label}
-              <ChevronDown size={14} className={cn("transition-transform duration-200", isLanguageMenuOpen && "rotate-180")} />
-            </button>
+        <div className="relative">
+          <button
+            onClick={() => setIsLanguageMenuOpen(!isLanguageMenuOpen)}
+            className="flex items-center gap-2 px-3 py-1.5 bg-[#1e1e1e] hover:bg-[#2d2d2d] text-gray-300 text-xs font-bold rounded-lg border border-[#333] transition-all active:scale-95"
+          >
+            <div className="w-2 h-2 rounded-full bg-blue-500" />
+            {activeLanguage === 'web' ? 'Web (HTML/CSS/JS)' : LANGUAGE_CONFIGS[activeLanguage as Exclude<Language, 'web'>].label}
+            <ChevronDown size={14} className={cn("transition-transform duration-200", isLanguageMenuOpen && "rotate-180")} />
+          </button>
 
-            {isLanguageMenuOpen && (
-              <>
-                <div 
-                  className="fixed inset-0 z-30" 
-                  onClick={() => setIsLanguageMenuOpen(false)} 
-                />
-                <div className="absolute top-full left-0 mt-2 w-56 bg-[#252526] border border-[#333] rounded-xl shadow-2xl overflow-hidden z-40 animate-in fade-in zoom-in duration-200">
-                  <div className="p-2 space-y-1">
-                    <button
-                      onClick={() => {
-                        setActiveLanguage('web');
-                        setActiveTab('html');
-                        setIsLanguageMenuOpen(false);
-                      }}
-                      className={cn(
-                        "w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors",
-                        activeLanguage === 'web' ? "bg-blue-600/20 text-blue-400" : "hover:bg-[#2d2d2d] text-gray-300"
-                      )}
-                    >
-                      <Layout size={16} />
-                      <span className="flex-1 text-left font-semibold">Web (HTML/CSS/JS)</span>
-                      {activeLanguage === 'web' && <div className="w-1.5 h-1.5 rounded-full bg-blue-400" />}
-                    </button>
-                    
-                    <div className="h-px bg-[#333] my-2 mx-2" />
-                    
-                    <div className="max-h-64 overflow-y-auto custom-scrollbar">
-                      {Object.entries(LANGUAGE_CONFIGS).map(([key, config]) => (
-                        <button
-                          key={key}
-                          onClick={() => {
-                            setActiveLanguage(key as Language);
-                            setActiveTab('code');
-                            setIsLanguageMenuOpen(false);
-                          }}
-                          className={cn(
-                            "w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors",
-                            activeLanguage === key ? "bg-blue-600/20 text-blue-400" : "hover:bg-[#2d2d2d] text-gray-300"
-                          )}
-                        >
-                          <Terminal size={16} />
-                          <span className="flex-1 text-left font-semibold">{config.label}</span>
-                          {activeLanguage === key && <div className="w-1.5 h-1.5 rounded-full bg-blue-400" />}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
+          {isLanguageMenuOpen && (
+            <>
+              <div
+                className="fixed inset-0 z-30"
+                onClick={() => setIsLanguageMenuOpen(false)}
+              />
+              <div className="absolute top-full left-0 mt-2 w-56 bg-[#252526] border border-[#333] rounded-xl shadow-2xl overflow-hidden z-40 animate-in fade-in zoom-in duration-200">
+                <div className="p-2 space-y-1">
+                  <button
+                    onClick={() => {
+                      setActiveLanguage('web');
+                      setActiveTab('html');
+                      setIsLanguageMenuOpen(false);
+                    }}
+                    className={cn(
+                      "w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors",
+                      activeLanguage === 'web' ? "bg-blue-600/20 text-blue-400" : "hover:bg-[#2d2d2d] text-gray-300"
+                    )}
+                  >
+                    <Layout size={16} />
+                    <span className="flex-1 text-left font-semibold">Web (HTML/CSS/JS)</span>
+                    {activeLanguage === 'web' && <div className="w-1.5 h-1.5 rounded-full bg-blue-400" />}
+                  </button>
 
-          {/* Theme Switcher */}
-          <div className="relative">
-            <button 
-              onClick={() => setIsThemeMenuOpen(!isThemeMenuOpen)}
-              className="flex items-center gap-2 px-3 py-1.5 bg-[#1e1e1e] hover:bg-[#2d2d2d] text-gray-300 text-xs font-bold rounded-lg border border-[#333] transition-all active:scale-95 shadow-sm"
-              title="Change Editor Theme"
-            >
-              <Palette size={14} className="text-blue-400" />
-              <span className="hidden sm:inline text-gray-400">Theme</span>
-              <ChevronDown size={14} className={cn("transition-transform duration-200 text-gray-500", isThemeMenuOpen && "rotate-180")} />
-            </button>
+                  <div className="h-px bg-[#333] my-2 mx-2" />
 
-            {isThemeMenuOpen && (
-              <>
-                <div 
-                  className="fixed inset-0 z-30" 
-                  onClick={() => setIsThemeMenuOpen(false)} 
-                />
-                <div className="absolute top-full left-0 mt-2 w-48 bg-[#252526] border border-[#333] rounded-xl shadow-2xl overflow-hidden z-40 animate-in fade-in zoom-in duration-200">
-                  <div className="p-2 space-y-1 text-[10px] font-bold uppercase tracking-wider text-gray-500 px-3 py-1">
-                    Select Theme
-                  </div>
-                  <div className="p-2 space-y-1">
-                    {(['vs-dark', 'vs', 'github-dark', 'github-light', 'monokai'] as Theme[]).map((t) => (
+                  <div className="max-h-64 overflow-y-auto custom-scrollbar">
+                    {Object.entries(LANGUAGE_CONFIGS).map(([key, config]) => (
                       <button
-                        key={t}
+                        key={key}
                         onClick={() => {
-                          setActiveTheme(t);
-                          localStorage.setItem('codeadk_theme', t);
-                          setIsThemeMenuOpen(false);
+                          setActiveLanguage(key as Language);
+                          setActiveTab('code');
+                          setIsLanguageMenuOpen(false);
                         }}
                         className={cn(
-                          "w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-semibold transition-colors",
-                          activeTheme === t ? "bg-blue-600/20 text-blue-400" : "hover:bg-[#2d2d2d] text-gray-300"
+                          "w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors",
+                          activeLanguage === key ? "bg-blue-600/20 text-blue-400" : "hover:bg-[#2d2d2d] text-gray-300"
                         )}
                       >
-                        {t === 'vs-dark' ? 'VS Code Dark' : 
-                         t === 'vs' ? 'VS Code Light' : 
-                         t === 'github-dark' ? 'GitHub Dark' : 
-                         t === 'github-light' ? 'GitHub Light' : 'Monokai'}
-                        {activeTheme === t && <div className="w-1.5 h-1.5 rounded-full bg-blue-400" />}
+                        <Terminal size={16} />
+                        <span className="flex-1 text-left font-semibold">{config.label}</span>
+                        {activeLanguage === key && <div className="w-1.5 h-1.5 rounded-full bg-blue-400" />}
                       </button>
                     ))}
                   </div>
                 </div>
-              </>
-            )}
-          </div>
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Theme Switcher */}
+        <div className="relative">
+          <button
+            onClick={() => setIsThemeMenuOpen(!isThemeMenuOpen)}
+            className="flex items-center gap-2 px-3 py-1.5 bg-[#1e1e1e] hover:bg-[#2d2d2d] text-gray-300 text-xs font-bold rounded-lg border border-[#333] transition-all active:scale-95 shadow-sm"
+            title="Change Editor Theme"
+          >
+            <Palette size={14} className="text-blue-400" />
+            <span className="hidden sm:inline text-gray-400">Theme</span>
+            <ChevronDown size={14} className={cn("transition-transform duration-200 text-gray-500", isThemeMenuOpen && "rotate-180")} />
+          </button>
+
+          {isThemeMenuOpen && (
+            <>
+              <div
+                className="fixed inset-0 z-30"
+                onClick={() => setIsThemeMenuOpen(false)}
+              />
+              <div className="absolute top-full left-0 mt-2 w-48 bg-[#252526] border border-[#333] rounded-xl shadow-2xl overflow-hidden z-40 animate-in fade-in zoom-in duration-200">
+                <div className="p-2 space-y-1 text-[10px] font-bold uppercase tracking-wider text-gray-500 px-3 py-1">
+                  Select Theme
+                </div>
+                <div className="p-2 space-y-1">
+                  {(['vs-dark', 'vs', 'github-dark', 'github-light', 'monokai'] as Theme[]).map((t) => (
+                    <button
+                      key={t}
+                      onClick={() => {
+                        setActiveTheme(t);
+                        localStorage.setItem('codeadk_theme', t);
+                        setIsThemeMenuOpen(false);
+                      }}
+                      className={cn(
+                        "w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-semibold transition-colors",
+                        activeTheme === t ? "bg-blue-600/20 text-blue-400" : "hover:bg-[#2d2d2d] text-gray-300"
+                      )}
+                    >
+                      {t === 'vs-dark' ? 'VS Code Dark' :
+                        t === 'vs' ? 'VS Code Light' :
+                          t === 'github-dark' ? 'GitHub Dark' :
+                            t === 'github-light' ? 'GitHub Light' : 'Monokai'}
+                      {activeTheme === t && <div className="w-1.5 h-1.5 rounded-full bg-blue-400" />}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
 
         <div className="flex items-center gap-1 sm:gap-2">
           {/* Global Toggles (Header) - Visible everywhere for Unhide visibility */}
           <div className="flex items-center gap-0.5 sm:gap-1 bg-[#1e1e1e] p-1 rounded-lg border border-[#333]">
-            <button 
+            <button
               onClick={() => setIsEditorVisible(!isEditorVisible)}
               className={cn(
                 "p-1 rounded transition-all flex items-center gap-1 group",
-                isEditorVisible 
-                  ? "bg-blue-600/20 text-blue-400 border border-blue-500/30" 
+                isEditorVisible
+                  ? "bg-blue-600/20 text-blue-400 border border-blue-500/30"
                   : "bg-orange-500/20 text-orange-400 border border-orange-500/50 hover:bg-orange-500/30 shadow-[0_0_10px_rgba(249,115,22,0.2)]"
               )}
               title={isEditorVisible ? "Hide Editor" : "Unhide Editor"}
@@ -821,12 +822,12 @@ ${jsCode}
               <FileCode size={14} className="sm:w-4 sm:h-4" />
               {!isEditorVisible && <span className="text-[10px] font-bold uppercase hidden sm:inline pr-1">Editor</span>}
             </button>
-            <button 
+            <button
               onClick={() => setIsPreviewVisible(!isPreviewVisible)}
               className={cn(
                 "p-1 rounded transition-all flex items-center gap-1 group",
-                isPreviewVisible 
-                  ? "bg-blue-600/20 text-blue-400 border border-blue-500/30" 
+                isPreviewVisible
+                  ? "bg-blue-600/20 text-blue-400 border border-blue-500/30"
                   : "bg-orange-500/20 text-orange-400 border border-orange-500/50 hover:bg-orange-500/30 shadow-[0_0_10px_rgba(249,115,22,0.2)]"
               )}
               title={isPreviewVisible ? "Hide Preview" : "Unhide Preview"}
@@ -834,12 +835,12 @@ ${jsCode}
               <Monitor size={14} className="sm:w-4 sm:h-4" />
               {!isPreviewVisible && <span className="text-[10px] font-bold uppercase hidden sm:inline pr-1">Output</span>}
             </button>
-            <button 
+            <button
               onClick={() => setIsConsoleVisible(!isConsoleVisible)}
               className={cn(
                 "p-1 rounded transition-all flex items-center gap-1 group",
-                isConsoleVisible 
-                  ? "bg-blue-600/20 text-blue-400 border border-blue-500/30" 
+                isConsoleVisible
+                  ? "bg-blue-600/20 text-blue-400 border border-blue-500/30"
                   : "bg-orange-500/20 text-orange-400 border border-orange-500/50 hover:bg-orange-500/30 shadow-[0_0_10px_rgba(249,115,22,0.2)]"
               )}
               title={isConsoleVisible ? "Hide Console" : "Unhide Console"}
@@ -854,9 +855,9 @@ ${jsCode}
           <button onClick={loadTemplate} className="p-1.5 sm:px-3 sm:py-1.5 text-sm hover:bg-[#3c3c3c] rounded transition-colors" title="Load Template">
             <LayoutTemplate size={16} /> <span className="hidden lg:inline text-xs font-semibold">Template</span>
           </button>
-          
-          <button 
-            onClick={runCode} 
+
+          <button
+            onClick={runCode}
             disabled={isRunning}
             className={cn(
               "flex items-center gap-2 px-4 py-1.5 sm:px-5 sm:py-2 rounded-xl font-bold text-xs sm:text-sm transition-all active:scale-95 shadow-lg relative overflow-hidden group/run",
@@ -873,7 +874,7 @@ ${jsCode}
             <span className="">{isRunning ? '...' : 'Run'}</span>
           </button>
           {onClose && (
-            <button 
+            <button
               onClick={onClose}
               className="p-1.5 hover:bg-[#3c3c3c] rounded-lg transition-colors text-slate-400 hover:text-white"
               title="Close Compiler"
@@ -886,15 +887,15 @@ ${jsCode}
 
       {/* --- Main Workspace --- */}
       <div className="flex flex-col lg:flex-row flex-1 overflow-hidden relative" ref={containerRef}>
-        
+
         {/* Editor Section */}
         {isEditorVisible && !isFullscreen && (
-          <div 
+          <div
             className={cn(
               "flex flex-col bg-[#1e1e1e] border-[#333] relative order-2 lg:order-1 transition-all duration-300",
               "border-t lg:border-t-0 lg:border-r"
             )}
-            style={{ 
+            style={{
               width: window.innerWidth >= 1024 ? (isPreviewVisible || isConsoleVisible ? `${splitRatio}%` : '100%') : '100%',
               height: window.innerWidth < 1024 ? (isPreviewVisible || isConsoleVisible ? `${100 - mobileOutputHeight}%` : '100%') : '100%'
             }}
@@ -909,7 +910,7 @@ ${jsCode}
                       onClick={() => setActiveTab(tab)}
                       className={cn(
                         "px-4 py-2 text-xs uppercase font-medium border-t-2 transition-colors flex items-center gap-2",
-                        activeTab === tab 
+                        activeTab === tab
                           ? "bg-[#1e1e1e] text-white border-blue-500"
                           : "bg-[#2d2d2d] text-gray-500 border-transparent hover:bg-[#2a2d2e] hover:text-gray-300"
                       )}
@@ -929,8 +930,8 @@ ${jsCode}
                   </button>
                 )}
               </div>
-              
-              <button 
+
+              <button
                 onClick={() => setIsEditorVisible(false)}
                 className="p-1 hover:bg-[#3c3c3c] rounded text-gray-500 hover:text-white transition-colors"
                 title="Hide Editor"
@@ -971,7 +972,7 @@ ${jsCode}
 
         {/* Resize Handle (Desktop Only - Horizontal) */}
         {!isFullscreen && isEditorVisible && (isPreviewVisible || isConsoleVisible) && (
-          <div 
+          <div
             className="hidden lg:block w-1 hover:w-1.5 bg-blue-600/30 hover:bg-blue-600 cursor-col-resize z-30 transition-all relative group"
             onMouseDown={() => setIsDragging('horizontal')}
           >
@@ -982,7 +983,7 @@ ${jsCode}
 
         {/* Resize Handle (Mobile Only - Vertical) */}
         {!isFullscreen && isEditorVisible && (isPreviewVisible || isConsoleVisible) && (
-          <div 
+          <div
             className="lg:hidden h-1.5 bg-[#2d2d2d] hover:bg-blue-600 cursor-row-resize z-10 transition-colors relative"
             onMouseDown={() => setIsDragging('mobile')}
           >
@@ -993,16 +994,16 @@ ${jsCode}
 
         {/* Preview & Console Section */}
         {(isPreviewVisible || isConsoleVisible) && (
-          <div 
+          <div
             className="flex flex-col bg-[#0d0d0e] h-full transition-all duration-300 order-1 lg:order-2"
-            style={{ 
+            style={{
               width: window.innerWidth >= 1024 ? (isFullscreen || !isEditorVisible ? '100%' : `${100 - splitRatio}%`) : '100%',
               height: window.innerWidth < 1024 ? (isEditorVisible ? `${mobileOutputHeight}%` : '100%') : '100%'
             }}
           >
             {/* Mobile Tab Switcher */}
             <div className="flex lg:hidden bg-gray-100 border-b border-gray-200">
-              <button 
+              <button
                 onClick={() => setActiveOutputTab('preview')}
                 className={cn(
                   "flex-1 px-4 py-2 text-xs font-bold uppercase transition-all flex items-center justify-center gap-2",
@@ -1011,7 +1012,7 @@ ${jsCode}
               >
                 <Monitor size={14} /> Preview
               </button>
-              <button 
+              <button
                 onClick={() => setActiveOutputTab('console')}
                 className={cn(
                   "flex-1 px-4 py-2 text-xs font-bold uppercase transition-all flex items-center justify-center gap-2 border-l border-gray-200",
@@ -1030,10 +1031,10 @@ ${jsCode}
                   <div className="flex items-center gap-2 text-gray-600">
                     <span className="text-xs font-bold uppercase tracking-wider">Preview</span>
                   </div>
-                  
+
                   <div className="flex items-center gap-1">
                     <div className="flex items-center gap-1 bg-gray-200 p-1 rounded-lg">
-                      <button 
+                      <button
                         onClick={openExternalPreview}
                         className="p-1.5 rounded transition-all text-gray-500 hover:text-blue-600 hover:bg-white active:scale-95"
                         title="Open in New Tab"
@@ -1041,22 +1042,22 @@ ${jsCode}
                         <ExternalLink size={16} />
                       </button>
                       <div className="w-px h-4 bg-gray-300 mx-1"></div>
-                      <button 
-                        onClick={() => setDevice('desktop')} 
+                      <button
+                        onClick={() => setDevice('desktop')}
                         className={cn("p-1.5 rounded transition-all", device === 'desktop' ? "bg-white shadow-sm text-blue-600" : "text-gray-500 hover:text-gray-700")}
                         title="Desktop View"
                       >
                         <Monitor size={16} />
                       </button>
-                      <button 
-                        onClick={() => setDevice('tablet')} 
+                      <button
+                        onClick={() => setDevice('tablet')}
                         className={cn("p-1.5 rounded transition-all", device === 'tablet' ? "bg-white shadow-sm text-blue-600" : "text-gray-500 hover:text-gray-700")}
                         title="Tablet View"
                       >
                         <Tablet size={16} />
                       </button>
-                      <button 
-                        onClick={() => setDevice('mobile')} 
+                      <button
+                        onClick={() => setDevice('mobile')}
                         className={cn("p-1.5 rounded transition-all", device === 'mobile' ? "bg-white shadow-sm text-blue-600" : "text-gray-500 hover:text-gray-700")}
                         title="Mobile View"
                       >
@@ -1066,7 +1067,7 @@ ${jsCode}
 
                     <div className="w-px h-6 bg-gray-300 mx-1 hidden sm:block"></div>
 
-                    <button 
+                    <button
                       onClick={() => setIsFullscreen(!isFullscreen)}
                       className="text-gray-500 hover:text-gray-800 transition-colors p-1"
                       title={isFullscreen ? "Exit Fullscreen" : "Fullscreen Preview"}
@@ -1074,7 +1075,7 @@ ${jsCode}
                       {isFullscreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
                     </button>
 
-                    <button 
+                    <button
                       onClick={() => setIsPreviewVisible(false)}
                       className="p-1.5 hover:bg-gray-200 rounded text-gray-500 hover:text-red-500 transition-colors"
                       title="Hide Preview"
@@ -1087,7 +1088,7 @@ ${jsCode}
                 {/* Iframe Container / Placeholder */}
                 <div className="flex-1 bg-[#121214] flex justify-center overflow-auto relative">
                   {activeLanguage === 'web' ? (
-                    <div 
+                    <div
                       className={cn(
                         "bg-white shadow-2xl transition-all duration-500 ease-in-out h-full",
                         device === 'mobile' ? 'w-[375px]' : device === 'tablet' ? 'w-[768px]' : 'w-full'
@@ -1121,7 +1122,7 @@ ${jsCode}
                       <p className="text-sm text-gray-500">
                         This language requires a backend runtime. Results will appear in the console below.
                       </p>
-                      <button 
+                      <button
                         onClick={runCode}
                         disabled={isRunning}
                         className="mt-6 px-6 py-2 bg-blue-600/20 hover:bg-blue-600/40 text-blue-400 rounded-xl font-bold transition-all active:scale-95 disabled:opacity-50 border border-blue-500/30"
@@ -1136,7 +1137,7 @@ ${jsCode}
 
             {/* Console Resize Handle (Desktop Vertical) */}
             {!isFullscreen && isPreviewVisible && isConsoleVisible && window.innerWidth >= 1024 && (
-              <div 
+              <div
                 className="h-1 bg-blue-600/30 hover:bg-blue-600 cursor-row-resize z-30 transition-all relative group"
                 onMouseDown={() => setIsDragging('vertical')}
               >
@@ -1146,7 +1147,7 @@ ${jsCode}
 
             {/* Console Panel */}
             {isConsoleVisible && !isFullscreen && (activeOutputTab === 'console' || window.innerWidth >= 1024) && (
-              <div 
+              <div
                 className={cn(
                   "bg-[#0d0d0e] border-t border-[#333] flex flex-col shrink-0 transition-all",
                   window.innerWidth < 1024 ? "flex-1" : ""
@@ -1158,13 +1159,13 @@ ${jsCode}
                     <Terminal size={12} /> Console
                   </div>
                   <div className="flex items-center gap-3">
-                    <button 
+                    <button
                       onClick={clearConsole}
                       className="text-[10px] text-gray-500 hover:text-white uppercase tracking-wider"
                     >
                       Clear Console
                     </button>
-                    <button 
+                    <button
                       onClick={() => setIsConsoleVisible(false)}
                       className="p-1 hover:bg-[#3c3c3c] rounded text-gray-500 hover:text-red-400 transition-colors"
                       title="Hide Console"
@@ -1182,9 +1183,9 @@ ${jsCode}
                       <span className="text-gray-600 shrink-0">[{log.timestamp}]</span>
                       <span className={cn(
                         "break-all whitespace-pre-wrap",
-                        log.type === 'error' ? "text-red-400" : 
-                        log.type === 'warn' ? "text-yellow-400" : 
-                        log.type === 'info' ? "text-blue-400" : "text-gray-300"
+                        log.type === 'error' ? "text-red-400" :
+                          log.type === 'warn' ? "text-yellow-400" :
+                            log.type === 'info' ? "text-blue-400" : "text-gray-300"
                       )}>
                         {log.type === 'error' && '❌ '}
                         {log.type === 'warn' && '⚠️ '}
@@ -1208,7 +1209,7 @@ ${jsCode}
             <p className="text-gray-400 max-w-sm mb-8">
               You've hidden all panels. Click the buttons in the header to unhide them, or use the shortcut below.
             </p>
-            <button 
+            <button
               onClick={() => {
                 setIsEditorVisible(true);
                 setIsPreviewVisible(true);

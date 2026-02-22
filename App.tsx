@@ -21,6 +21,7 @@ import { adminService } from './services/adminService';
 import { fetchLatestNews, shouldFetchNews } from './services/newsService';
 import VSCodeCompiler from './components/VSCodeCompiler'
 import LanguageConverter from './components/LanguageConverter'
+import PhotoAdk from './components/PhotoAdk'
 
 
 const ADMIN_EMAILS = [
@@ -85,6 +86,9 @@ const App: React.FC = () => {
   });
   const [isConverterOpen, setIsConverterOpen] = useState(() => {
     return window.location.pathname === '/chat/converteradk';
+  });
+  const [isPhotoAdkOpen, setIsPhotoAdkOpen] = useState(() => {
+    return window.location.pathname === '/chat/photoadk';
   });
   const [previousSessionId, setPreviousSessionId] = useState<string | null>(null);
   const [imageError, setImageError] = useState(false);
@@ -268,7 +272,7 @@ const App: React.FC = () => {
   useEffect(() => {
     // Sync Session ID (ignore overlay paths)
     if (urlSessionId && urlSessionId !== currentSessionId && 
-        urlSessionId !== 'codeadk' && urlSessionId !== 'converteradk') {
+        urlSessionId !== 'codeadk' && urlSessionId !== 'converteradk' && urlSessionId !== 'photoadk') {
       setCurrentSessionId(urlSessionId);
     }
 
@@ -281,14 +285,20 @@ const App: React.FC = () => {
     const path = location.pathname;
     if (path === '/chat/codeadk' && !isCompilerOpen) {
       setIsCompilerOpen(true);
-    } else if (path !== '/chat/codeadk' && isCompilerOpen && path !== '/chat/converteradk') {
+    } else if (path !== '/chat/codeadk' && isCompilerOpen && path !== '/chat/converteradk' && path !== '/chat/photoadk') {
       setIsCompilerOpen(false);
     }
 
     if (path === '/chat/converteradk' && !isConverterOpen) {
       setIsConverterOpen(true);
-    } else if (path !== '/chat/converteradk' && isConverterOpen && path !== '/chat/codeadk') {
+    } else if (path !== '/chat/converteradk' && isConverterOpen && path !== '/chat/codeadk' && path !== '/chat/photoadk') {
       setIsConverterOpen(false);
+    }
+
+    if (path === '/chat/photoadk' && !isPhotoAdkOpen) {
+      setIsPhotoAdkOpen(true);
+    } else if (path !== '/chat/photoadk' && isPhotoAdkOpen && path !== '/chat/codeadk' && path !== '/chat/converteradk') {
+      setIsPhotoAdkOpen(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [urlSessionId, location.pathname]);
@@ -298,7 +308,7 @@ const App: React.FC = () => {
     if (isCompilerOpen) {
       if (location.pathname !== '/chat/codeadk') {
         const currentId = currentSessionId || urlSessionId;
-        if (currentId && currentId !== 'codeadk' && currentId !== 'converteradk' && !previousSessionId) {
+        if (currentId && currentId !== 'codeadk' && currentId !== 'converteradk' && currentId !== 'photoadk' && !previousSessionId) {
           setPreviousSessionId(currentId);
         }
         isRouteSyncingRef.current = true;
@@ -310,7 +320,7 @@ const App: React.FC = () => {
     if (isConverterOpen) {
       if (location.pathname !== '/chat/converteradk') {
         const currentId = currentSessionId || urlSessionId;
-        if (currentId && currentId !== 'codeadk' && currentId !== 'converteradk' && !previousSessionId) {
+        if (currentId && currentId !== 'codeadk' && currentId !== 'converteradk' && currentId !== 'photoadk' && !previousSessionId) {
           setPreviousSessionId(currentId);
         }
         isRouteSyncingRef.current = true;
@@ -319,8 +329,20 @@ const App: React.FC = () => {
       return;
     }
 
+    if (isPhotoAdkOpen) {
+      if (location.pathname !== '/chat/photoadk') {
+        const currentId = currentSessionId || urlSessionId;
+        if (currentId && currentId !== 'codeadk' && currentId !== 'converteradk' && currentId !== 'photoadk' && !previousSessionId) {
+          setPreviousSessionId(currentId);
+        }
+        isRouteSyncingRef.current = true;
+        navigate('/chat/photoadk', { replace: true });
+      }
+      return;
+    }
+
     // Otherwise, sync the current session
-    if (currentSessionId && currentSessionId !== 'codeadk' && currentSessionId !== 'converteradk') {
+    if (currentSessionId && currentSessionId !== 'codeadk' && currentSessionId !== 'converteradk' && currentSessionId !== 'photoadk') {
       const targetPath = `/chat/${currentSessionId}`;
       if (location.pathname !== targetPath) {
         isRouteSyncingRef.current = true;
@@ -331,7 +353,7 @@ const App: React.FC = () => {
       localStorage.setItem(key, currentSessionId);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentSessionId, isCompilerOpen, isConverterOpen]);
+  }, [currentSessionId, isCompilerOpen, isConverterOpen, isPhotoAdkOpen]);
 
   // Handle "relogin" (auth change) to reset sync state and trigger new chat
   useEffect(() => {
@@ -348,7 +370,7 @@ const App: React.FC = () => {
       const isVirtual = currentSessionId.startsWith('new_');
       
       // Only auto-redirect if we are at a chat URL that doesn't exist anymore AND it's not a virtual session
-      if (!exists && !isVirtual && !status.isTyping && location.pathname.startsWith('/chat/') && location.pathname !== '/chat/codeadk' && location.pathname !== '/chat/converteradk') {
+      if (!exists && !isVirtual && !status.isTyping && location.pathname.startsWith('/chat/') && location.pathname !== '/chat/codeadk' && location.pathname !== '/chat/converteradk' && location.pathname !== '/chat/photoadk') {
          console.warn("Session not found, starting handleNewChat...");
          handleNewChat();
       }
@@ -429,6 +451,7 @@ const App: React.FC = () => {
         setIsModelMenuOpen(false);
         setIsCompilerOpen(false);
         setIsConverterOpen(false);
+        setIsPhotoAdkOpen(false);
       }
 
     };
@@ -997,11 +1020,22 @@ const App: React.FC = () => {
         isPro={isPro}
         onOpenCompiler={() => {
           setPreviousSessionId(currentSessionId);
+          setIsConverterOpen(false);
+          setIsPhotoAdkOpen(false);
           setIsCompilerOpen(true);
         }}
         onOpenConverter={() => {
           setPreviousSessionId(currentSessionId);
+          setIsCompilerOpen(false);
+          setIsPhotoAdkOpen(false);
           setIsConverterOpen(true);
+        }}
+        onOpenPhotoAdk={() => {
+          setPreviousSessionId(currentSessionId);
+          setIsCompilerOpen(false);
+          setIsConverterOpen(false);
+          setIsPhotoAdkOpen(true);
+          setIsSidebarOpen(false);
         }}
       />
 
@@ -1731,6 +1765,8 @@ const App: React.FC = () => {
               setPreviousSessionId(null);
               if (target === 'converteradk') {
                 setIsConverterOpen(true);
+              } else if (target === 'photoadk') {
+                setIsPhotoAdkOpen(true);
               } else {
                 setCurrentSessionId(target);
                 navigate(`/chat/${target}`);
@@ -1754,6 +1790,8 @@ const App: React.FC = () => {
                 setPreviousSessionId(null);
                 if (target === 'codeadk') {
                   setIsCompilerOpen(true);
+                } else if (target === 'photoadk') {
+                  setIsPhotoAdkOpen(true);
                 } else {
                   setCurrentSessionId(target);
                   navigate(`/chat/${target}`);
@@ -1763,6 +1801,13 @@ const App: React.FC = () => {
               }
             }} 
           />
+        </div>
+      )}
+
+      {/* PhotoAdk Overlay */}
+      {isPhotoAdkOpen && (
+        <div className="fixed inset-0 z-[200] animate-in zoom-in-95 duration-200">
+          <PhotoAdk />
         </div>
       )}
 
