@@ -30,6 +30,7 @@ root.render(
         <Route path="/codeadk" element={<App initialTool="codeadk" />} />
         <Route path="/photoadk" element={<App initialTool="photoadk" />} />
         <Route path="/converteradk" element={<App initialTool="converteradk" />} />
+        <Route path="/converteradk/history" element={<App initialTool="converteradk" />} />
 
         {/* Other standalone pages */}
         <Route path="/plans" element={<PricingPage />} />

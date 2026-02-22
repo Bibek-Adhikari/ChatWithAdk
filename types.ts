@@ -28,3 +28,13 @@ export interface GenerationState {
   error: string | null;
   isSyncing: boolean;
 }
+
+export interface ConversionHistory {
+  id: string;
+  userId?: string;
+  sourceLang: string;
+  targetLang: string;
+  sourceCode: string;
+  targetCode: string;
+  timestamp: number;
+}

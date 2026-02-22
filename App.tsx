@@ -49,7 +49,7 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
     return (saved as 'light' | 'dark') || 'dark';
   });
 
-  const overlayPaths = React.useMemo(() => ['codeadk', 'converteradk', 'photoadk'], []);
+  const overlayPaths = React.useMemo(() => ['codeadk', 'converteradk', 'photoadk', 'converteradk/history'], []);
 
   const { sessionId: urlSessionId } = useParams();
   const navigate = useNavigate();
@@ -108,6 +108,7 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
   const [isCompilerOpen, setIsCompilerOpen] = useState(() => initialTool === 'codeadk');
   const [isConverterOpen, setIsConverterOpen] = useState(() => initialTool === 'converteradk');
   const [isPhotoAdkOpen, setIsPhotoAdkOpen] = useState(() => initialTool === 'photoadk');
+  const [showConverterHistory, setShowConverterHistory] = useState(false);
   const [previousSessionId, setPreviousSessionId] = useState<string | null>(null);
   const [imageError, setImageError] = useState(false);
 
@@ -290,10 +291,12 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
     const path = location.pathname;
     const isPathCode = path === '/codeadk';
     const isPathConverter = path === '/converteradk';
+    const isPathConverterHistory = path === '/converteradk/history';
     const isPathPhoto = path === '/photoadk';
 
     setIsCompilerOpen(isPathCode);
-    setIsConverterOpen(isPathConverter);
+    setIsConverterOpen(isPathConverter || isPathConverterHistory);
+    setShowConverterHistory(isPathConverterHistory);
     setIsPhotoAdkOpen(isPathPhoto);
 
     // Also sync session from URL param
@@ -1705,6 +1708,7 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
           >
             <LanguageConverter 
               theme={theme === 'dark' ? 'vs-dark' : 'vs'} 
+              showHistory={showConverterHistory}
               onClose={() => {
                 const fallback = previousSessionId || currentSessionId;
                 setPreviousSessionId(null);

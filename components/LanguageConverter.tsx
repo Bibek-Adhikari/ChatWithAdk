@@ -17,10 +17,14 @@ import {
   GitBranch,
   Workflow,
   RotateCcw,
-  Lock
+  Lock,
+  ArrowLeft
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { cn } from './VSCodeCompiler';
 import { auth } from '../services/firebase';
+import { conversionHistoryService } from '../services/conversionHistoryService';
+import { conversionHistorySupabaseService } from '../services/conversionHistorySupabaseService';
 
 // --- Types ---
 type SourceLanguage = 'javascript' | 'typescript' | 'python' | 'rust' | 'go' | 'java' | 'csharp' | 'php' | 'ruby' | 'kotlin';
@@ -37,11 +41,11 @@ interface ConversionResult {
 
 interface ConversionHistory {
   id: string;
-  sourceLang: SourceLanguage;
-  targetLang: TargetLanguage;
+  sourceLang: string;
+  targetLang: string;
   sourceCode: string;
   targetCode: string;
-  timestamp: Date;
+  timestamp: number;
 }
 
 // Language pairs with special handling
@@ -255,9 +259,11 @@ fun main() {
 interface LanguageConverterProps {
   onClose?: () => void;
   theme?: string;
+  showHistory?: boolean;
 }
 
-export default function LanguageConverter({ onClose, theme = 'vs-dark' }: LanguageConverterProps) {
+export default function LanguageConverter({ onClose, theme = 'vs-dark', showHistory = false }: LanguageConverterProps) {
+  const navigate = useNavigate();
   // State
   const [sourceLang, setSourceLang] = useState<SourceLanguage>('javascript');
   const [targetLang, setTargetLang] = useState<TargetLanguage>('typescript');
@@ -268,9 +274,28 @@ export default function LanguageConverter({ onClose, theme = 'vs-dark' }: Langua
   const [copied, setCopied] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [history, setHistory] = useState<ConversionHistory[]>([]);
-  const [showHistory, setShowHistory] = useState(false);
+  const [showHistoryLocal, setShowHistoryLocal] = useState(false);
   const [autoConvert, setAutoConvert] = useState(false);
   const [conversionProgress, setConversionProgress] = useState(0);
+
+  // Combined showHistory state - use prop if provided (from route), otherwise use local state
+  const isShowingHistory = showHistory || showHistoryLocal;
+  const setIsShowingHistory = (value: boolean) => {
+    // Only navigate if the value is actually changing
+    if (value !== isShowingHistory) {
+      setShowHistoryLocal(value);
+      if (value) {
+        navigate('/converteradk/history', { replace: true });
+      } else {
+        navigate('/converteradk', { replace: true });
+      }
+    }
+  };
+
+  // Sync with prop changes from route - only update local state, don't trigger navigation
+  useEffect(() => {
+    setShowHistoryLocal(showHistory);
+  }, [showHistory]);
 
   // Auth State
   const [currentUser, setCurrentUser] = useState(auth.currentUser);
@@ -280,6 +305,105 @@ export default function LanguageConverter({ onClose, theme = 'vs-dark' }: Langua
       setCurrentUser(user);
     });
   }, []);
+
+  const getLocalHistoryKey = () => {
+    if (!currentUser) return 'conversionHistory_guest';
+    const identity = currentUser.uid || currentUser.email || 'guest';
+    return `conversionHistory_${identity}`;
+  };
+
+  // Load history from storage on mount and when user changes
+  useEffect(() => {
+    const loadHistory = async () => {
+      setHistory([]);
+
+      if (currentUser?.uid) {
+        try {
+          // Load from Firebase (primary)
+          const firebaseHistory = await conversionHistoryService.getUserConversions(currentUser.uid);
+          if (firebaseHistory.length > 0) {
+            setHistory(firebaseHistory.slice(0, 10));
+            return;
+          }
+          
+          // Fallback to Supabase if Firebase is empty
+          const supabaseHistory = await conversionHistorySupabaseService.getUserConversions(currentUser.uid);
+          if (supabaseHistory.length > 0) {
+            setHistory(supabaseHistory.slice(0, 10));
+          }
+        } catch (error) {
+          console.error('Error loading conversion history:', error);
+        }
+      } else {
+        // Load from localStorage for guests
+        try {
+          const localKey = getLocalHistoryKey();
+          const localHistory = localStorage.getItem(localKey) || localStorage.getItem('conversionHistory');
+          if (localHistory) {
+            setHistory(JSON.parse(localHistory));
+            // Migrate legacy global guest key once
+            if (!localStorage.getItem(localKey)) {
+              localStorage.setItem(localKey, localHistory);
+              localStorage.removeItem('conversionHistory');
+            }
+          }
+        } catch (error) {
+          console.error('Error loading local conversion history:', error);
+        }
+      }
+    };
+
+    loadHistory();
+  }, [currentUser]);
+
+  // Save conversion to storage
+  const saveToHistory = async (conversion: ConversionHistory) => {
+    // Update local state
+    setHistory(prev => [conversion, ...prev].slice(0, 10));
+
+    if (currentUser?.uid) {
+      try {
+        // Save to Firebase (primary)
+        await conversionHistoryService.saveConversion(currentUser.uid, conversion);
+        
+        // Also save to Supabase (backup)
+        await conversionHistorySupabaseService.saveConversion(currentUser.uid, conversion);
+      } catch (error) {
+        console.error('Error saving conversion to cloud:', error);
+      }
+    } else {
+      // Save to localStorage for guests
+      try {
+        const localKey = getLocalHistoryKey();
+        const currentHistory = JSON.parse(localStorage.getItem(localKey) || '[]');
+        const updatedHistory = [conversion, ...currentHistory].slice(0, 10);
+        localStorage.setItem(localKey, JSON.stringify(updatedHistory));
+      } catch (error) {
+        console.error('Error saving conversion to localStorage:', error);
+      }
+    }
+  };
+
+  const handleClearHistory = async () => {
+    setHistory([]);
+
+    if (currentUser?.uid) {
+      try {
+        await conversionHistoryService.clearUserHistory(currentUser.uid);
+        await conversionHistorySupabaseService.clearUserHistory(currentUser.uid);
+      } catch (error) {
+        console.error('Error clearing cloud conversion history:', error);
+      }
+      return;
+    }
+
+    try {
+      localStorage.removeItem(getLocalHistoryKey());
+      localStorage.removeItem('conversionHistory');
+    } catch (error) {
+      console.error('Error clearing local conversion history:', error);
+    }
+  };
 
   // Refs
   const sourceEditorRef = React.useRef<any>(null);
@@ -456,15 +580,16 @@ Note: Your explanation must prove this is a custom conversion for THIS specific 
       setTargetCode(result.code);
       setConversionResult(result);
 
-      // Add to history
-      setHistory(prev => [{
-        id: Math.random().toString(36).substr(2, 9),
+      // Add to history and persist to storage
+      const conversion: ConversionHistory = {
+        id: `${currentUser?.uid || 'guest'}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
         sourceLang,
         targetLang,
         sourceCode,
         targetCode: result.code,
-        timestamp: new Date()
-      }, ...prev].slice(0, 10)); // Keep last 10
+        timestamp: Date.now()
+      };
+      await saveToHistory(conversion);
 
     } catch (error: any) {
       setConversionResult({
@@ -528,7 +653,7 @@ Note: Your explanation must prove this is a custom conversion for THIS specific 
           </button>
 
           <button
-            onClick={() => setShowHistory(!showHistory)}
+            onClick={() => setIsShowingHistory(!isShowingHistory)}
             className="flex items-center gap-2 px-3 py-1.5 bg-[#1e1e1e] text-gray-400 rounded-lg border border-[#333] hover:bg-[#2d2d2d] text-xs font-bold transition-all"
           >
             <GitBranch size={14} />
@@ -539,13 +664,22 @@ Note: Your explanation must prove this is a custom conversion for THIS specific 
 
       {/* Main Content */}
       <div className="flex-1 overflow-hidden">
-        {showHistory ? (
+        {isShowingHistory ? (
           // History Panel
           <div className="h-full overflow-y-auto p-4">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-sm font-bold uppercase text-gray-500">Conversion History</h2>
+              <div className="flex items-center gap-3">
+                <h2 className="text-sm font-bold uppercase text-gray-500">Conversion History</h2>
+                <button
+                  onClick={() => setIsShowingHistory(false)}
+                  className="flex items-center gap-2 px-3 py-1.5 bg-blue-600/10 text-blue-400 hover:bg-blue-600/20 rounded-lg text-xs font-bold transition-all border border-blue-500/20"
+                >
+                  <ArrowLeft size={14} />
+                  Back to Conversion
+                </button>
+              </div>
               <button
-                onClick={() => setHistory([])}
+                onClick={handleClearHistory}
                 className="text-xs text-gray-500 hover:text-red-400"
               >
                 Clear All
@@ -564,11 +698,11 @@ Note: Your explanation must prove this is a custom conversion for THIS specific 
                     key={item.id}
                     className="bg-[#252526] rounded-lg p-4 border border-[#333] hover:border-green-500/30 cursor-pointer transition-all"
                     onClick={() => {
-                      setSourceLang(item.sourceLang);
-                      setTargetLang(item.targetLang);
+                      setSourceLang(item.sourceLang as SourceLanguage);
+                      setTargetLang(item.targetLang as SourceLanguage);
                       setSourceCode(item.sourceCode);
                       setTargetCode(item.targetCode);
-                      setShowHistory(false);
+                      setIsShowingHistory(false);
                     }}
                   >
                     <div className="flex items-center justify-between mb-2">
@@ -584,7 +718,7 @@ Note: Your explanation must prove this is a custom conversion for THIS specific 
                         <span className="text-sm font-bold">{LANGUAGE_PAIRS[item.targetLang].name}</span>
                       </div>
                       <span className="text-xs text-gray-500">
-                        {item.timestamp.toLocaleTimeString()}
+                        {new Date(item.timestamp).toLocaleString()}
                       </span>
                     </div>
                     <p className="text-xs text-gray-400 truncate">{item.sourceCode.slice(0, 100)}...</p>

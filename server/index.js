@@ -33,17 +33,20 @@ app.get('/api/health', (req, res) => {
 const VALID_OVERLAYS = {
   'codeadk': 'compiler',
   'converteradk': 'converter',
+  'converteradk/history': 'converter-history',
 };
 app.get('/api/route/resolve', (req, res) => {
   const { path: routePath, sessionId } = req.query;
 
   // If the path is an overlay path, return overlay info
   if (sessionId && VALID_OVERLAYS[sessionId]) {
+    const overlayType = VALID_OVERLAYS[sessionId];
     return res.json({
       type: 'overlay',
-      overlay: VALID_OVERLAYS[sessionId],
+      overlay: overlayType === 'converter-history' ? 'converter' : overlayType,
       sessionId: null,
-      redirect: false
+      redirect: false,
+      showHistory: overlayType === 'converter-history'
     });
   }
 
