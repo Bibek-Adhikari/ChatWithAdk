@@ -2,8 +2,15 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { spawn } from 'child_process';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
-dotenv.config({ path: '../.env.local' });
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const REPO_ROOT = path.resolve(__dirname, '..');
+
+dotenv.config({ path: path.join(REPO_ROOT, '.env.local') });
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -216,7 +223,41 @@ except Exception as e:
     proc.stdin.end();
   });
 
-  return runWith('python').catch(() => runWith('py', ['-3']));
+  const configuredPython = process.env.FLOWCHART_PYTHON?.trim();
+  const candidatePaths = [
+    configuredPython || null,
+    path.join(REPO_ROOT, '.venv', 'Scripts', 'python.exe'),
+    path.join(REPO_ROOT, '.venv', 'bin', 'python'),
+    path.join(process.cwd(), '.venv', 'Scripts', 'python.exe'),
+    path.join(process.cwd(), '.venv', 'bin', 'python')
+  ].filter(Boolean);
+
+  const pathCandidates = candidatePaths
+    .filter((candidate) => fs.existsSync(candidate))
+    .map((candidate) => ({ command: candidate, args: [] }));
+
+  const commandCandidates = [
+    { command: 'python', args: [] },
+    { command: 'py', args: ['-3'] }
+  ];
+
+  const candidates = [...pathCandidates, ...commandCandidates];
+
+  const tryCandidate = (index = 0) => {
+    if (index >= candidates.length) {
+      return Promise.reject(new Error('No working Python interpreter found for flowchart generation.'));
+    }
+
+    const candidate = candidates[index];
+    return runWith(candidate.command, candidate.args).catch((err) => {
+      if (index === candidates.length - 1) {
+        throw new Error(err?.message || 'No working Python interpreter found for flowchart generation.');
+      }
+      return tryCandidate(index + 1);
+    });
+  };
+
+  return tryCandidate();
 };
 
 app.post('/api/flowchart', async (req, res) => {

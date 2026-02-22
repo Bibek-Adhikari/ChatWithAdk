@@ -8,7 +8,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "server": "nodemon server/index.js",
-    "start": "npm run server & npm run dev"
+    "start": "npm run server & npm run dev",
+    "setup:flowchart-env": "python -m venv .venv && .\\.venv\\Scripts\\python.exe -m pip install -r requirements-flowchart.txt"
   },
   "dependencies": {
     "@google/genai": "^1.39.0",

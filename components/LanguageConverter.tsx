@@ -530,13 +530,31 @@ Note: Your explanation must prove this is a custom conversion for THIS specific 
 
       setConversionProgress(70);
 
-      const data = await response.json();
+      const rawBody = await response.text();
+      let data: any = {};
+      if (rawBody.trim()) {
+        try {
+          data = JSON.parse(rawBody);
+        } catch {
+          throw new Error(`Groq API returned non-JSON response (status ${response.status}).`);
+        }
+      }
       
       if (!response.ok) {
-        throw new Error(data.error?.message || 'Groq API error');
+        throw new Error(data.error?.message || rawBody || 'Groq API error');
       }
 
-      const result = JSON.parse(data.choices[0].message.content);
+      const content = data?.choices?.[0]?.message?.content;
+      if (!content) {
+        throw new Error('Groq API response missing message content.');
+      }
+
+      let result: any;
+      try {
+        result = JSON.parse(content);
+      } catch {
+        throw new Error('Groq API returned invalid JSON content.');
+      }
       
       setConversionProgress(90);
 
@@ -631,9 +649,18 @@ Note: Your explanation must prove this is a custom conversion for THIS specific 
         body: JSON.stringify({ code: sourceCode })
       });
 
-      const data = await response.json();
+      const rawBody = await response.text();
+      let data: any = null;
+      if (rawBody.trim()) {
+        try {
+          data = JSON.parse(rawBody);
+        } catch {
+          throw new Error(`Flowchart API returned non-JSON response (status ${response.status}).`);
+        }
+      }
+
       if (!response.ok || !data.success) {
-        throw new Error(data.error || 'Failed to generate flowchart');
+        throw new Error(data?.error || rawBody || 'Failed to generate flowchart');
       }
 
       setFlowchartText(data.flowchart || '');
