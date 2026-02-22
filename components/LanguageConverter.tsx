@@ -789,7 +789,7 @@ Note: Your explanation must prove this is a custom conversion for THIS specific 
                             {conversionResult.confidence}% ACCURACY
                           </span>
                         </div>
-                        <p className="text-[11px] leading-relaxed text-gray-400 line-clamp-2 group-hover:line-clamp-none transition-all">
+                        <p className="text-[14px] leading-relaxed text-gray-400 line-clamp-2 group-hover:line-clamp-none transition-all">
                           {conversionResult.explanation}
                         </p>
                       </div>

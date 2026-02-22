@@ -741,7 +741,7 @@ ${jsCode}
 
       {/* --- Header --- */}
       <header
-        className="h-14 bg-[#252526] border-b border-[#333] flex items-center justify-between gap-2 px-2 sm:px-4 shrink-0 z-20"
+        className="h-14 bg-[#252526] border-b border-[#333] flex items-center justify-between gap-2 px-2 sm:px-4 shrink-0 z-20 overflow-x-auto scrollbar-hide"
       >
         <div className="flex items-center gap-2 shrink-0">
          <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl overflow-hidden shrink-0 shadow-lg shadow-blue-500/10">
@@ -751,7 +751,7 @@ ${jsCode}
             onClick={onClose}
             className="flex items-center gap-2 px-2 sm:px-3 py-1.5 bg-blue-600/10 hover:bg-blue-600/20 text-blue-400 text-sm font-semibold rounded-lg transition-all border border-blue-500/20 active:scale-95 shrink-0"
           >
-            <MessageSquare size={16} />
+            <MessageSquare size={18} />
             <span className="hidden sm:inline">Back to ChatAdk</span>
           </button>
         </div>
@@ -766,7 +766,7 @@ ${jsCode}
             <span className="max-w-[80px] sm:max-w-none truncate">
               {activeLanguage === 'web' ? 'Web' : LANGUAGE_CONFIGS[activeLanguage as Exclude<Language, 'web'>].label}
             </span>
-            <ChevronDown size={14} className={cn("transition-transform duration-200 shrink-0", isLanguageMenuOpen && "rotate-180")} />
+            <ChevronDown size={18} className={cn("transition-transform duration-200 shrink-0", isLanguageMenuOpen && "rotate-180")} />
           </button>
 
           {isLanguageMenuOpen && (
@@ -775,7 +775,7 @@ ${jsCode}
                 className="fixed inset-0 z-30"
                 onClick={() => setIsLanguageMenuOpen(false)}
               />
-              <div className="absolute top-full left-0 mt-2 w-56 bg-[#252526] border border-[#333] rounded-xl shadow-2xl overflow-hidden z-40 animate-in fade-in zoom-in duration-200">
+              <div className="fixed top-16 left-4 sm:left-auto mt-0 w-64 bg-[#252526] border border-[#333] rounded-xl shadow-2xl overflow-hidden z-40 animate-in fade-in zoom-in duration-200">
                 <div className="p-2 space-y-1">
                   <button
                     onClick={() => {
@@ -788,7 +788,7 @@ ${jsCode}
                       activeLanguage === 'web' ? "bg-blue-600/20 text-blue-400" : "hover:bg-[#2d2d2d] text-gray-300"
                     )}
                   >
-                    <Layout size={16} />
+                    <Layout size={18} />
                     <span className="flex-1 text-left font-semibold">Web (HTML/CSS/JS)</span>
                     {activeLanguage === 'web' && <div className="w-1.5 h-1.5 rounded-full bg-blue-400" />}
                   </button>
@@ -809,7 +809,7 @@ ${jsCode}
                           activeLanguage === key ? "bg-blue-600/20 text-blue-400" : "hover:bg-[#2d2d2d] text-gray-300"
                         )}
                       >
-                        <Terminal size={16} />
+                        <Terminal size={18} />
                         <span className="flex-1 text-left font-semibold">{config.label}</span>
                         {activeLanguage === key && <div className="w-1.5 h-1.5 rounded-full bg-blue-400" />}
                       </button>
@@ -828,9 +828,9 @@ ${jsCode}
             className="flex items-center gap-2 px-3 py-1.5 bg-[#1e1e1e] hover:bg-[#2d2d2d] text-gray-300 text-xs font-bold rounded-lg border border-[#333] transition-all active:scale-95 shadow-sm"
             title="Change Editor Theme"
           >
-            <Palette size={14} className="text-blue-400" />
+            <Palette size={18} className="text-blue-400 shrink-0" />
             <span className="hidden sm:inline text-gray-400">Theme</span>
-            <ChevronDown size={14} className={cn("transition-transform duration-200 text-gray-500", isThemeMenuOpen && "rotate-180")} />
+            <ChevronDown size={18} className={cn("transition-transform duration-200 text-gray-500 shrink-0", isThemeMenuOpen && "rotate-180")} />
           </button>
 
           {isThemeMenuOpen && (
@@ -839,7 +839,7 @@ ${jsCode}
                 className="fixed inset-0 z-30"
                 onClick={() => setIsThemeMenuOpen(false)}
               />
-              <div className="absolute top-full left-0 mt-2 w-48 bg-[#252526] border border-[#333] rounded-xl shadow-2xl overflow-hidden z-40 animate-in fade-in zoom-in duration-200">
+              <div className="fixed top-16 left-32 sm:left-auto mt-0 w-56 bg-[#252526] border border-[#333] rounded-xl shadow-2xl overflow-hidden z-40 animate-in fade-in zoom-in duration-200">
                 <div className="p-2 space-y-1 text-[10px] font-bold uppercase tracking-wider text-gray-500 px-3 py-1">
                   Select Theme
                 </div>
@@ -871,30 +871,23 @@ ${jsCode}
         </div>
 
         <div className="flex items-center gap-1 sm:gap-2 lg:ml-auto shrink-0">
-          {/* AI Explain Button */}
+          {/* Run Button */}
           <button
-            onClick={explainCode}
-            disabled={isExplaining}
+            onClick={runCode}
+            disabled={isRunning}
             className={cn(
-              "flex items-center gap-2 px-3 py-1.5 rounded-lg font-bold text-xs transition-all active:scale-95",
-              !currentUser 
-                ? "bg-gray-800 text-gray-400 border border-gray-700 cursor-not-allowed hover:bg-gray-700"
-                : isExplaining
-                  ? "bg-purple-600/20 text-purple-400 cursor-not-allowed"
-                  : "bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white shadow-lg shadow-purple-600/20"
+              "flex items-center gap-2 px-4 py-1.5 sm:px-5 sm:py-2 rounded-xl font-bold text-xs sm:text-sm transition-all active:scale-95 shadow-lg relative overflow-hidden group/run shrink-0",
+              isRunning
+                ? "bg-gray-600 text-gray-300 cursor-not-allowed"
+                : "bg-blue-600 hover:bg-blue-500 text-white shadow-blue-600/30"
             )}
-            title={currentUser ? "Explain Code with AI" : "Login to unlock AI features"}
           >
-            {isExplaining ? (
-              <Loader2 size={14} className="animate-spin" />
-            ) : !currentUser ? (
-              <Lock size={14} className="text-gray-500" />
+            {isRunning ? (
+              <div className="w-4 h-4 sm:w-5 sm:h-5 border-2 border-white/20 border-t-white rounded-full animate-spin shrink-0" />
             ) : (
-              <Sparkles size={14} />
+              <Play size={18} fill="currentColor" className="sm:w-[20px] sm:h-[20px] group-hover/run:scale-110 transition-transform shrink-0" />
             )}
-            <span className="hidden sm:inline">
-              {isExplaining ? 'Explaining...' : currentUser ? 'Explain' : 'Locked'}
-            </span>
+            <span className="hidden sm:inline">{isRunning ? '...' : 'Run'}</span>
           </button>
 
           <div className="w-px h-6 bg-[#333] mx-0.5 sm:mx-1 hidden lg:block"></div>
@@ -904,74 +897,82 @@ ${jsCode}
             <button
               onClick={() => setIsEditorVisible(!isEditorVisible)}
               className={cn(
-                "p-1 rounded transition-all flex items-center gap-1 group",
+                "p-1 rounded transition-all flex items-center gap-1 group shrink-0",
                 isEditorVisible
                   ? "bg-blue-600/20 text-blue-400 border border-blue-500/30"
                   : "bg-orange-500/20 text-orange-400 border border-orange-500/50 hover:bg-orange-500/30 shadow-[0_0_10px_rgba(249,115,22,0.2)]"
               )}
               title={isEditorVisible ? "Hide Editor" : "Unhide Editor"}
             >
-              <FileCode size={14} className="sm:w-4 sm:h-4" />
+              <FileCode size={18} className="sm:w-5 sm:h-5" />
               {!isEditorVisible && <span className="text-[10px] font-bold uppercase hidden sm:inline pr-1">Editor</span>}
             </button>
             <button
               onClick={() => setIsPreviewVisible(!isPreviewVisible)}
               className={cn(
-                "p-1 rounded transition-all flex items-center gap-1 group",
+                "p-1 rounded transition-all flex items-center gap-1 group shrink-0",
                 isPreviewVisible
                   ? "bg-blue-600/20 text-blue-400 border border-blue-500/30"
                   : "bg-orange-500/20 text-orange-400 border border-orange-500/50 hover:bg-orange-500/30 shadow-[0_0_10px_rgba(249,115,22,0.2)]"
               )}
               title={isPreviewVisible ? "Hide Preview" : "Unhide Preview"}
             >
-              <Monitor size={14} className="sm:w-4 sm:h-4" />
+              <Monitor size={18} className="sm:w-5 sm:h-5" />
               {!isPreviewVisible && <span className="text-[10px] font-bold uppercase hidden sm:inline pr-1">Output</span>}
             </button>
             <button
               onClick={() => setIsConsoleVisible(!isConsoleVisible)}
               className={cn(
-                "p-1 rounded transition-all flex items-center gap-1 group",
+                "p-1 rounded transition-all flex items-center gap-1 group shrink-0",
                 isConsoleVisible
                   ? "bg-blue-600/20 text-blue-400 border border-blue-500/30"
                   : "bg-orange-500/20 text-orange-400 border border-orange-500/50 hover:bg-orange-500/30 shadow-[0_0_10px_rgba(249,115,22,0.2)]"
               )}
               title={isConsoleVisible ? "Hide Console" : "Unhide Console"}
             >
-              <Terminal size={14} className="sm:w-4 sm:h-4" />
+              <Terminal size={18} className="sm:w-5 sm:h-5" />
               {!isConsoleVisible && <span className="text-[10px] font-bold uppercase hidden sm:inline pr-1">Debug</span>}
             </button>
           </div>
 
           <div className="w-px h-6 bg-[#333] mx-0.5 sm:mx-1 hidden lg:block"></div>
 
-          <button onClick={loadTemplate} className="p-1.5 sm:px-3 sm:py-1.5 text-sm hover:bg-[#3c3c3c] rounded transition-colors" title="Load Template">
-            <LayoutTemplate size={16} /> <span className="hidden lg:inline text-xs font-semibold">Template</span>
+          <button onClick={loadTemplate} className="p-1.5 sm:px-3 sm:py-1.5 text-sm hover:bg-[#3c3c3c] rounded transition-colors shrink-0" title="Load Template">
+            <LayoutTemplate size={20} className="shrink-0" /> <span className="hidden lg:inline text-xs font-semibold">Template</span>
           </button>
 
+          {/* AI Explain Button */}
           <button
-            onClick={runCode}
-            disabled={isRunning}
+            onClick={explainCode}
+            disabled={isExplaining}
             className={cn(
-              "flex items-center gap-2 px-4 py-1.5 sm:px-5 sm:py-2 rounded-xl font-bold text-xs sm:text-sm transition-all active:scale-95 shadow-lg relative overflow-hidden group/run",
-              isRunning
-                ? "bg-gray-600 text-gray-300 cursor-not-allowed"
-                : "bg-blue-600 hover:bg-blue-500 text-white shadow-blue-600/30"
+              "flex items-center gap-2 px-3 py-1.5 rounded-lg font-bold text-xs transition-all active:scale-95 shrink-0",
+              !currentUser 
+                ? "bg-gray-800 text-gray-400 border border-gray-700 cursor-not-allowed hover:bg-gray-700"
+                : isExplaining
+                  ? "bg-purple-600/20 text-purple-400 cursor-not-allowed"
+                  : "bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white shadow-lg shadow-purple-600/20"
             )}
+            title={currentUser ? "Explain Code with AI" : "Login to unlock AI features"}
           >
-            {isRunning ? (
-              <div className="w-3 h-3 sm:w-4 sm:h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+            {isExplaining ? (
+              <Loader2 size={18} className="animate-spin" />
+            ) : !currentUser ? (
+              <Lock size={18} className="text-gray-500" />
             ) : (
-              <Play size={14} fill="currentColor" className="sm:w-[16px] sm:h-[16px] group-hover/run:scale-110 transition-transform" />
+              <Sparkles size={18} />
             )}
-            <span className="hidden sm:inline">{isRunning ? '...' : 'Run'}</span>
+            <span className="hidden sm:inline">
+              {isExplaining ? 'Explaining...' : currentUser ? 'Explain' : 'Locked'}
+            </span>
           </button>
           {onClose && (
             <button
               onClick={onClose}
-              className="p-1.5 hover:bg-[#3c3c3c] rounded-lg transition-colors text-slate-400 hover:text-white"
+              className="p-1.5 hover:bg-[#3c3c3c] rounded-lg transition-colors text-slate-400 hover:text-white shrink-0"
               title="Close Compiler"
             >
-              <X size={20} />
+              <X size={22} />
             </button>
           )}
         </div>
