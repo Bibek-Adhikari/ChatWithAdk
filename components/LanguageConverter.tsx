@@ -533,8 +533,8 @@ ${code
       {/* Header */}
       <div className="h-14 bg-[#252526] border-b border-[#333] flex items-center justify-between px-4 shrink-0">
         <div className="flex items-center gap-3">
-          <div className="bg-purple-600 p-1.5 rounded-lg">
-            <Workflow size={20} className="text-white" />
+          <div className="w-9 h-9 rounded-xl overflow-hidden shrink-0 shadow-lg shadow-blue-500/10">
+            <img src="/assets/logo.webp" alt="ConverterAdk" className="w-full h-full object-cover" />
           </div>
           <h1 className="font-bold text-white"></h1>
           

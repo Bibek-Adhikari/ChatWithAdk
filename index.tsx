@@ -22,6 +22,9 @@ root.render(
         <Route path="/" element={<App />} />
         <Route path="/chat/:sessionId" element={<App />} />
         <Route path="/plans" element={<PricingPage />} />
+        <Route path="/codeadk" element={<PricingPage />} />
+        <Route path="/converteradk" element={<PricingPage />} />
+        <Route path="/photoadk" element={<PricingPage />} />
         <Route path="/notifications" element={<NotificationsPage />} />
         <Route path="/admin/usersData/:userId" element={<UsersData theme={theme} />} />
       </Routes>

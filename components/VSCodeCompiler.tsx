@@ -19,7 +19,9 @@ import {
   ChevronDown,
   Layout,
   Eye,
-  Palette
+  Palette,
+  Sparkles, // Added for AI feature
+  Loader2   // Added for loading state
 } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -114,7 +116,7 @@ btn.addEventListener('click', () => {
   console.log('Button interaction logged at:', new Date().toLocaleTimeString());
 });
 
-c onsole.info('System initialized.');`;
+console.info('System initialized.');`;
 
 export default function VSCodeCompiler({ onClose }: VSCodeCompilerProps) {
   // --- State ---
@@ -149,6 +151,11 @@ export default function VSCodeCompiler({ onClose }: VSCodeCompilerProps) {
   });
   const [isThemeMenuOpen, setIsThemeMenuOpen] = useState(false);
 
+  // AI Explainer States
+  const [isExplaining, setIsExplaining] = useState(false);
+  const [explanation, setExplanation] = useState('');
+  const [showExplanationModal, setShowExplanationModal] = useState(false);
+
   // Resize States
   const [isDragging, setIsDragging] = useState<'horizontal' | 'vertical' | 'mobile' | false>(false);
   const [splitRatio, setSplitRatio] = useState(() => {
@@ -157,11 +164,11 @@ export default function VSCodeCompiler({ onClose }: VSCodeCompilerProps) {
   });
   const [consoleHeight, setConsoleHeight] = useState(() => {
     const saved = localStorage.getItem('codeadk_console_height');
-    return saved ? parseFloat(saved) : 200; // default 200px
+    return saved ? parseFloat(saved) : 200;
   });
   const [mobileOutputHeight, setMobileOutputHeight] = useState(() => {
     const saved = localStorage.getItem('codeadk_mobile_output_height');
-    return saved ? parseFloat(saved) : 50; // default 50%
+    return saved ? parseFloat(saved) : 50;
   });
 
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -173,7 +180,6 @@ export default function VSCodeCompiler({ onClose }: VSCodeCompilerProps) {
   useEffect(() => {
     bcRef.current = new BroadcastChannel('codeadk-preview');
 
-    // Listen for "ready" message from new tabs
     bcRef.current.onmessage = (event) => {
       if (event.data.type === 'ready' && srcDoc) {
         bcRef.current?.postMessage({ srcDoc });
@@ -185,14 +191,11 @@ export default function VSCodeCompiler({ onClose }: VSCodeCompilerProps) {
     };
   }, [srcDoc]);
 
-  // Sync srcDoc to BroadcastChannel
   useEffect(() => {
     if (srcDoc && bcRef.current) {
       bcRef.current.postMessage({ srcDoc });
     }
   }, [srcDoc]);
-
-  // --- Effects ---
 
   // Initial Run
   useEffect(() => {
@@ -221,14 +224,12 @@ export default function VSCodeCompiler({ onClose }: VSCodeCompilerProps) {
           localStorage.setItem('codeadk_split_ratio', newWidth.toString());
         }
       } else if (isDragging === 'vertical') {
-        // Vertical Console Resize (Desktop)
         const newHeight = containerRect.bottom - e.clientY;
         if (newHeight > 100 && newHeight < containerRect.height - 100) {
           setConsoleHeight(newHeight);
           localStorage.setItem('codeadk_console_height', newHeight.toString());
         }
       } else if (isDragging === 'mobile') {
-        // Vertical Mobile Resize
         const newHeight = ((e.clientY - containerRect.top) / containerRect.height) * 100;
         if (newHeight > 20 && newHeight < 80) {
           setMobileOutputHeight(newHeight);
@@ -244,7 +245,6 @@ export default function VSCodeCompiler({ onClose }: VSCodeCompilerProps) {
     if (isDragging) {
       window.addEventListener('mousemove', handleMouseMove);
       window.addEventListener('mouseup', handleMouseUp);
-      // Disable text selection during drag
       document.body.style.userSelect = 'none';
       document.body.style.cursor = isDragging === 'horizontal' ? 'col-resize' : 'row-resize';
     }
@@ -257,7 +257,7 @@ export default function VSCodeCompiler({ onClose }: VSCodeCompilerProps) {
     };
   }, [isDragging]);
 
-  // Listen for messages from iframe (console logs)
+  // Listen for messages from iframe
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       if (event.data && event.data.type === 'console') {
@@ -272,33 +272,27 @@ export default function VSCodeCompiler({ onClose }: VSCodeCompilerProps) {
   // Force iframe reload when device changes
   useEffect(() => {
     if (activeLanguage === 'web' && srcDoc) {
-      // Small delay to ensure iframe is ready
       const timeoutId = setTimeout(() => {
-        setSrcDoc(prev => prev); // Trigger re-render
+        setSrcDoc(prev => prev);
       }, 100);
-
       return () => clearTimeout(timeoutId);
     }
   }, [device]);
 
-  // Handle iframe load failures with retry mechanism
+  // Handle iframe load failures
   useEffect(() => {
     const iframe = iframeRef.current;
     if (!iframe) return;
 
     const handleLoad = () => {
-      retryCount.current = 0; // Reset retry count on successful load
-      console.log('Iframe loaded successfully');
+      retryCount.current = 0;
     };
 
     const handleError = () => {
       if (retryCount.current < 3 && srcDoc) {
         retryCount.current++;
-        console.log(`Retrying iframe load (${retryCount.current}/3)...`);
-
-        // Retry loading with exponential backoff
         setTimeout(() => {
-          setSrcDoc(prev => prev); // Trigger re-render
+          setSrcDoc(prev => prev);
         }, 1000 * retryCount.current);
       } else if (retryCount.current >= 3) {
         addLog('error', 'Failed to load preview after multiple attempts');
@@ -327,7 +321,6 @@ export default function VSCodeCompiler({ onClose }: VSCodeCompilerProps) {
 
       try {
         if (activeLanguage === 'kotlin') {
-          // Special case for Kotlin using the official playground API
           const response = await fetch('https://api.kotlinlang.org/v1/compiler/run', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -335,22 +328,19 @@ export default function VSCodeCompiler({ onClose }: VSCodeCompilerProps) {
               args: "",
               files: [{ name: "Prog.kt", text: code, publicId: "" }],
               confType: "java"
-            
             })
           });
           const result = await response.json();
           if (result.errors && Object.keys(result.errors).length > 0) {
             Object.values(result.errors).flat().forEach((err: any) => {
-            addLog('error', `${err.message} (${err.interval.start.line}:${err.interval.start.ch})`);
+              addLog('error', `${err.message} (${err.interval.start.line}:${err.interval.start.ch})`);
             });
           }
           if (result.text) {
-            // The output is usually colored/formatted, we might need to clean it
             const cleanOutput = result.text.replace(/<[^>]*>/g, '');
             addLog('log', cleanOutput);
           }
         } else {
-          // Use Wandbox for everything else
           const response = await fetch('https://wandbox.org/api/compile.json', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -385,14 +375,13 @@ export default function VSCodeCompiler({ onClose }: VSCodeCompilerProps) {
         }
       } catch (err: any) {
         addLog('error', `❌ Execution Error: ${err.message}`);
-        console.error('Polyglot Execution Error:', err);
       } finally {
         setIsRunning(false);
       }
       return;
     }
 
-    // Web logic with improved error handling and features
+    // Web logic
     const doc = `
       <!DOCTYPE html>
       <html>
@@ -405,7 +394,6 @@ export default function VSCodeCompiler({ onClose }: VSCodeCompilerProps) {
           ${htmlCode}
           <script>
             (function() {
-              // Store original console methods
               const originalConsole = {
                 log: console.log,
                 error: console.error,
@@ -433,12 +421,10 @@ export default function VSCodeCompiler({ onClose }: VSCodeCompilerProps) {
                     timestamp: new Date().toISOString()
                   }, '*');
                 } catch(e) {
-                  // Fallback to original console if postMessage fails
                   originalConsole.error('Failed to send to parent:', e);
                 }
               }
 
-              // Override console methods
               console.log = function(...args) { 
                 originalConsole.log(...args); 
                 sendToParent('log', args); 
@@ -459,19 +445,16 @@ export default function VSCodeCompiler({ onClose }: VSCodeCompilerProps) {
                 sendToParent('info', args); 
               };
 
-              // Global error handler
               window.onerror = function(msg, url, line, col, error) {
                 const errorMsg = msg + ' (Line: ' + line + ', Column: ' + col + ')';
                 sendToParent('error', [errorMsg]);
                 return false;
               };
 
-              // Handle unhandled promise rejections
               window.addEventListener('unhandledrejection', function(event) {
                 sendToParent('error', ['Unhandled Promise Rejection: ' + event.reason]);
               });
 
-              // Execute user code
               try {
                 ${jsCode}
               } catch (err) {
@@ -483,15 +466,37 @@ export default function VSCodeCompiler({ onClose }: VSCodeCompilerProps) {
       </html>
     `;
 
-    // Clear and reload iframe
-    setSrcDoc(''); // Clear first
-
-    // Use requestAnimationFrame to ensure DOM updates
+    setSrcDoc('');
     requestAnimationFrame(() => {
       setSrcDoc(doc);
       addLog('info', 'Web preview updated.');
     });
   }, [htmlCode, cssCode, jsCode, activeLanguage, polyglotCode]);
+
+  // --- Helper Functions ---
+  const getEditorValue = () => {
+    if (activeLanguage !== 'web') {
+      return polyglotCode[activeLanguage];
+    }
+    switch (activeTab) {
+      case 'html': return htmlCode;
+      case 'css': return cssCode;
+      case 'js': return jsCode;
+      default: return '';
+    }
+  };
+
+  const getLanguage = () => {
+    if (activeLanguage !== 'web') {
+      return LANGUAGE_CONFIGS[activeLanguage as Exclude<Language, 'web'>].monaco;
+    }
+    switch (activeTab) {
+      case 'html': return 'html';
+      case 'css': return 'css';
+      case 'js': return 'javascript';
+      default: return 'text';
+    }
+  };
 
   const addLog = useCallback((type: LogType, message: string) => {
     const lines = message.split('\n');
@@ -507,6 +512,58 @@ export default function VSCodeCompiler({ onClose }: VSCodeCompilerProps) {
       }))
     ]);
   }, []);
+
+  // --- AI Code Explainer Function ---
+  const explainCode = useCallback(async () => {
+    const code = getEditorValue();
+    if (!code.trim()) {
+      addLog('warn', 'No code to explain. Please write some code first.');
+      return;
+    }
+
+    setIsExplaining(true);
+    setExplanation('');
+    setShowExplanationModal(true);
+
+    try {
+      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_EXPLAINER_API_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: 'llama-3.3-70b-versatile', // High quality and fast
+          messages: [
+            {
+              role: 'system',
+              content: 'You are a helpful coding assistant. Explain the provided code in a clear, concise way. Break down the explanation into: 1) What the code does (overview), 2) Key components/functions, 3) How it works (step-by-step if applicable). Use markdown formatting for readability.'
+            },
+            {
+              role: 'user',
+              content: `Please explain this ${activeLanguage === 'web' ? activeTab.toUpperCase() : LANGUAGE_CONFIGS[activeLanguage as Exclude<Language, 'web'>].label} code:\n\n\`\`\`${getLanguage()}\n${code}\n\`\`\``
+            }
+          ],
+          temperature: 0.7,
+          max_tokens: 2048
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const explanationText = data.choices[0]?.message?.content || 'No explanation received.';
+      setExplanation(explanationText);
+      addLog('info', '✨ Code explanation generated successfully!');
+    } catch (err: any) {
+      setExplanation(`Error: ${err.message}. Please check your API key and try again.`);
+      addLog('error', `❌ Failed to explain code: ${err.message}`);
+    } finally {
+      setIsExplaining(false);
+    }
+  }, [activeLanguage, activeTab, addLog, htmlCode, cssCode, jsCode, polyglotCode]);
 
   const clearConsole = () => setLogs([]);
 
@@ -571,7 +628,6 @@ ${jsCode}
     } else {
       setPolyglotCode(prev => ({ ...prev, [activeLanguage]: LANGUAGE_CONFIGS[activeLanguage as Exclude<Language, 'web'>].template }));
     }
-    // Small timeout to allow state update before running
     setTimeout(runCode, 100);
   };
 
@@ -581,18 +637,6 @@ ${jsCode}
   };
 
   // --- Render Helpers ---
-
-  const getEditorValue = () => {
-    if (activeLanguage !== 'web') {
-      return polyglotCode[activeLanguage];
-    }
-    switch (activeTab) {
-      case 'html': return htmlCode;
-      case 'css': return cssCode;
-      case 'js': return jsCode;
-      default: return '';
-    }
-  };
 
   const handleEditorChange = (value: string | undefined) => {
     if (value === undefined) return;
@@ -607,24 +651,10 @@ ${jsCode}
     }
   };
 
-  const getLanguage = () => {
-    if (activeLanguage !== 'web') {
-      return LANGUAGE_CONFIGS[activeLanguage as Exclude<Language, 'web'>].monaco;
-    }
-    switch (activeTab) {
-      case 'html': return 'html';
-      case 'css': return 'css';
-      case 'js': return 'javascript';
-      default: return 'text';
-    }
-  };
-
   const handleEditorMount: OnMount = (editor) => {
-    // Focus the editor on mount
     editor.focus();
   };
 
-  // Define themes BEFORE mount so the editor renders with the correct theme from the start
   const handleBeforeMount = (monaco: any) => {
     monaco.editor.defineTheme('github-dark', {
       base: 'vs-dark',
@@ -670,7 +700,6 @@ ${jsCode}
       }
     });
 
-    // Enable Emmet abbreviations (h1 => <h1></h1>, etc.)
     emmetHTML(monaco);
     emmetCSS(monaco);
     emmetJSX(monaco);
@@ -682,10 +711,9 @@ ${jsCode}
       {/* --- Header --- */}
       <header className="h-14 bg-[#252526] border-b border-[#333] flex items-center justify-between px-4 shrink-0 z-20">
         <div className="flex items-center gap-2">
-          <div className="bg-blue-600 p-1.5 rounded-lg hidden lg:flex">
-            <FileCode size={20} className="text-white" />
+         <div className="w-9 h-9 rounded-xl overflow-hidden shrink-0 shadow-lg shadow-blue-500/10">
+            <img src="/assets/logo.webp" alt="CodeADK" className="w-full h-full object-cover" />
           </div>
-          <h1 className="font-bold text-white tracking-tight hidden lg:block">CodeAdk</h1>
           <button
             onClick={onClose}
             className="flex items-center gap-2 px-3 py-1.5 bg-blue-600/10 hover:bg-blue-600/20 text-blue-400 text-sm font-semibold rounded-lg transition-all border border-blue-500/20 active:scale-95"
@@ -807,7 +835,29 @@ ${jsCode}
         </div>
 
         <div className="flex items-center gap-1 sm:gap-2">
-          {/* Global Toggles (Header) - Visible everywhere for Unhide visibility */}
+          {/* AI Explain Button */}
+          <button
+            onClick={explainCode}
+            disabled={isExplaining}
+            className={cn(
+              "flex items-center gap-2 px-3 py-1.5 rounded-lg font-bold text-xs transition-all active:scale-95",
+              isExplaining
+                ? "bg-purple-600/20 text-purple-400 cursor-not-allowed"
+                : "bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white shadow-lg shadow-purple-600/20"
+            )}
+            title="Explain Code with AI"
+          >
+            {isExplaining ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : (
+              <Sparkles size={14} />
+            )}
+            <span className="hidden sm:inline">{isExplaining ? 'Explaining...' : 'Explain'}</span>
+          </button>
+
+          <div className="w-px h-6 bg-[#333] mx-0.5 sm:mx-1 hidden lg:block"></div>
+
+          {/* Global Toggles */}
           <div className="flex items-center gap-0.5 sm:gap-1 bg-[#1e1e1e] p-1 rounded-lg border border-[#333]">
             <button
               onClick={() => setIsEditorVisible(!isEditorVisible)}
@@ -884,6 +934,70 @@ ${jsCode}
           )}
         </div>
       </header>
+
+      {/* --- AI Explanation Modal --- */}
+      {showExplanationModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-[#1e1e1e] border border-[#333] rounded-2xl shadow-2xl max-w-2xl w-full max-h-[80vh] flex flex-col animate-in fade-in zoom-in duration-200">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-[#333]">
+              <div className="flex items-center gap-3">
+                <div className="bg-gradient-to-r from-purple-600 to-pink-600 p-2 rounded-lg">
+                  <Sparkles size={20} className="text-white" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-white">AI Code Explanation</h3>
+                  <p className="text-xs text-gray-400">Powered by ChatAdk</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowExplanationModal(false)}
+                className="p-2 hover:bg-[#333] rounded-lg transition-colors text-gray-400 hover:text-white"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto p-6">
+              {isExplaining ? (
+                <div className="flex flex-col items-center justify-center py-12 space-y-4">
+                  <Loader2 size={40} className="text-purple-500 animate-spin" />
+                  <p className="text-gray-400 animate-pulse">Analyzing your code...</p>
+                </div>
+              ) : (
+                <div className="prose prose-invert prose-sm max-w-none">
+                  <div className="whitespace-pre-wrap text-gray-300 leading-relaxed">
+                    {explanation}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-between px-6 py-4 border-t border-[#333] bg-[#252526] rounded-b-2xl">
+              <span className="text-xs text-gray-500">
+                {activeLanguage === 'web' ? activeTab.toUpperCase() : LANGUAGE_CONFIGS[activeLanguage as Exclude<Language, 'web'>].label} • {getEditorValue().split('\n').length} lines
+              </span>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(explanation);
+                    addLog('info', 'Explanation copied to clipboard!');
+                  }}
+                  disabled={isExplaining || !explanation}
+                  className="px-4 py-2 bg-[#333] hover:bg-[#444] text-gray-300 rounded-lg text-sm font-semibold transition-colors disabled:opacity-50"
+                >
+                  Copy
+                </button>
+                <button
+                  onClick={() => setShowExplanationModal(false)}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-semibold transition-colors"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* --- Main Workspace --- */}
       <div className="flex flex-col lg:flex-row flex-1 overflow-hidden relative" ref={containerRef}>
@@ -1085,7 +1199,7 @@ ${jsCode}
                   </div>
                 </div>
 
-                {/* Iframe Container / Placeholder */}
+                {/* Iframe Container */}
                 <div className="flex-1 bg-[#121214] flex justify-center overflow-auto relative">
                   {activeLanguage === 'web' ? (
                     <div
@@ -1095,7 +1209,7 @@ ${jsCode}
                       )}
                     >
                       <iframe
-                        key={srcDoc} // Force re-render when srcDoc changes
+                        key={srcDoc}
                         ref={iframeRef}
                         title="preview"
                         srcDoc={srcDoc}
@@ -1103,14 +1217,6 @@ ${jsCode}
                         sandbox="allow-scripts allow-modals allow-same-origin allow-forms allow-popups allow-presentation"
                         allow="accelerometer; camera; encrypted-media; geolocation; gyroscope; microphone; midi; clipboard-read; clipboard-write"
                         loading="lazy"
-                        onLoad={() => {
-                          // Notify that iframe is loaded
-                          console.log('Iframe loaded successfully');
-                        }}
-                        onError={(e) => {
-                          console.error('Iframe error:', e);
-                          addLog('error', 'Failed to load preview');
-                        }}
                       />
                     </div>
                   ) : (
@@ -1135,7 +1241,7 @@ ${jsCode}
               </div>
             )}
 
-            {/* Console Resize Handle (Desktop Vertical) */}
+            {/* Console Resize Handle */}
             {!isFullscreen && isPreviewVisible && isConsoleVisible && window.innerWidth >= 1024 && (
               <div
                 className="h-1 bg-blue-600/30 hover:bg-blue-600 cursor-row-resize z-30 transition-all relative group"
@@ -1207,7 +1313,7 @@ ${jsCode}
             </div>
             <h2 className="text-xl font-bold text-white mb-2">Workspace is Empty</h2>
             <p className="text-gray-400 max-w-sm mb-8">
-              You've hidden all panels. Click the buttons in the header to unhide them, or use the shortcut below.
+              You've hidden all panels. Click the buttons in the header to unhide them.
             </p>
             <button
               onClick={() => {

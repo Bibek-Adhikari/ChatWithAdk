@@ -260,7 +260,7 @@ export default function PhotoEditorPro() {
       if (activeTool.requiresPrompt) formData.append('prompt', prompt);
 
       // Simulate Network Delay for Demo purposes if no real key
-      if (apiKey === 'YOUR_API_KEY_HERE') await new Promise(r => setTimeout(r, 1500));
+      if (apiKey === 'YOUR_API_KEY_HERE' || !apiKey) await new Promise(r => setTimeout(r, 1500));
 
       const response = await fetch(`${BASE_URL}${activeTool.endpoint}`, {
         method: 'POST',
