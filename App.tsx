@@ -25,6 +25,7 @@ import { searchYouTubeVideo, getVideoDetails } from './services/youtubeService';
 import { auth, db } from './services/firebase';
 import { onAuthStateChanged, signOut, User, getRedirectResult } from 'firebase/auth';
 import { chatStorageService } from './services/chatStorageService';
+import { storageAggregator } from './services/storageAggregator';
 import AdminDashboardModal from './components/AdminDashboardModal';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { adminService } from './services/adminService'; 
@@ -220,7 +221,7 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
               setStatus(prev => ({ ...prev, isSyncing: true }));
               // Save each guest session to cloud
               for (const s of guestSessions) {
-                await chatStorageService.saveSession(user.uid, s);
+                await storageAggregator.saveSession(user.uid, s);
               }
               localStorage.removeItem(guestKey);
             }
@@ -239,7 +240,7 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
               const cloud = cloudMap.get(local.id);
               if (!cloud) {
                 merged.push(local);
-              } else if (local.updatedAt > (cloud.updatedAt || 0)) {
+              } else if (local.updatedAt > ((cloud as ChatSession).updatedAt || 0)) {
                 const index = merged.findIndex(s => s.id === local.id);
                 if (index !== -1) merged[index] = local;
               }
@@ -492,7 +493,7 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
     // Sync with Firestore if authenticated
     if (user) {
       try {
-        await chatStorageService.deleteSession(id);
+        await storageAggregator.deleteSession(id);
       } catch (err) {
         console.error("Failed to delete session from cloud:", err);
       }
@@ -504,7 +505,7 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
       if (s.id === id) {
         const updated = { ...s, title: newTitle, updatedAt: Date.now() };
         if (user) {
-          chatStorageService.saveSession(user.uid, updated).catch(err => 
+          storageAggregator.saveSession(user.uid, updated).catch(err => 
             console.error("Failed to sync rename to cloud:", err)
           );
         }
@@ -576,7 +577,7 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
       };
       
       if (user) {
-        chatStorageService.saveSession(user.uid, newSession).catch(err => 
+        storageAggregator.saveSession(user.uid, newSession).catch(err => 
           console.error("Failed to create initial session in cloud:", err)
         );
       }
@@ -791,7 +792,7 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
       setTimeout(() => {
         if (latestSession) {
           setStatus(prev => ({ ...prev, isSyncing: true }));
-          chatStorageService.saveSession(user.uid, latestSession)
+          storageAggregator.saveSession(user.uid, latestSession)
             .catch(err => console.error("Cloud sync failed:", err))
             .finally(() => setStatus(prev => ({ ...prev, isSyncing: false })));
         }

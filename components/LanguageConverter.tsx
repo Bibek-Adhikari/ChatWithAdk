@@ -16,9 +16,11 @@ import {
   Brain,
   GitBranch,
   Workflow,
-  RotateCcw
+  RotateCcw,
+  Lock
 } from 'lucide-react';
-import { cn } from './VSCodeCompiler'; // Import your cn utility
+import { cn } from './VSCodeCompiler';
+import { auth } from '../services/firebase';
 
 // --- Types ---
 type SourceLanguage = 'javascript' | 'typescript' | 'python' | 'rust' | 'go' | 'java' | 'csharp' | 'php' | 'ruby' | 'kotlin';
@@ -60,9 +62,9 @@ const LANGUAGE_PAIRS: Record<string, { name: string, icon: string, color: string
 const CONVERSION_PATTERNS: Record<string, any> = {
   'javascript:typescript': {
     patterns: [
-      { from: /function\s+(\w+)\s*\(([^)]*)\)\s*{/g, to: 'function $1($2): any {' },
-      { from: /const\s+(\w+)\s*=\s*{/g, to: 'interface I$1 {\\n  // TODO: Add types\\n}\\n\\nconst $1: I$1 = {' },
-      { from: /(\w+)\s*=\s*\(([^)]*)\)\s*=>/g, to: 'const $1 = ($2): any =>' }
+      { from: /function\s+(\w+)\s*\(([^)]*)\)\s*{/g, to: 'function $1($2) {' },
+      { from: /const\s+(\w+)\s*=\s*{/g, to: 'const $1 = {' },
+      { from: /(\w+)\s*=\s*\(([^)]*)\)\s*=>/g, to: 'const $1 = ($2) =>' }
     ],
     addTypes: true
   },
@@ -309,6 +311,15 @@ export default function LanguageConverter({ onClose, theme = 'vs-dark' }: Langua
   const [autoConvert, setAutoConvert] = useState(false);
   const [conversionProgress, setConversionProgress] = useState(0);
 
+  // Auth State
+  const [currentUser, setCurrentUser] = useState(auth.currentUser);
+
+  useEffect(() => {
+    return auth.onAuthStateChanged(user => {
+      setCurrentUser(user);
+    });
+  }, []);
+
   // Refs
   const sourceEditorRef = React.useRef<any>(null);
   const targetEditorRef = React.useRef<any>(null);
@@ -397,76 +408,95 @@ export default function LanguageConverter({ onClose, theme = 'vs-dark' }: Langua
     return converted;
   };
 
-  // Smart conversion using Express backend API
+  // Smart conversion using Groq AI
   const smartConvert = async (code: string, from: SourceLanguage, to: TargetLanguage): Promise<ConversionResult> => {
     try {
-      setConversionProgress(20);
+      setConversionProgress(10);
+      const apiKey = import.meta.env.VITE_EXPLAINER_API_KEY;
+      
+      if (!apiKey) {
+        throw new Error('Explainer API Key not found. Please check your .env.local file.');
+      }
 
-      const response = await fetch('/api/convert', {
+      setConversionProgress(30);
+
+      const systemPrompt = `You are a professional polyglot software engineer specializing in code translation.
+Your task is to convert code from ${from} to ${to}.
+
+CRITICAL RULES:
+1. DO NOT use 'any' in TypeScript. Infer proper types or create interfaces/types.
+2. If converting from JavaScript to TypeScript, create detailed interfaces for objects.
+3. Preserve comments and logic exactly.
+4. Use the most idiomatic patterns for the target language (e.g., arrow functions in modern JS, traits in Rust, etc.).
+5. Ensure the resulting code is valid and syntactically correct.
+6. Return a JSON object with strictly this format:
+{
+  "code": "the converted code here",
+  "confidence": 0-100,
+  "explanation": "brief summary of key changes",
+  "warnings": ["any potential issues"]
+}`;
+
+      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json'
+        },
         body: JSON.stringify({
-          code,
-          sourceLanguage: from,
-          targetLanguage: to
+          model: 'llama-3.3-70b-versatile',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: `Convert this ${from} code to ${to}:\n\n${code}` }
+          ],
+          temperature: 0.2,
+          response_format: { type: 'json_object' }
         })
       });
 
       setConversionProgress(70);
 
       const data = await response.json();
-
-      if (!response.ok || !data.success) {
-        throw new Error(data.error || 'Server conversion failed');
+      
+      if (!response.ok) {
+        throw new Error(data.error?.message || 'Groq API error');
       }
 
+      const result = JSON.parse(data.choices[0].message.content);
+      
       setConversionProgress(90);
 
       return {
         success: true,
-        code: data.code,
-        confidence: data.confidence || 95,
-        explanation: `Converted via Express backend using ${data.model || 'Gemini AI'}.`
+        code: result.code,
+        confidence: result.confidence,
+        explanation: result.explanation,
+        warnings: result.warnings
       };
     } catch (error: any) {
       console.error('Smart Conversion Error:', error);
-      // Fallback to pattern-based conversion
-      const fallbackCode = convertWithPatterns(code, from, to);
+      // Fallback only if strictly necessary, but prefer showing the error for "Perfect Conversion"
       return {
-        success: true,
-        code: fallbackCode,
-        confidence: 60,
-        explanation: `AI conversion failed (${error.message}). Used pattern-based fallback.`
+        success: false,
+        code: '',
+        errors: [error.message]
       };
     } finally {
       setConversionProgress(100);
     }
   };
 
-  // Generate smart conversion (simulated - in real app, this would be an API call)
-  const generateSmartConversion = (code: string, from: SourceLanguage, to: TargetLanguage): string => {
-    if (from === 'javascript' && to === 'typescript') {
-      return code
-        .replace(/function\s+(\w+)\s*\(([^)]*)\)/g, 'function $1($2): any')
-        .replace(/const\s+(\w+)\s*=/g, 'const $1: any =')
-        .replace(/console\.log\((.*)\)/g, 'console.log($1 as any)');
-    }
-    
-    if (from === 'python' && to === 'rust') {
-      return `// Converted from Python to Rust
-${code
-  .replace(/def\s+(\w+)\s*\(([^)]*)\):/g, 'fn $1($2) {\n    // TODO: Add implementation\n}')
-  .replace(/print\((.*)\)/g, 'println!("{}", $1);')
-  .replace(/#(.*)/g, '//$1')}`;
-    }
 
-    return convertWithPatterns(code, from, to);
-  };
 
   // Main conversion function
   const convertCode = async () => {
     if (!sourceCode.trim()) return;
     
+    if (conversionMode === 'smart' && !currentUser) {
+      alert('AI Conversion is locked for guests. Please sign in to unlock "Smart Mode".');
+      return;
+    }
+
     setIsConverting(true);
     setConversionProgress(0);
     setConversionResult(null);
@@ -703,10 +733,12 @@ ${code
                     ? "bg-gray-600/50 text-gray-400 cursor-not-allowed"
                     : "bg-purple-600 hover:bg-purple-500 text-white shadow-lg shadow-purple-600/20 hover:scale-105 active:scale-95"
                 )}
-                title="Convert"
+                title={!currentUser && conversionMode === 'smart' ? "Login to unlock AI conversion" : "Convert"}
               >
                 {isConverting ? (
                   <Loader2 size={20} className="animate-spin" />
+                ) : !currentUser && conversionMode === 'smart' ? (
+                  <Lock size={20} />
                 ) : (
                   <Sparkles size={20} />
                 )}
@@ -789,15 +821,40 @@ ${code
 
                 {/* Conversion Progress Overlay */}
                 {isConverting && (
-                  <div className="absolute inset-0 bg-[#1e1e1e]/80 flex items-center justify-center backdrop-blur-sm">
+                  <div className="absolute inset-0 bg-[#1e1e1e]/80 flex items-center justify-center backdrop-blur-sm z-50">
                     <div className="text-center">
                       <Loader2 size={40} className="animate-spin text-purple-400 mx-auto mb-3" />
-                      <p className="text-sm text-gray-400 mb-2">Converting...</p>
+                      <p className="text-sm text-gray-400 mb-2">AI is analyzing & converting...</p>
                       <div className="w-48 h-1 bg-[#333] rounded-full overflow-hidden">
                         <div 
                           className="h-full bg-purple-500 transition-all duration-300"
                           style={{ width: `${conversionProgress}%` }}
                         />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* AI Explanation Overlay */}
+                {conversionResult?.explanation && !isConverting && (
+                  <div className="absolute bottom-4 left-4 right-4 bg-[#1e1e1e]/90 backdrop-blur-md border border-white/5 rounded-xl p-3 shadow-2xl animate-in fade-in slide-in-from-bottom-2 z-40 group">
+                    <div className="flex items-start gap-3">
+                      <div className="p-2 bg-purple-500/10 rounded-lg text-purple-400 shrink-0">
+                        <Brain size={16} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-[10px] font-black uppercase tracking-widest text-purple-400">AI Conversion Insights</span>
+                          <span className={cn(
+                            "text-[10px] font-bold px-1.5 py-0.5 rounded",
+                            (conversionResult.confidence || 0) > 80 ? "bg-green-500/10 text-green-400" : "bg-yellow-500/10 text-yellow-400"
+                          )}>
+                            {conversionResult.confidence}% ACCURACY
+                          </span>
+                        </div>
+                        <p className="text-[11px] leading-relaxed text-gray-400 line-clamp-2 group-hover:line-clamp-none transition-all">
+                          {conversionResult.explanation}
+                        </p>
                       </div>
                     </div>
                   </div>

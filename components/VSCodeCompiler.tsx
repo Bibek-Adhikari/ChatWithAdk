@@ -21,10 +21,13 @@ import {
   Eye,
   Palette,
   Sparkles, // Added for AI feature
-  Loader2   // Added for loading state
+  Loader2,  // Added for loading state
+  Lock      // Added for locked features
 } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import { auth } from '../services/firebase';
+import { codeExplanationService } from '../services/codeExplanationService';
 
 // Utility for cleaner tailwind classes
 export function cn(...inputs: ClassValue[]) {
@@ -150,6 +153,15 @@ export default function VSCodeCompiler({ onClose }: VSCodeCompilerProps) {
     return (saved as Theme) || 'github-dark';
   });
   const [isThemeMenuOpen, setIsThemeMenuOpen] = useState(false);
+
+  // Auth State
+  const [currentUser, setCurrentUser] = useState(auth.currentUser);
+
+  useEffect(() => {
+    return auth.onAuthStateChanged(user => {
+      setCurrentUser(user);
+    });
+  }, []);
 
   // AI Explainer States
   const [isExplaining, setIsExplaining] = useState(false);
@@ -515,6 +527,12 @@ export default function VSCodeCompiler({ onClose }: VSCodeCompilerProps) {
 
   // --- AI Code Explainer Function ---
   const explainCode = useCallback(async () => {
+    if (!currentUser) {
+      addLog('warn', '🔐 Please log in to use AI code explanation.');
+      alert('AI features are locked for guests. Please sign in to unlock "Explain with AI".');
+      return;
+    }
+
     const code = getEditorValue();
     if (!code.trim()) {
       addLog('warn', 'No code to explain. Please write some code first.');
@@ -556,6 +574,19 @@ export default function VSCodeCompiler({ onClose }: VSCodeCompilerProps) {
       const data = await response.json();
       const explanationText = data.choices[0]?.message?.content || 'No explanation received.';
       setExplanation(explanationText);
+
+      // Persist to Supabase if user is logged in
+      const user = auth.currentUser;
+      if (user) {
+        codeExplanationService.saveExplanation({
+          user_id: user.uid,
+          language: activeLanguage === 'web' ? activeTab : activeLanguage,
+          code: code,
+          explanation: explanationText,
+          timestamp: new Date().toISOString()
+        });
+      }
+
       addLog('info', '✨ Code explanation generated successfully!');
     } catch (err: any) {
       setExplanation(`Error: ${err.message}. Please check your API key and try again.`);
@@ -710,30 +741,32 @@ ${jsCode}
 
       {/* --- Header --- */}
       <header
-        className="h-14 bg-[#252526] border-b border-[#333] flex items-center lg:justify-between gap-2 px-2 sm:px-4 shrink-0 z-20 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-        style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-x' }}
+        className="h-14 bg-[#252526] border-b border-[#333] flex items-center justify-between gap-2 px-2 sm:px-4 shrink-0 z-20"
       >
         <div className="flex items-center gap-2 shrink-0">
-         <div className="w-9 h-9 rounded-xl overflow-hidden shrink-0 shadow-lg shadow-blue-500/10">
+         <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl overflow-hidden shrink-0 shadow-lg shadow-blue-500/10">
             <img src="/assets/logo.webp" alt="CodeADK" className="w-full h-full object-cover" />
           </div>
           <button
             onClick={onClose}
-            className="flex items-center gap-2 px-3 py-1.5 bg-blue-600/10 hover:bg-blue-600/20 text-blue-400 text-sm font-semibold rounded-lg transition-all border border-blue-500/20 active:scale-95"
+            className="flex items-center gap-2 px-2 sm:px-3 py-1.5 bg-blue-600/10 hover:bg-blue-600/20 text-blue-400 text-sm font-semibold rounded-lg transition-all border border-blue-500/20 active:scale-95 shrink-0"
           >
             <MessageSquare size={16} />
-            Back to ChatAdk
+            <span className="hidden sm:inline">Back to ChatAdk</span>
           </button>
         </div>
 
         <div className="relative shrink-0">
           <button
             onClick={() => setIsLanguageMenuOpen(!isLanguageMenuOpen)}
-            className="flex items-center gap-2 px-3 py-1.5 bg-[#1e1e1e] hover:bg-[#2d2d2d] text-gray-300 text-xs font-bold rounded-lg border border-[#333] transition-all active:scale-95"
+            className="flex items-center gap-2 px-2 sm:px-3 py-1.5 bg-[#1e1e1e] hover:bg-[#2d2d2d] text-gray-300 text-xs font-bold rounded-lg border border-[#333] transition-all active:scale-95"
+            title={activeLanguage === 'web' ? 'Web (HTML/CSS/JS)' : LANGUAGE_CONFIGS[activeLanguage as Exclude<Language, 'web'>].label}
           >
-            <div className="w-2 h-2 rounded-full bg-blue-500" />
-            {activeLanguage === 'web' ? 'Web (HTML/CSS/JS)' : LANGUAGE_CONFIGS[activeLanguage as Exclude<Language, 'web'>].label}
-            <ChevronDown size={14} className={cn("transition-transform duration-200", isLanguageMenuOpen && "rotate-180")} />
+            <div className="w-2 h-2 rounded-full bg-blue-500 shrink-0" />
+            <span className="max-w-[80px] sm:max-w-none truncate">
+              {activeLanguage === 'web' ? 'Web' : LANGUAGE_CONFIGS[activeLanguage as Exclude<Language, 'web'>].label}
+            </span>
+            <ChevronDown size={14} className={cn("transition-transform duration-200 shrink-0", isLanguageMenuOpen && "rotate-180")} />
           </button>
 
           {isLanguageMenuOpen && (
@@ -844,18 +877,24 @@ ${jsCode}
             disabled={isExplaining}
             className={cn(
               "flex items-center gap-2 px-3 py-1.5 rounded-lg font-bold text-xs transition-all active:scale-95",
-              isExplaining
-                ? "bg-purple-600/20 text-purple-400 cursor-not-allowed"
-                : "bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white shadow-lg shadow-purple-600/20"
+              !currentUser 
+                ? "bg-gray-800 text-gray-400 border border-gray-700 cursor-not-allowed hover:bg-gray-700"
+                : isExplaining
+                  ? "bg-purple-600/20 text-purple-400 cursor-not-allowed"
+                  : "bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white shadow-lg shadow-purple-600/20"
             )}
-            title="Explain Code with AI"
+            title={currentUser ? "Explain Code with AI" : "Login to unlock AI features"}
           >
             {isExplaining ? (
               <Loader2 size={14} className="animate-spin" />
+            ) : !currentUser ? (
+              <Lock size={14} className="text-gray-500" />
             ) : (
               <Sparkles size={14} />
             )}
-            <span className="hidden sm:inline">{isExplaining ? 'Explaining...' : 'Explain'}</span>
+            <span className="hidden sm:inline">
+              {isExplaining ? 'Explaining...' : currentUser ? 'Explain' : 'Locked'}
+            </span>
           </button>
 
           <div className="w-px h-6 bg-[#333] mx-0.5 sm:mx-1 hidden lg:block"></div>
@@ -924,7 +963,7 @@ ${jsCode}
             ) : (
               <Play size={14} fill="currentColor" className="sm:w-[16px] sm:h-[16px] group-hover/run:scale-110 transition-transform" />
             )}
-            <span className="">{isRunning ? '...' : 'Run'}</span>
+            <span className="hidden sm:inline">{isRunning ? '...' : 'Run'}</span>
           </button>
           {onClose && (
             <button

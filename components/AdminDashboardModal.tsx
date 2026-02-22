@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback, memo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { adminService } from '../services/adminService';
+import { supabaseStorageService } from '../services/supabaseStorageService';
+import { codeExplanationService, CodeExplanation } from '../services/codeExplanationService';
 
 // Proper TypeScript interfaces
 interface User {
@@ -168,7 +170,9 @@ const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
-  const [activeTab, setActiveTab] = useState<'overview' | 'models'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'models' | 'history'>('overview');
+  const [sessionHistory, setSessionHistory] = useState<any[]>([]);
+  const [explanationHistory, setExplanationHistory] = useState<CodeExplanation[]>([]);
   const [modelConfig, setModelConfig] = useState<any>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
@@ -180,15 +184,19 @@ const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
     setError(null);
     
     try {
-      const [systemStats, users, config] = await Promise.all([
+      const [systemStats, users, config, supabaseSessions, supabaseExplanations] = await Promise.all([
         adminService.getSystemStats(),
         adminService.getLatestUsers(10),
-        adminService.getModelConfig()
+        adminService.getModelConfig(),
+        supabaseStorageService.getAllSessionsForAdmin(),
+        codeExplanationService.getLatestExplanations(20)
       ]);
       
       setStats(systemStats);
       setLatestUsers(users);
       setModelConfig(config);
+      setSessionHistory(supabaseSessions);
+      setExplanationHistory(supabaseExplanations);
       setLastUpdated(new Date());
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to load admin data';
@@ -305,6 +313,15 @@ const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
                     : (theme === 'dark' ? 'text-slate-500 hover:text-slate-300' : 'text-slate-500 hover:text-slate-700')}`}
               >
                 SYSTEM
+              </button>
+              <button 
+                onClick={() => setActiveTab('history')}
+                className={`px-3 py-1.5 rounded-lg text-[9px] font-black tracking-widest uppercase transition-all
+                  ${activeTab === 'history' 
+                    ? (theme === 'dark' ? 'bg-indigo-600 text-white shadow-lg' : 'bg-white text-indigo-600 shadow-sm')
+                    : (theme === 'dark' ? 'text-slate-500 hover:text-slate-300' : 'text-slate-500 hover:text-slate-700')}`}
+              >
+                HISTORY
               </button>
             </div>
             <button 
@@ -458,7 +475,7 @@ const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
                     })()}
                   </div>
                 </>
-              ) : (
+              ) : activeTab === 'models' ? (
                 <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
                   <div className={`p-6 rounded-[32px] border ${theme === 'dark' ? 'bg-slate-800/40 border-white/5' : 'bg-slate-50 border-slate-100'}`}>
                     <div className="flex items-center gap-4 mb-8">
@@ -546,6 +563,117 @@ const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
                           Changing these mappings will affect all users immediately. New chat sessions will use the updated engine, while active sessions may require a page refresh for complete synchronization.
                         </p>
                       </div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-8 animate-in slide-in-from-right-4 duration-300">
+                  {/* Chat History Section */}
+                  <div>
+                    <div className="flex items-center gap-3 px-2 mb-4">
+                      <div className="w-8 h-8 rounded-lg bg-blue-500/20 flex items-center justify-center text-blue-500">
+                        <i className="fas fa-comments text-xs" />
+                      </div>
+                      <div>
+                        <h3 className={`text-[11px] font-black uppercase tracking-widest ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>Session History (Backup)</h3>
+                        <p className="text-[9px] text-slate-500 font-bold uppercase tracking-widest leading-none mt-1">Mirrored data from Supabase storage</p>
+                      </div>
+                    </div>
+                    
+                    <div className={`rounded-3xl border overflow-hidden ${theme === 'dark' ? 'bg-slate-800/20 border-white/5' : 'bg-slate-50 border-slate-100'}`}>
+                      <table className="w-full text-left border-collapse">
+                        <thead>
+                          <tr className={`text-[9px] font-black uppercase tracking-[0.15em] ${theme === 'dark' ? 'bg-white/5 text-slate-400' : 'bg-slate-100/50 text-slate-500'}`}>
+                            <th className="px-6 py-4">Title</th>
+                            <th className="px-6 py-4">User ID</th>
+                            <th className="px-6 py-4">Messages</th>
+                            <th className="px-6 py-4">Last Activity</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-white/5">
+                          {sessionHistory.length === 0 ? (
+                            <tr>
+                              <td colSpan={4} className="px-6 py-12 text-center text-[10px] font-bold text-slate-500 uppercase tracking-widest opacity-50">
+                                No history found in backup storage
+                              </td>
+                            </tr>
+                          ) : (
+                            sessionHistory.map((sess) => (
+                              <tr key={sess.id} className="hover:bg-white/5 transition-colors group cursor-default">
+                                <td className="px-6 py-4">
+                                  <div className="flex items-center gap-3">
+                                    <div className="w-8 h-8 rounded-lg bg-indigo-500/10 flex items-center justify-center text-indigo-400 group-hover:scale-110 transition-transform">
+                                      <i className="fas fa-paragraph text-[10px]" />
+                                    </div>
+                                    <span className={`text-[12px] font-bold truncate max-w-[180px] ${theme === 'dark' ? 'text-slate-200' : 'text-slate-700'}`}>
+                                      {sess.title || "Untitled Session"}
+                                    </span>
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4">
+                                  <span className="text-[10px] font-mono opacity-50 font-bold">{sess.user_id.slice(0, 8)}...</span>
+                                </td>
+                                <td className="px-6 py-4">
+                                  <span className={`px-2 py-0.5 rounded-lg text-[9px] font-black ${theme === 'dark' ? 'bg-blue-500/10 text-blue-400' : 'bg-blue-50 text-blue-600'}`}>
+                                    {sess.messages?.[0]?.count || 0} MSGS
+                                  </span>
+                                </td>
+                                <td className="px-6 py-4">
+                                  <span className="text-[10px] font-bold text-slate-500">
+                                    {new Date(sess.updated_at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                  </span>
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* Code Explanations Section */}
+                  <div>
+                    <div className="flex items-center gap-3 px-2 mb-4">
+                      <div className="w-8 h-8 rounded-lg bg-emerald-500/20 flex items-center justify-center text-emerald-500">
+                        <i className="fas fa-code text-xs" />
+                      </div>
+                      <div>
+                        <h3 className={`text-[11px] font-black uppercase tracking-widest ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>Code Analysis History</h3>
+                        <p className="text-[9px] text-slate-500 font-bold uppercase tracking-widest leading-none mt-1">Tracked AI code explanations</p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-4">
+                      {explanationHistory.length === 0 ? (
+                        <div className={`p-12 text-center rounded-3xl border ${theme === 'dark' ? 'bg-slate-800/20 border-white/5 text-slate-500' : 'bg-slate-50 border-slate-100 text-slate-500'}`}>
+                          <p className="text-[10px] font-bold uppercase tracking-widest opacity-50">No code analysis history tracked yet</p>
+                        </div>
+                      ) : (
+                        explanationHistory.map((exp, idx) => (
+                          <div 
+                            key={idx}
+                            className={`p-5 rounded-3xl border transition-all hover:scale-[1.01] ${theme === 'dark' ? 'bg-slate-800/40 border-white/5 hover:border-white/10' : 'bg-white border-slate-200 hover:border-slate-300 shadow-sm'}`}
+                          >
+                            <div className="flex items-center justify-between mb-4">
+                              <div className="flex items-center gap-3">
+                                <span className={`px-2 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-widest ${theme === 'dark' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-emerald-100 text-emerald-700'}`}>
+                                  {exp.language}
+                                </span>
+                                <span className="text-[10px] font-mono opacity-30 font-bold">USER: {exp.user_id.slice(0, 8)}...</span>
+                              </div>
+                              <span className="text-[9px] font-bold text-slate-500">
+                                {new Date(exp.timestamp).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                            </div>
+                            <div className={`p-4 rounded-2xl mb-4 text-[11px] font-mono truncate whitespace-pre overflow-hidden ${theme === 'dark' ? 'bg-black/20 text-blue-300/80 border border-white/5' : 'bg-slate-50 text-blue-700/80 border border-slate-200'}`}>
+                              {exp.code.trim().slice(0, 150)}...
+                            </div>
+                            <div className={`text-[11px] leading-relaxed line-clamp-2 ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}`}>
+                              {exp.explanation}
+                            </div>
+                          </div>
+                        ))
+                      )}
                     </div>
                   </div>
                 </div>
