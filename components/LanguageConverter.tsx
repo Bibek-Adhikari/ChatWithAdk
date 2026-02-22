@@ -52,7 +52,7 @@ const LANGUAGE_PAIRS: Record<string, { name: string, icon: string, color: string
   'rust': { name: 'Rust', icon: '🦀', color: 'text-orange-400' },
   'go': { name: 'Go', icon: '🐹', color: 'text-cyan-400' },
   'java': { name: 'Java', icon: '☕', color: 'text-red-400' },
-  'csharp': { name: 'C#', icon: '🎯', color: 'text-purple-400' },
+  'csharp': { name: 'C#', icon: '🎯', color: 'text-green-400' },
   'php': { name: 'PHP', icon: '🐘', color: 'text-indigo-400' },
   'ruby': { name: 'Ruby', icon: '💎', color: 'text-pink-400' },
   'kotlin': { name: 'Kotlin', icon: '💜', color: 'text-violet-400' }
@@ -562,7 +562,7 @@ Note: Your explanation must prove this is a custom conversion for THIS specific 
                 {history.map((item) => (
                   <div
                     key={item.id}
-                    className="bg-[#252526] rounded-lg p-4 border border-[#333] hover:border-purple-500/30 cursor-pointer transition-all"
+                    className="bg-[#252526] rounded-lg p-4 border border-[#333] hover:border-green-500/30 cursor-pointer transition-all"
                     onClick={() => {
                       setSourceLang(item.sourceLang);
                       setTargetLang(item.targetLang);
@@ -668,7 +668,7 @@ Note: Your explanation must prove this is a custom conversion for THIS specific 
                   "p-3 rounded-xl font-bold transition-all relative overflow-hidden",
                   isConverting || !sourceCode.trim()
                     ? "bg-gray-600/50 text-gray-400 cursor-not-allowed"
-                    : "bg-purple-600 hover:bg-purple-500 text-white shadow-lg shadow-purple-600/20 hover:scale-105 active:scale-95"
+                    : "bg-green-600 hover:bg-green-500 text-white shadow-lg shadow-green-600/20 hover:scale-105 active:scale-95"
                 )}
                 title={!currentUser ? "Login to unlock AI conversion" : "Convert"}
               >
@@ -685,7 +685,7 @@ Note: Your explanation must prove this is a custom conversion for THIS specific 
                 onClick={() => setShowAdvanced(!showAdvanced)}
                 className={cn(
                   "p-2 rounded-lg transition-all",
-                  showAdvanced ? "bg-purple-600/20 text-purple-400" : "bg-[#1e1e1e] text-gray-400 hover:text-white"
+                  showAdvanced ? "bg-green-600/20 text-green-400" : "bg-[#1e1e1e] text-gray-400 hover:text-white"
                 )}
                 title="Advanced Options"
               >
@@ -760,11 +760,11 @@ Note: Your explanation must prove this is a custom conversion for THIS specific 
                 {isConverting && (
                   <div className="absolute inset-0 bg-[#1e1e1e]/80 flex items-center justify-center backdrop-blur-sm z-50">
                     <div className="text-center">
-                      <Loader2 size={40} className="animate-spin text-purple-400 mx-auto mb-3" />
+                      <Loader2 size={40} className="animate-spin text-green-400 mx-auto mb-3" />
                       <p className="text-sm text-gray-400 mb-2">AI is analyzing & converting...</p>
                       <div className="w-48 h-1 bg-[#333] rounded-full overflow-hidden">
                         <div 
-                          className="h-full bg-purple-500 transition-all duration-300"
+                          className="h-full bg-green-500 transition-all duration-300"
                           style={{ width: `${conversionProgress}%` }}
                         />
                       </div>
@@ -774,14 +774,14 @@ Note: Your explanation must prove this is a custom conversion for THIS specific 
 
                 {/* AI Explanation Overlay */}
                 {conversionResult?.explanation && !isConverting && (
-                  <div className="absolute bottom-4 left-4 right-4 bg-[#1e1e1e]/90 backdrop-blur-md border border-white/5 rounded-xl p-3 shadow-2xl animate-in fade-in slide-in-from-bottom-2 z-40 group">
+                  <div className="fixed bottom-2  left-4 right-4 bg-[#1e1e1e]/90 backdrop-blur-md border border-white/5 rounded-xl p-3 shadow-2xl animate-in fade-in slide-in-from-bottom-2 z-40 group">
                     <div className="flex items-start gap-3">
-                      <div className="p-2 bg-purple-500/10 rounded-lg text-purple-400 shrink-0">
+                      <div className="p-2 bg-green-500/10 rounded-lg text-green-400 shrink-0">
                         <Brain size={16} />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-[10px] font-black uppercase tracking-widest text-purple-400">AI Conversion Insights</span>
+                        <div className="flex items-center justify-between">
+                          <span className="text-[12px] font-black uppercase tracking-widest text-green-400">AI Conversion Insights</span>
                           <span className={cn(
                             "text-[10px] font-bold px-1.5 py-0.5 rounded",
                             (conversionResult.confidence || 0) > 80 ? "bg-green-500/10 text-green-400" : "bg-yellow-500/10 text-yellow-400"
@@ -819,7 +819,7 @@ Note: Your explanation must prove this is a custom conversion for THIS specific 
             <div>
               <label className="text-xs text-gray-500 block mb-2">Conversion Status</label>
               <div className="flex gap-2">
-                <div className="px-3 py-1.5 rounded-lg text-xs font-bold bg-purple-600/20 text-purple-400 border border-purple-500/30 flex items-center gap-2">
+                <div className="px-3 py-1.5 rounded-lg text-xs font-bold bg-green-600/20 text-green-400 border border-green-500/30 flex items-center gap-2">
                   <Brain size={14} /> AI Powered (High Precision)
                 </div>
               </div>
