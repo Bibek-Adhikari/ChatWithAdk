@@ -529,7 +529,7 @@ ${code
   }, [sourceLang]);
 
   return (
-    <div className="flex flex-col h-full bg-[#1e1e1e] text-gray-300">
+    <div className="flex flex-col h-full bg-[#0f172a]/95 backdrop-blur-xl text-gray-300 border border-white/5 shadow-2xl">
       {/* Header */}
       <div className="h-14 bg-[#252526] border-b border-[#333] flex items-center justify-between px-4 shrink-0">
         <div className="flex items-center gap-3">

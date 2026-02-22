@@ -14,7 +14,8 @@ import {
   AlertCircle,
   CheckCircle2,
   MoveHorizontal,
-  Trash2
+  Trash2,
+  ArrowLeft
 } from 'lucide-react';
 
 // --- Types ---
@@ -121,9 +122,13 @@ const ToastContainer = ({ toasts, onDismiss }: { toasts: Toast[]; onDismiss: (id
   </div>
 );
 
+interface PhotoAdkProps {
+  onClose?: () => void;
+}
+
 // --- Main Component ---
 
-export default function PhotoEditorPro() {
+export default function PhotoEditorPro({ onClose }: PhotoAdkProps) {
   // State
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -310,7 +315,7 @@ export default function PhotoEditorPro() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0a0c10] text-slate-200 font-sans selection:bg-indigo-500/30">
+    <div className="h-full bg-[#0f172a]/95 backdrop-blur-xl text-slate-200 font-sans selection:bg-indigo-500/30 border border-white/5 shadow-2xl overflow-y-auto custom-scrollbar">
       {/* Background Gradients */}
       <div className="fixed inset-0 pointer-events-none">
         <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-indigo-900/20 rounded-full blur-[120px]" />
@@ -324,6 +329,15 @@ export default function PhotoEditorPro() {
           
           {/* Header */}
           <div className="space-y-1">
+            {onClose && (
+              <button
+                onClick={onClose}
+                className="flex items-center gap-2 px-3 py-1.5 bg-blue-600/10 text-blue-400 hover:bg-blue-600/20 rounded-lg text-xs font-bold transition-all border border-blue-500/20 mb-2"
+              >
+                <ArrowLeft size={16} />
+                Back to ChatAdk
+              </button>
+            )}
             <h1 className="text-2xl font-bold bg-gradient-to-r from-white to-slate-400 bg-clip-text text-transparent tracking-tight">
               PhotoAdk Studio
             </h1>

@@ -25,9 +25,6 @@ interface SidebarProps {
   usageCount: number;
   dailyLimit: number;
   isPro: boolean;
-  onOpenCompiler: () => void;
-  onOpenConverter: () => void;
-  onOpenPhotoAdk: () => void;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ 
@@ -50,10 +47,8 @@ const Sidebar: React.FC<SidebarProps> = ({
   usageCount,
   dailyLimit,
   isPro,
-  onOpenCompiler,
-  onOpenConverter,
-  onOpenPhotoAdk
 }) => {
+  const navigate = useNavigate();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
   const [imageError, setImageError] = useState(false);
@@ -81,8 +76,8 @@ const Sidebar: React.FC<SidebarProps> = ({
       )}
       
       <aside className={`
-        fixed lg:relative inset-y-0 left-0 z-40 sidebar-transition flex flex-col shrink-0 overflow-hidden
-        ${isOpen ? 'w-72 opacity-100 translate-x-0' : 'w-0 opacity-0 -translate-x-full lg:translate-x-0'}
+        fixed inset-y-0 left-0 z-40 sidebar-transition flex flex-col shrink-0 overflow-hidden
+        ${isOpen ? 'w-72 opacity-100 translate-x-0' : 'w-0 opacity-0 -translate-x-full'}
         ${theme === 'dark' ? 'bg-[#0f172a] border-r border-white/5' : 'bg-[#ffffff] border-r border-slate-200'}
         ${isOpen ? 'shadow-[0_0_40px_rgba(0,0,0,0.5)] lg:shadow-none' : ''}
       `}>
@@ -320,14 +315,14 @@ const Sidebar: React.FC<SidebarProps> = ({
       
 <div className='flex flex-wrap mb-2 gap-2'>
   <button 
-  onClick={onOpenCompiler}
+  onClick={() => navigate('/codeadk')}
   className={`w-[48%] mt-2 p-3 bg-blue-600/10 hover:bg-blue-600/20 text-blue-400 rounded-xl text-[10px] font-black tracking-widest border border-blue-600/20 transition-all active:scale-95 flex items-center justify-center gap-2`}
 >
   <i className="fas fa-code"></i>
   CodeAdk
 </button>
 <button 
-  onClick={onOpenPhotoAdk}
+  onClick={() => navigate('/photoadk')}
   className="w-[48%] mt-2 p-3 bg-emerald-600/10 hover:bg-emerald-600/20 text-emerald-400 rounded-xl text-[10px] font-black tracking-widest border border-emerald-600/20 transition-all active:scale-95 flex items-center justify-center gap-2"
 >
   <i className="fas fa-image"></i>
@@ -335,7 +330,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 </button>
 
 <button 
-  onClick={onOpenConverter}
+  onClick={() => navigate('/converteradk')}
   className=" mt-2 w-full p-3 bg-purple-600/10 hover:bg-purple-600/20 text-purple-400 rounded-xl text-[10px] font-black tracking-widest border border-purple-600/20 transition-all active:scale-95 flex items-center justify-center gap-2"
 >
   <i className="fas fa-sync"></i>

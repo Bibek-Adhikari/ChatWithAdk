@@ -1,4 +1,14 @@
 
+import { motion, AnimatePresence } from 'framer-motion';
+import {
+  Plus,
+  Code2,
+  Image as ImageIcon,
+  RefreshCw,
+  Sparkles,
+  Zap,
+  ArrowRight
+} from 'lucide-react';
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { ChatMessage, ChatSession, GenerationState, MessagePart } from './types';
 import ChatMessageItem from './components/ChatMessageItem';
@@ -32,11 +42,13 @@ const ADMIN_EMAILS = [
 
 const STORAGE_KEY = 'chat_with_adk_history';
 
-const App: React.FC = () => {
+const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> = ({ initialTool }) => {
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     const saved = localStorage.getItem('theme');
     return (saved as 'light' | 'dark') || 'dark';
   });
+
+  const overlayPaths = React.useMemo(() => ['codeadk', 'converteradk', 'photoadk'], []);
 
   const { sessionId: urlSessionId } = useParams();
   const navigate = useNavigate();
@@ -65,13 +77,24 @@ const App: React.FC = () => {
   const lastUserUidRef = useRef<string | null>(null);
   const initialSyncRef = useRef(false);
 
-  const [inputValue, setInputValue] = useState('');
+  const [inputValue, setInputValue] = useState(() => {
+    // Pick up any message typed on the landing page
+    const pending = sessionStorage.getItem('pending_message');
+    if (pending) sessionStorage.removeItem('pending_message');
+    return pending || '';
+  });
   const [status, setStatus] = useState<GenerationState>({
     isTyping: false,
     error: null,
     isSyncing: false,
   });
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(() => {
+    return localStorage.getItem('isSidebarOpen') === 'true';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('isSidebarOpen', String(isSidebarOpen));
+  }, [isSidebarOpen]);
   const [user, setUser] = useState<User | null>(null);
   const [authModal, setAuthModal] = useState<{ open: boolean; mode: 'signin' | 'signup' }>({
     open: false,
@@ -81,15 +104,9 @@ const App: React.FC = () => {
   const [isProfileOpen, setIsProfileOpen] = useState<{ open: boolean; showPricing: boolean }>({ open: false, showPricing: false });
   const [isAdminDashboardOpen, setIsAdminDashboardOpen] = useState(false);
   const [isPlansOpen, setIsPlansOpen] = useState(false);
-  const [isCompilerOpen, setIsCompilerOpen] = useState(() => {
-    return window.location.pathname === '/chat/codeadk';
-  });
-  const [isConverterOpen, setIsConverterOpen] = useState(() => {
-    return window.location.pathname === '/chat/converteradk';
-  });
-  const [isPhotoAdkOpen, setIsPhotoAdkOpen] = useState(() => {
-    return window.location.pathname === '/chat/photoadk';
-  });
+  const [isCompilerOpen, setIsCompilerOpen] = useState(() => initialTool === 'codeadk');
+  const [isConverterOpen, setIsConverterOpen] = useState(() => initialTool === 'converteradk');
+  const [isPhotoAdkOpen, setIsPhotoAdkOpen] = useState(() => initialTool === 'photoadk');
   const [previousSessionId, setPreviousSessionId] = useState<string | null>(null);
   const [imageError, setImageError] = useState(false);
 
@@ -265,95 +282,30 @@ const App: React.FC = () => {
     return () => unsubscribe();
   }, [user?.uid]);
 
-  // 1. URL → State Sync: When URL changes externally (browser back/forward, direct link), update component state.
-  //    We use a ref to prevent circular updates: this effect ONLY reacts to URL, never to state it sets.
-  const isRouteSyncingRef = React.useRef(false);
-
+  // URL → Overlay Sync: When navigating with browser back/forward, sync overlay open state
   useEffect(() => {
-    // Sync Session ID (ignore overlay paths)
-    if (urlSessionId && urlSessionId !== currentSessionId && 
-        urlSessionId !== 'codeadk' && urlSessionId !== 'converteradk' && urlSessionId !== 'photoadk') {
+    const path = location.pathname;
+    const isPathCode = path === '/codeadk';
+    const isPathConverter = path === '/converteradk';
+    const isPathPhoto = path === '/photoadk';
+
+    setIsCompilerOpen(isPathCode);
+    setIsConverterOpen(isPathConverter);
+    setIsPhotoAdkOpen(isPathPhoto);
+
+    // Also sync session from URL param
+    if (urlSessionId && !overlayPaths.includes(urlSessionId) && urlSessionId !== currentSessionId) {
       setCurrentSessionId(urlSessionId);
     }
+  }, [location.pathname, urlSessionId]);
 
-    // Sync Overlays from URL — only if we're not the ones who just changed the URL
-    if (isRouteSyncingRef.current) {
-      isRouteSyncingRef.current = false;
-      return;
-    }
-
-    const path = location.pathname;
-    if (path === '/chat/codeadk' && !isCompilerOpen) {
-      setIsCompilerOpen(true);
-    } else if (path !== '/chat/codeadk' && isCompilerOpen && path !== '/chat/converteradk' && path !== '/chat/photoadk') {
-      setIsCompilerOpen(false);
-    }
-
-    if (path === '/chat/converteradk' && !isConverterOpen) {
-      setIsConverterOpen(true);
-    } else if (path !== '/chat/converteradk' && isConverterOpen && path !== '/chat/codeadk' && path !== '/chat/photoadk') {
-      setIsConverterOpen(false);
-    }
-
-    if (path === '/chat/photoadk' && !isPhotoAdkOpen) {
-      setIsPhotoAdkOpen(true);
-    } else if (path !== '/chat/photoadk' && isPhotoAdkOpen && path !== '/chat/codeadk' && path !== '/chat/converteradk') {
-      setIsPhotoAdkOpen(false);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [urlSessionId, location.pathname]);
-
-  // 2. State → URL Sync: When overlay/session state changes programmatically (sidebar click), update URL.
+  // Persist last active session to localStorage 
   useEffect(() => {
-    if (isCompilerOpen) {
-      if (location.pathname !== '/chat/codeadk') {
-        const currentId = currentSessionId || urlSessionId;
-        if (currentId && currentId !== 'codeadk' && currentId !== 'converteradk' && currentId !== 'photoadk' && !previousSessionId) {
-          setPreviousSessionId(currentId);
-        }
-        isRouteSyncingRef.current = true;
-        navigate('/chat/codeadk', { replace: true });
-      }
-      return;
-    }
-
-    if (isConverterOpen) {
-      if (location.pathname !== '/chat/converteradk') {
-        const currentId = currentSessionId || urlSessionId;
-        if (currentId && currentId !== 'codeadk' && currentId !== 'converteradk' && currentId !== 'photoadk' && !previousSessionId) {
-          setPreviousSessionId(currentId);
-        }
-        isRouteSyncingRef.current = true;
-        navigate('/chat/converteradk', { replace: true });
-      }
-      return;
-    }
-
-    if (isPhotoAdkOpen) {
-      if (location.pathname !== '/chat/photoadk') {
-        const currentId = currentSessionId || urlSessionId;
-        if (currentId && currentId !== 'codeadk' && currentId !== 'converteradk' && currentId !== 'photoadk' && !previousSessionId) {
-          setPreviousSessionId(currentId);
-        }
-        isRouteSyncingRef.current = true;
-        navigate('/chat/photoadk', { replace: true });
-      }
-      return;
-    }
-
-    // Otherwise, sync the current session
-    if (currentSessionId && currentSessionId !== 'codeadk' && currentSessionId !== 'converteradk' && currentSessionId !== 'photoadk') {
-      const targetPath = `/chat/${currentSessionId}`;
-      if (location.pathname !== targetPath) {
-        isRouteSyncingRef.current = true;
-        navigate(targetPath, { replace: true });
-      }
-      // Persistence
+    if (currentSessionId && !overlayPaths.includes(currentSessionId)) {
       const key = user ? `${STORAGE_KEY}_last_session_id_${user.uid}` : `${STORAGE_KEY}_last_session_id_guest`;
       localStorage.setItem(key, currentSessionId);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentSessionId, isCompilerOpen, isConverterOpen, isPhotoAdkOpen]);
+  }, [currentSessionId, overlayPaths, user]);
 
   // Handle "relogin" (auth change) to reset sync state and trigger new chat
   useEffect(() => {
@@ -948,20 +900,6 @@ const App: React.FC = () => {
 
   // Convert ISO timestamp string back to Date for the component
   const localizedMessages = useMemo(() => {
-    // Virtual Greeting for un-persisted "New Chat" sessions
-    if (!currentSession && currentSessionId) {
-      const currentDisplayName = user?.displayName || auth.currentUser?.displayName;
-      const firstName = currentDisplayName ? currentDisplayName.split(' ')[0] : '';
-      const greeting = firstName ? `Hello, ${firstName}!` : 'Hello!';
-      
-      return [{
-        id: `welcome_virtual_${currentSessionId}`,
-        role: 'assistant' as const,
-        parts: [{ type: 'text' as const, content: `${greeting} I am ChatAdk. How can I help you today?` }],
-        timestamp: new Date(),
-      }];
-    }
-
     return (currentSession?.messages || []).map(m => ({
       ...m,
       timestamp: new Date(m.timestamp)
@@ -1018,25 +956,6 @@ const App: React.FC = () => {
         usageCount={usageCount}
         dailyLimit={isPro ? 1000 : dailyLimit}
         isPro={isPro}
-        onOpenCompiler={() => {
-          setPreviousSessionId(currentSessionId);
-          setIsConverterOpen(false);
-          setIsPhotoAdkOpen(false);
-          setIsCompilerOpen(true);
-        }}
-        onOpenConverter={() => {
-          setPreviousSessionId(currentSessionId);
-          setIsCompilerOpen(false);
-          setIsPhotoAdkOpen(false);
-          setIsConverterOpen(true);
-        }}
-        onOpenPhotoAdk={() => {
-          setPreviousSessionId(currentSessionId);
-          setIsCompilerOpen(false);
-          setIsConverterOpen(false);
-          setIsPhotoAdkOpen(true);
-          setIsSidebarOpen(false);
-        }}
       />
 
 
@@ -1053,10 +972,13 @@ const App: React.FC = () => {
             <i className="fas fa-bars-staggered text-sm"></i>
           </button>
           
-          <div className="flex items-center gap-2 -ml-8">
+          <button 
+            onClick={() => navigate('/')}
+            className="flex items-center gap-2 -ml-8 transition-transform active:scale-95"
+          >
             <img src="/assets/logo.webp" alt="ChatADK" className="w-9 h-9 rounded-xl shadow-xl object-cover border border-white/5" />
             <span className={`text-[11px] font-black uppercase tracking-[0.2em] ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>ChatADK</span>
-          </div>
+          </button>
 
           {user ? (
             <button 
@@ -1092,8 +1014,17 @@ const App: React.FC = () => {
               onClick={() => setIsSidebarOpen(!isSidebarOpen)}
               className={`w-10 h-10 flex items-center justify-center rounded-xl shadow-xl transition-all active:scale-90 group
                 ${theme === 'dark' ? 'bg-slate-900/80 text-slate-400 hover:text-white border border-white/5 backdrop-blur-xl' : 'bg-white/90 text-slate-500 hover:text-slate-900 border border-slate-200 backdrop-blur-xl'}`}
+              title={isSidebarOpen ? "Close Sidebar" : "Open Sidebar"}
             >
               <i className={`fas ${isSidebarOpen ? 'fa-times' : 'fa-bars-staggered'} group-hover:scale-110 transition-transform text-sm`}></i>
+            </button>
+            <button 
+              onClick={() => navigate('/')}
+              className={`w-10 h-10 flex items-center justify-center rounded-xl shadow-xl transition-all active:scale-90 group
+                ${theme === 'dark' ? 'bg-slate-900/80 text-slate-400 hover:text-white border border-white/5 backdrop-blur-xl' : 'bg-white/90 text-slate-500 hover:text-slate-900 border border-slate-200 backdrop-blur-xl'}`}
+              title="Home"
+            >
+              <img src="/assets/logo.webp" alt="Home" className="w-5 h-5 rounded-lg object-cover" />
             </button>
           </div>
 
@@ -1136,21 +1067,10 @@ const App: React.FC = () => {
           {aiModel !== 'multi' ? (
             <div className={`flex-1 overflow-y-auto px-3 sm:px-8 py-6 custom-scrollbar relative flex flex-col ${localizedMessages.length < 3 ? 'justify-center' : ''}`}>
               <div className={`max-w-3xl mx-auto space-y-2 w-full ${localizedMessages.length < 3 ? 'flex-1 flex flex-col justify-center' : ''}`}>
-                {!currentSession && !currentSessionId && (
-                  <div className="flex flex-col items-center justify-center h-full text-center space-y-4 py-20 opacity-50">
-                    <i className="fas fa-comments text-6xl text-slate-800"></i>
-                    <h3 className="text-xl font-medium">
-                      {(user?.displayName || auth.currentUser?.displayName) 
-                        ? `Ready for a new adventure, ${(user?.displayName || auth.currentUser?.displayName)?.split(' ')[0]}?` 
-                        : 'Ready for a new adventure?'}
-                    </h3>
-                    <p className="text-sm text-slate-500 max-w-xs">Start a conversation or choose a recent chat from the sidebar.</p>
-                    <button 
-                      onClick={handleNewChat}
-                      className="bg-blue-600/10 hover:bg-blue-600/20 text-blue-400 border border-blue-600/20 px-6 py-2 rounded-full text-sm font-semibold transition-all"
-                    >
-                      Start Chatting
-                    </button>
+                {localizedMessages.length === 0 && !currentSession && (
+                  <div className="flex flex-col items-center justify-center min-h-[60vh] text-center space-y-6 py-10 opacity-50">
+                    <img src="/assets/logo.webp" alt="ChatADK" className="w-16 h-16 rounded-2xl object-cover opacity-40" />
+                    <p className={`text-[11px] font-black uppercase tracking-[0.3em] ${theme === 'dark' ? 'text-slate-500' : 'text-slate-400'}`}>Select a chat or start a new one</p>
                   </div>
                 )}
 
@@ -1350,9 +1270,6 @@ const App: React.FC = () => {
                       <button 
                         type="button"
                         onClick={() => { 
-                          if (!user && aiModel !== 'groq') {
-                            // This button itself is groq, so no need for auth check here
-                          }
                           setAiModel('groq'); 
                           setIsModelMenuOpen(false); 
                         }}
@@ -1563,7 +1480,6 @@ const App: React.FC = () => {
                     </div>
                   </div>
                 )}
-
                 <div className="flex items-end gap-2">
                   <div className="flex flex-col flex-1 pl-1">
                     {selectedImage && !isPromptDisabled && (
@@ -1616,7 +1532,7 @@ const App: React.FC = () => {
                                 aiModel === 'groq' ? 'fa-bolt' : 
                                 aiModel === 'research' ? 'fa-microscope' :
                                 aiModel === 'imagine' ? 'fa-magic' :
-                                aiModel === 'motion' ? 'fa-film' :
+                                aiModel === 'motion' ? 'fa-video' :
                                 'fa-brain'
                               }`}></i>
                             </div>
@@ -1755,61 +1671,67 @@ const App: React.FC = () => {
         </div>
       )}
 
-      {/* VSCode Compiler Overlay */}
-      {isCompilerOpen && (
-        <div className="fixed inset-0 z-[200] animate-in zoom-in-95 duration-200">
-          <VSCodeCompiler onClose={() => {
-            setIsCompilerOpen(false);
-            if (previousSessionId) {
-              const target = previousSessionId;
+      <AnimatePresence>
+        {isCompilerOpen && (
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.98 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.98 }}
+            className="fixed inset-0 z-[200] bg-slate-950/40"
+          >
+            <VSCodeCompiler onClose={() => {
+              const fallback = previousSessionId || currentSessionId;
               setPreviousSessionId(null);
-              if (target === 'converteradk') {
-                setIsConverterOpen(true);
-              } else if (target === 'photoadk') {
-                setIsPhotoAdkOpen(true);
+              if (fallback && !['codeadk','photoadk','converteradk'].includes(fallback)) {
+                navigate(`/chat/${fallback}`);
               } else {
-                setCurrentSessionId(target);
-                navigate(`/chat/${target}`);
+                handleNewChat();
               }
-            } else {
-              navigate('/');
-            }
-          }} />
-        </div>
-      )}
+            }} />
+          </motion.div>
+        )}
 
-      {/* Language Converter Overlay */}
-      {isConverterOpen && (
-        <div className="fixed inset-0 z-[200] animate-in zoom-in-95 duration-200">
-          <LanguageConverter 
-            theme={theme === 'dark' ? 'vs-dark' : 'vs'} 
-            onClose={() => {
-              setIsConverterOpen(false);
-              if (previousSessionId) {
-                const target = previousSessionId;
+        {isConverterOpen && (
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.98 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.98 }}
+            className="fixed inset-0 z-[200] bg-slate-950/40"
+          >
+            <LanguageConverter 
+              theme={theme === 'dark' ? 'vs-dark' : 'vs'} 
+              onClose={() => {
+                const fallback = previousSessionId || currentSessionId;
                 setPreviousSessionId(null);
-                if (target === 'codeadk') {
-                  setIsCompilerOpen(true);
-                } else if (target === 'photoadk') {
-                  setIsPhotoAdkOpen(true);
+                if (fallback && !['codeadk','photoadk','converteradk'].includes(fallback)) {
+                  navigate(`/chat/${fallback}`);
                 } else {
-                  setCurrentSessionId(target);
-                  navigate(`/chat/${target}`);
+                  handleNewChat();
                 }
-              } else {
-                navigate('/');
-              }
-            }} 
-          />
-        </div>
-      )}
+              }} 
+            />
+          </motion.div>
+        )}
 
-      {/* PhotoAdk Overlay */}
-      {isPhotoAdkOpen && (
-        <div className="fixed inset-0 z-[200] animate-in zoom-in-95 duration-200">
-          <PhotoAdk />
-        </div>
-      )}
+        {isPhotoAdkOpen && (
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.98 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.98 }}
+            className="fixed inset-0 z-[200] bg-slate-950/40"
+          >
+            <PhotoAdk onClose={() => {
+              const fallback = previousSessionId || currentSessionId;
+              setPreviousSessionId(null);
+              if (fallback && !['codeadk','photoadk','converteradk'].includes(fallback)) {
+                navigate(`/chat/${fallback}`);
+              } else {
+                handleNewChat();
+              }
+            }} />
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {status.isSyncing && (
         <div className="fixed bottom-24 right-6 z-50 animate-in fade-in slide-in-from-bottom-4 duration-500">
