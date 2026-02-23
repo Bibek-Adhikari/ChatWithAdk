@@ -5,6 +5,9 @@ import { spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { createClient } from '@supabase/supabase-js';
+import { initializeApp, applicationDefault, cert } from 'firebase-admin/app';
+import { getAuth } from 'firebase-admin/auth';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -14,6 +17,73 @@ dotenv.config({ path: path.join(REPO_ROOT, '.env.local') });
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+
+// --- Firebase Admin Init (for verifying Firebase ID tokens) ---
+let firebaseAdminReady = false;
+const initFirebaseAdmin = () => {
+  if (firebaseAdminReady) return;
+
+  const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+
+  try {
+    if (serviceAccountJson) {
+      const serviceAccount = JSON.parse(serviceAccountJson);
+      initializeApp({ credential: cert(serviceAccount) });
+      firebaseAdminReady = true;
+      return;
+    }
+
+    if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+      initializeApp({ credential: applicationDefault() });
+      firebaseAdminReady = true;
+      return;
+    }
+
+    console.warn('Firebase Admin not configured. Set FIREBASE_SERVICE_ACCOUNT_JSON or GOOGLE_APPLICATION_CREDENTIALS.');
+  } catch (error) {
+    console.error('Failed to initialize Firebase Admin:', error);
+  }
+};
+
+initFirebaseAdmin();
+
+// --- Supabase Admin Client (Service Role) ---
+const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_APP_SUPABASE_URL;
+const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const supabaseAdmin = supabaseUrl && supabaseServiceRoleKey
+  ? createClient(supabaseUrl, supabaseServiceRoleKey, {
+      auth: { persistSession: false }
+    })
+  : null;
+
+const ensureSupabaseAdmin = () => {
+  if (!supabaseAdmin) {
+    throw new Error('Supabase admin client not configured. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.');
+  }
+  return supabaseAdmin;
+};
+
+const requireFirebaseAuth = async (req, res, next) => {
+  if (!firebaseAdminReady) {
+    return res.status(500).json({ error: 'Firebase Admin not configured on server.' });
+  }
+
+  const authHeader = req.headers.authorization || '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+
+  if (!token) {
+    return res.status(401).json({ error: 'Missing Authorization bearer token.' });
+  }
+
+  try {
+    const decoded = await getAuth().verifyIdToken(token);
+    req.firebaseUser = decoded;
+    return next();
+  } catch (error) {
+    console.error('Firebase token verification failed:', error?.message || error);
+    return res.status(401).json({ error: 'Invalid or expired token.' });
+  }
+};
 
 // Middleware
 app.use(cors());
@@ -115,6 +185,128 @@ app.get('/api/keys/status', (req, res) => {
     newsdata: { configured: !!process.env.VITE_NEWSDATA_API_KEY },
   };
   res.json(keys);
+});
+
+// --- Supabase Gateway: Conversion History ---
+app.get('/api/supabase/conversion-history', requireFirebaseAuth, async (req, res) => {
+  try {
+    const supabase = ensureSupabaseAdmin();
+    const uid = req.firebaseUser?.uid;
+    const limit = Math.min(Math.max(Number(req.query.limit) || 20, 1), 100);
+
+    const { data, error } = await supabase
+      .from('conversion_history')
+      .select('*')
+      .eq('user_id', uid)
+      .order('timestamp', { ascending: false })
+      .limit(limit);
+
+    if (error) {
+      throw error;
+    }
+
+    const mapped = (data || []).map((row) => ({
+      id: row.id,
+      userId: row.user_id,
+      sourceLang: row.source_lang,
+      targetLang: row.target_lang,
+      sourceCode: row.source_code,
+      targetCode: row.target_code,
+      timestamp: new Date(row.timestamp).getTime()
+    }));
+
+    return res.json({ success: true, data: mapped });
+  } catch (error) {
+    console.error('Supabase history fetch error:', error?.message || error);
+    return res.status(500).json({ success: false, error: error?.message || 'Failed to fetch conversion history.' });
+  }
+});
+
+app.post('/api/supabase/conversion-history', requireFirebaseAuth, async (req, res) => {
+  try {
+    const supabase = ensureSupabaseAdmin();
+    const uid = req.firebaseUser?.uid;
+    const {
+      id,
+      sourceLang,
+      targetLang,
+      sourceCode,
+      targetCode,
+      timestamp
+    } = req.body || {};
+
+    if (!sourceLang || !targetLang || !sourceCode || typeof targetCode !== 'string') {
+      return res.status(400).json({ success: false, error: 'Missing required fields.' });
+    }
+
+    const recordId = id || `${uid}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const ts = timestamp ? new Date(timestamp).toISOString() : new Date().toISOString();
+
+    const { error } = await supabase
+      .from('conversion_history')
+      .upsert({
+        id: recordId,
+        user_id: uid,
+        source_lang: sourceLang,
+        target_lang: targetLang,
+        source_code: sourceCode,
+        target_code: targetCode,
+        timestamp: ts
+      });
+
+    if (error) {
+      throw error;
+    }
+
+    return res.json({ success: true, id: recordId });
+  } catch (error) {
+    console.error('Supabase history upsert error:', error?.message || error);
+    return res.status(500).json({ success: false, error: error?.message || 'Failed to save conversion history.' });
+  }
+});
+
+app.delete('/api/supabase/conversion-history/:id', requireFirebaseAuth, async (req, res) => {
+  try {
+    const supabase = ensureSupabaseAdmin();
+    const uid = req.firebaseUser?.uid;
+    const { id } = req.params;
+
+    const { error } = await supabase
+      .from('conversion_history')
+      .delete()
+      .eq('user_id', uid)
+      .eq('id', id);
+
+    if (error) {
+      throw error;
+    }
+
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('Supabase history delete error:', error?.message || error);
+    return res.status(500).json({ success: false, error: error?.message || 'Failed to delete conversion history.' });
+  }
+});
+
+app.delete('/api/supabase/conversion-history', requireFirebaseAuth, async (req, res) => {
+  try {
+    const supabase = ensureSupabaseAdmin();
+    const uid = req.firebaseUser?.uid;
+
+    const { error } = await supabase
+      .from('conversion_history')
+      .delete()
+      .eq('user_id', uid);
+
+    if (error) {
+      throw error;
+    }
+
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('Supabase history clear error:', error?.message || error);
+    return res.status(500).json({ success: false, error: error?.message || 'Failed to clear conversion history.' });
+  }
 });
 
 // ─── Code Conversion Proxy ──────────────────────────────────────

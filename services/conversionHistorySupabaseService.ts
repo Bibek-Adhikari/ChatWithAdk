@@ -1,5 +1,5 @@
-import { supabase } from "../supabaseClient";
 import { ConversionHistory } from "../types";
+import { auth } from "./firebase";
 
 export const conversionHistorySupabaseService = {
   /**
@@ -7,19 +7,29 @@ export const conversionHistorySupabaseService = {
    */
   async saveConversion(userId: string, conversion: ConversionHistory): Promise<void> {
     try {
-      const { error } = await supabase
-        .from('conversion_history')
-        .upsert({
-          id: conversion.id,
-          user_id: userId,
-          source_lang: conversion.sourceLang,
-          target_lang: conversion.targetLang,
-          source_code: conversion.sourceCode,
-          target_code: conversion.targetCode,
-          timestamp: new Date(conversion.timestamp).toISOString()
-        });
+      const token = await auth.currentUser?.getIdToken();
+      if (!token) return;
 
-      if (error) throw error;
+      const response = await fetch('/api/supabase/conversion-history', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          id: conversion.id,
+          sourceLang: conversion.sourceLang,
+          targetLang: conversion.targetLang,
+          sourceCode: conversion.sourceCode,
+          targetCode: conversion.targetCode,
+          timestamp: conversion.timestamp
+        })
+      });
+
+      if (!response.ok) {
+        const raw = await response.text();
+        throw new Error(raw || 'Supabase gateway error');
+      }
     } catch (error) {
       console.error("Error saving conversion to Supabase:", error);
       // Don't throw - Supabase is backup only
@@ -31,23 +41,22 @@ export const conversionHistorySupabaseService = {
    */
   async getUserConversions(userId: string): Promise<ConversionHistory[]> {
     try {
-      const { data, error } = await supabase
-        .from('conversion_history')
-        .select('*')
-        .eq('user_id', userId)
-        .order('timestamp', { ascending: false });
+      const token = await auth.currentUser?.getIdToken();
+      if (!token) return [];
 
-      if (error) throw error;
+      const response = await fetch('/api/supabase/conversion-history?limit=50', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
 
-      return (data || []).map(row => ({
-        id: row.id,
-        userId: row.user_id,
-        sourceLang: row.source_lang,
-        targetLang: row.target_lang,
-        sourceCode: row.source_code,
-        targetCode: row.target_code,
-        timestamp: new Date(row.timestamp).getTime()
-      })) as ConversionHistory[];
+      if (!response.ok) {
+        const raw = await response.text();
+        throw new Error(raw || 'Supabase gateway error');
+      }
+
+      const payload = await response.json();
+      return (payload?.data || []) as ConversionHistory[];
     } catch (error) {
       console.error("Error getting user conversions from Supabase:", error);
       return [];
@@ -59,12 +68,20 @@ export const conversionHistorySupabaseService = {
    */
   async deleteConversion(conversionId: string): Promise<void> {
     try {
-      const { error } = await supabase
-        .from('conversion_history')
-        .delete()
-        .eq('id', conversionId);
+      const token = await auth.currentUser?.getIdToken();
+      if (!token) return;
 
-      if (error) throw error;
+      const response = await fetch(`/api/supabase/conversion-history/${conversionId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!response.ok) {
+        const raw = await response.text();
+        throw new Error(raw || 'Supabase gateway error');
+      }
     } catch (error) {
       console.error("Error deleting conversion from Supabase:", error);
     }
@@ -75,12 +92,20 @@ export const conversionHistorySupabaseService = {
    */
   async clearUserHistory(userId: string): Promise<void> {
     try {
-      const { error } = await supabase
-        .from('conversion_history')
-        .delete()
-        .eq('user_id', userId);
+      const token = await auth.currentUser?.getIdToken();
+      if (!token) return;
 
-      if (error) throw error;
+      const response = await fetch('/api/supabase/conversion-history', {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!response.ok) {
+        const raw = await response.text();
+        throw new Error(raw || 'Supabase gateway error');
+      }
     } catch (error) {
       console.error("Error clearing user conversion history from Supabase:", error);
     }

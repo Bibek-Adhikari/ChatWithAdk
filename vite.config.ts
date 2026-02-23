@@ -16,6 +16,14 @@ export default defineConfig(({ mode }) => {
       }
     },
     plugins: [react()],
+    optimizeDeps: {
+      include: ['flowchart.js', 'raphael']
+    },
+    build: {
+      commonjsOptions: {
+        include: [/node_modules/]
+      }
+    },
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),

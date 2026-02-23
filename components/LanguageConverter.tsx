@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Editor, { OnMount } from '@monaco-editor/react';
 import { 
   ArrowLeftRight, 
@@ -25,6 +25,23 @@ import { cn } from './VSCodeCompiler';
 import { auth } from '../services/firebase';
 import { conversionHistoryService } from '../services/conversionHistoryService';
 import { conversionHistorySupabaseService } from '../services/conversionHistorySupabaseService';
+
+let flowchartLoaderPromise: Promise<any> | null = null;
+
+const loadFlowchart = async () => {
+  if (flowchartLoaderPromise) return flowchartLoaderPromise;
+
+  flowchartLoaderPromise = (async () => {
+    const mod: any = await import('flowchart.js');
+    const resolved = mod?.default ?? mod;
+    if (!resolved?.parse) {
+      throw new Error('flowchart.js failed to load');
+    }
+    return resolved;
+  })();
+
+  return flowchartLoaderPromise;
+};
 
 // --- Types ---
 type SourceLanguage = 'javascript' | 'typescript' | 'python' | 'rust' | 'go' | 'java' | 'csharp' | 'php' | 'ruby' | 'kotlin';
@@ -280,6 +297,9 @@ export default function LanguageConverter({ onClose, theme = 'vs-dark', showHist
   const [isGeneratingFlow, setIsGeneratingFlow] = useState(false);
   const [flowchartText, setFlowchartText] = useState('');
   const [flowchartError, setFlowchartError] = useState<string | null>(null);
+  const [flowchartRenderError, setFlowchartRenderError] = useState<string | null>(null);
+  const [showFlowchartPanel, setShowFlowchartPanel] = useState(false);
+  const flowchartContainerRef = useRef<HTMLDivElement | null>(null);
 
   // Combined showHistory state - use prop if provided (from route), otherwise use local state
   const isShowingHistory = showHistory || showHistoryLocal;
@@ -625,6 +645,26 @@ Note: Your explanation must prove this is a custom conversion for THIS specific 
 
   const downloadFlowchart = () => {
     if (!flowchartText) return;
+
+    const container = flowchartContainerRef.current;
+    const svgElement = container?.querySelector('svg');
+
+    if (svgElement) {
+      const clonedSvg = svgElement.cloneNode(true) as SVGSVGElement;
+      if (!clonedSvg.getAttribute('xmlns')) {
+        clonedSvg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+      }
+      const serialized = new XMLSerializer().serializeToString(clonedSvg);
+      const blob = new Blob([serialized], { type: 'image/svg+xml' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'converter_flow.svg';
+      a.click();
+      URL.revokeObjectURL(url);
+      return;
+    }
+
     const blob = new Blob([flowchartText], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -639,6 +679,7 @@ Note: Your explanation must prove this is a custom conversion for THIS specific 
 
     setIsGeneratingFlow(true);
     setFlowchartError(null);
+    setFlowchartRenderError(null);
 
     try {
       const response = await fetch('/api/flowchart', {
@@ -664,13 +705,63 @@ Note: Your explanation must prove this is a custom conversion for THIS specific 
       }
 
       setFlowchartText(data.flowchart || '');
+      setShowFlowchartPanel(true);
     } catch (error: any) {
       setFlowchartError(error.message || 'Unable to generate flowchart');
       setFlowchartText('');
+      setShowFlowchartPanel(true);
     } finally {
       setIsGeneratingFlow(false);
     }
   };
+
+  useEffect(() => {
+    if (!showFlowchartPanel || !flowchartText || !flowchartContainerRef.current) {
+      setFlowchartRenderError(null);
+      return;
+    }
+
+    let isActive = true;
+    const container = flowchartContainerRef.current;
+
+    const render = async () => {
+      try {
+        const flowchart = await loadFlowchart();
+        if (!isActive || !container) return;
+
+        if (!container.id) {
+          container.id = 'flowchart-render';
+        }
+
+        container.innerHTML = '';
+        const chart = flowchart.parse(flowchartText);
+        chart.drawSVG(container.id, {
+          'line-width': 2,
+          'line-color': '#111827',
+          'font-color': '#111827',
+          'element-color': '#111827',
+          'fill': '#ffffff',
+          'yes-text': 'yes',
+          'no-text': 'no',
+          'font-size': 12
+        });
+        setFlowchartRenderError(null);
+      } catch (error: any) {
+        if (!isActive) return;
+        console.warn('Flowchart render failed:', error);
+        setFlowchartRenderError(error?.message || 'Unable to render flowchart diagram.');
+      }
+    };
+
+    render();
+
+    return () => {
+      isActive = false;
+      if (container) {
+        container.innerHTML = '';
+      }
+    };
+  }, [flowchartText, showFlowchartPanel]);
 
   // Auto-convert on code change with debounce
   useEffect(() => {
@@ -799,7 +890,7 @@ Note: Your explanation must prove this is a custom conversion for THIS specific 
           </div>
         ) : (
           // Converter UI
-          <div className="h-full flex flex-col lg:flex-row">
+          <div className="h-full flex flex-col lg:flex-row relative">
             {/* Source Editor */}
             <div className="flex-1 flex flex-col min-w-0 border-r border-[#333]">
               <div className="h-10 bg-[#252526] border-b border-[#333] flex items-center justify-between px-4">
@@ -901,6 +992,21 @@ Note: Your explanation must prove this is a custom conversion for THIS specific 
                 ) : (
                   <Workflow size={18} />
                 )}
+              </button>
+
+              <button
+                onClick={() => setShowFlowchartPanel((prev) => !prev)}
+                disabled={!flowchartText && !flowchartError}
+                className={cn(
+                  "p-2 rounded-lg transition-all border",
+                  showFlowchartPanel
+                    ? "bg-cyan-600/20 text-cyan-300 border-cyan-500/30"
+                    : "bg-[#1e1e1e] text-gray-400 hover:text-white border-[#333]",
+                  !flowchartText && !flowchartError ? "opacity-60 cursor-not-allowed" : ""
+                )}
+                title={showFlowchartPanel ? "Hide Flow Chart" : "Show Flow Chart"}
+              >
+                <Eye size={18} />
               </button>
 
               <button
@@ -1019,43 +1125,72 @@ Note: Your explanation must prove this is a custom conversion for THIS specific 
                   </div>
                 )}
 
-                {flowchartText && (
-                  <div className="absolute left-3 right-3 bottom-3 z-40 bg-[#111827]/95 border border-cyan-500/30 rounded-xl p-3 shadow-2xl">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-[11px] font-black uppercase tracking-widest text-cyan-400">Flow Chart Output</span>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => copyToClipboard(flowchartText)}
-                          className="p-1.5 rounded bg-[#1e1e1e] text-gray-300 hover:text-white"
-                          title="Copy Flowchart"
-                        >
-                          <Copy size={14} />
-                        </button>
-                        <button
-                          onClick={downloadFlowchart}
-                          className="p-1.5 rounded bg-[#1e1e1e] text-gray-300 hover:text-white"
-                          title="Download Flowchart"
-                        >
-                          <Download size={14} />
-                        </button>
-                        <button
-                          onClick={() => setFlowchartText('')}
-                          className="p-1.5 rounded bg-[#1e1e1e] text-gray-300 hover:text-white"
-                          title="Close"
-                        >
-                          <RotateCcw size={14} />
-                        </button>
+                {showFlowchartPanel && (
+                  <div className="absolute inset-y-0 right-0 w-full lg:w-1/2 z-50 bg-[#0b1220]/95 border-l border-[#1f2937] shadow-2xl backdrop-blur-sm">
+                    <div className="h-full flex flex-col">
+                      <div className="h-10 flex items-center justify-between px-3 border-b border-[#1f2937] bg-[#0f172a]">
+                        <span className="text-[11px] font-black uppercase tracking-widest text-cyan-300">Flow Chart Output</span>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => setShowFlowchartPanel(false)}
+                            className="px-2 py-1 rounded bg-[#1e1e1e] text-[10px] font-bold uppercase tracking-wide text-gray-300 hover:text-white"
+                            title="Hide Flow Chart"
+                          >
+                            Hide
+                          </button>
+                          <button
+                            onClick={() => copyToClipboard(flowchartText)}
+                            disabled={!flowchartText}
+                            className="p-1.5 rounded bg-[#1e1e1e] text-gray-300 hover:text-white disabled:opacity-50"
+                            title="Copy Flowchart"
+                          >
+                            <Copy size={14} />
+                          </button>
+                          <button
+                            onClick={downloadFlowchart}
+                            disabled={!flowchartText}
+                            className="p-1.5 rounded bg-[#1e1e1e] text-gray-300 hover:text-white disabled:opacity-50"
+                            title="Download Flowchart"
+                          >
+                            <Download size={14} />
+                          </button>
+                        </div>
+                      </div>
+                      <div className="flex-1 overflow-auto p-3 space-y-3">
+                        {isGeneratingFlow && (
+                          <div className="rounded-lg border border-cyan-500/20 bg-cyan-500/10 p-3 text-xs text-cyan-200">
+                            Generating flowchart...
+                          </div>
+                        )}
+
+                        {!isGeneratingFlow && !flowchartText && !flowchartError && (
+                          <div className="rounded-lg border border-slate-500/20 bg-slate-500/10 p-3 text-xs text-slate-300">
+                            Generate a flowchart to preview it here.
+                          </div>
+                        )}
+
+                        {flowchartText && (
+                          <div className="overflow-auto rounded-lg border border-slate-300 bg-white p-2">
+                            <div ref={flowchartContainerRef} className="min-h-[200px] w-full" />
+                          </div>
+                        )}
+
+                        {flowchartRenderError && (
+                          <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-2 text-[11px] text-yellow-200">
+                            {flowchartRenderError}
+                            <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words text-[11px] leading-relaxed text-yellow-100">
+                              {flowchartText}
+                            </pre>
+                          </div>
+                        )}
+
+                        {flowchartError && (
+                          <div className="rounded-lg border border-red-500/40 bg-red-900/30 p-3">
+                            <p className="text-xs text-red-200">{flowchartError}</p>
+                          </div>
+                        )}
                       </div>
                     </div>
-                    <pre className="max-h-40 overflow-auto text-[11px] leading-relaxed text-cyan-100 whitespace-pre-wrap break-words">
-                      {flowchartText}
-                    </pre>
-                  </div>
-                )}
-
-                {flowchartError && (
-                  <div className="absolute left-3 right-3 bottom-3 z-40 bg-red-900/30 border border-red-500/40 rounded-xl p-3">
-                    <p className="text-xs text-red-200">{flowchartError}</p>
                   </div>
                 )}
               </div>
