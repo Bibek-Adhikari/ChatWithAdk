@@ -1,4 +1,3 @@
-
 **ChatWithAdk** is a modern, real-time, full-stack chat application designed to empower seamless communication—tailored for the Nepali community and beyond. Combining robust authentication, intuitive UI/UX, and scalable backend technologies, it enables one-on-one and group conversations in a secure, responsive environment.
 
 ---
@@ -39,6 +38,15 @@
 
 ---
 
+## 📊 Language Composition
+
+- **TypeScript**: 94.3%
+- **JavaScript**: 3.7%
+- **HTML**: 1.4%
+- **Other**: 0.6%
+
+---
+
 ## 🚀 Getting Started
 
 ### Prerequisites
@@ -50,5 +58,5 @@
 
 ```bash
 git clone https://github.com/Bibek-Adhikari/ChatWithAdk.git
-cd ChatWithAdk
-
+cd ChatWithAdh
+```
