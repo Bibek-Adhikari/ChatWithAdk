@@ -2,18 +2,18 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import App from './App';
-
 import LandingPage from './components/LandingPage';
 import UsersData from './components/UsersData';
 import PricingPage from './components/PricingPage';
 import NotificationsPage from './components/NotificationsPage';
+import { readString } from './services/storage';
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
   throw new Error("Could not find root element to mount to");
 }
 
-const theme = (localStorage.getItem('theme') as 'light' | 'dark') || 'dark';
+const theme = (readString('theme', 'dark') as 'light' | 'dark');
 
 const root = ReactDOM.createRoot(rootElement);
 root.render(

@@ -12,6 +12,7 @@ import {
 import { auth, googleProvider } from '../services/firebase';
 import { adminService } from '../services/adminService';
 import { X, Mail, Lock, User, Loader2, Chrome, AlertCircle } from 'lucide-react';
+import { readString, removeKey, writeString } from '../services/storage';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -31,14 +32,14 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode, the
 
   // Check for pending redirects
   useEffect(() => {
-    const wasRedirecting = localStorage.getItem('auth_redirect_pending');
+    const wasRedirecting = readString('auth_redirect_pending', 'false');
     if (wasRedirecting === 'true' && isOpen) {
       setIsRedirecting(true);
       
       // Safety timeout: if login doesn't happen in 10s, clear it
       const timeout = setTimeout(() => {
         setIsRedirecting(false);
-        localStorage.removeItem('auth_redirect_pending');
+        removeKey('auth_redirect_pending', { persist: 'both' });
       }, 10000);
       
       return () => clearTimeout(timeout);
@@ -117,7 +118,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode, the
           const isSmallScreen = window.innerWidth < 1024;
           
           if (isMobile || isSmallScreen) {
-            localStorage.setItem('auth_redirect_pending', 'true');
+            writeString('auth_redirect_pending', 'true', { persist: 'both' });
             setIsRedirecting(true);
             setError(null);
             
@@ -142,7 +143,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode, the
       const code = err.code || '';
       setError(errorMessages[code] || err.message || "Failed to sign in with Google.");
       setIsRedirecting(false);
-      localStorage.removeItem('auth_redirect_pending');
+      removeKey('auth_redirect_pending', { persist: 'both' });
     } finally {
       if (!isRedirecting) {
         setLoading(false);

@@ -13,6 +13,7 @@ import Plans from './Plans';
 import { chatStorageService } from '../services/chatStorageService';
 import { adminService } from '../services/adminService';
 import { ChatSession } from '../types';
+import { readBoolean, readJson, readString, writeString } from '../services/storage';
 
 const ADMIN_EMAILS = [
   "crazybibek4444@gmail.com",
@@ -65,13 +66,13 @@ const LandingPage: React.FC = () => {
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const [theme, setTheme] = useState<'light' | 'dark'>(() =>
-    (localStorage.getItem('theme') as 'light' | 'dark') || 'dark'
+    (readString('theme', 'dark') as 'light' | 'dark') || 'dark'
   );
 
   const toggleTheme = useCallback(() => {
     setTheme(prev => {
       const next = prev === 'dark' ? 'light' : 'dark';
-      localStorage.setItem('theme', next);
+      writeString('theme', next, { persist: 'both' });
       return next;
     });
   }, []);
@@ -79,11 +80,11 @@ const LandingPage: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(() => {
-    return localStorage.getItem('isSidebarOpen') === 'true';
+    return readBoolean('isSidebarOpen', false);
   });
 
   useEffect(() => {
-    localStorage.setItem('isSidebarOpen', String(isSidebarOpen));
+    writeString('isSidebarOpen', String(isSidebarOpen), { persist: 'both' });
   }, [isSidebarOpen]);
 
   const [prompt, setPrompt] = useState('');
@@ -108,13 +109,9 @@ const LandingPage: React.FC = () => {
       if (u) {
         syncSessions(u);
       } else {
-        const guestData = localStorage.getItem(`${STORAGE_KEY}_guest`);
-        if (guestData) {
-          try {
-            setSessions(JSON.parse(guestData));
-          } catch (e) {
-            console.error("Failed to parse guest sessions", e);
-          }
+        const guestSessions = readJson<ChatSession[]>(`${STORAGE_KEY}_guest`, [], { prefer: 'local' });
+        if (guestSessions.length > 0) {
+          setSessions(guestSessions);
         }
       }
     });
@@ -136,7 +133,7 @@ const LandingPage: React.FC = () => {
   const startChat = useCallback((message?: string) => {
     const id = `new_${Date.now()}`;
     if (message?.trim()) {
-      sessionStorage.setItem('pending_message', message.trim());
+      writeString('pending_message', message.trim(), { persist: 'session' });
     }
     navigate(`/chat/${id}`);
   }, [navigate]);

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { 
+import {
 Bell, 
 ArrowLeft, 
 Sparkles, 
@@ -18,6 +18,7 @@ Bitcoin,
 CheckCircle2,
 Loader2
 } from 'lucide-react';
+import { readString } from '../services/storage';
 
 // --- Types ---
 interface UpdateItem {
@@ -303,10 +304,8 @@ return (
 const NotificationsPage: React.FC = () => {
 const navigate = useNavigate();
 const [theme] = useState<'light' | 'dark'>(() => {
-  if (typeof window !== 'undefined') {
-    return (localStorage.getItem('theme') as 'light' | 'dark') || 'dark';
-  }
-  return 'dark';
+  const saved = readString('theme', 'dark');
+  return (saved as 'light' | 'dark') || 'dark';
 });
 
 const [selectedPlan, setSelectedPlan] = useState<UpdateItem | null>(null);

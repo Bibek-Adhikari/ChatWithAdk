@@ -33,6 +33,7 @@ import { fetchLatestNews, shouldFetchNews } from './services/newsService';
 import VSCodeCompiler from './components/VSCodeCompiler'
 import LanguageConverter from './components/LanguageConverter'
 import PhotoAdk from './components/PhotoAdk'
+import { readBoolean, readJson, readNumber, readString, removeKey, writeJson, writeString } from './services/storage';
 
 
 const ADMIN_EMAILS = [
@@ -45,7 +46,7 @@ const STORAGE_KEY = 'chat_with_adk_history';
 
 const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> = ({ initialTool }) => {
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
-    const saved = localStorage.getItem('theme');
+    const saved = readString('theme', 'dark');
     return (saved as 'light' | 'dark') || 'dark';
   });
 
@@ -58,16 +59,7 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
   const [sessions, setSessions] = useState<ChatSession[]>(() => {
     // Initial load from Guest cache to prevent race conditions during boot
     const key = `${STORAGE_KEY}_guest`;
-    const saved = localStorage.getItem(key);
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (err) {
-        console.error("Initial cache load failed:", err);
-        return [];
-      }
-    }
-    return [];
+    return readJson<ChatSession[]>(key, [], { prefer: 'local' });
   });
 
   const [currentSessionId, setCurrentSessionId] = useState<string>(() => {
@@ -80,8 +72,8 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
 
   const [inputValue, setInputValue] = useState(() => {
     // Pick up any message typed on the landing page
-    const pending = sessionStorage.getItem('pending_message');
-    if (pending) sessionStorage.removeItem('pending_message');
+    const pending = readString('pending_message', '', { prefer: 'session', fallbackToOther: false });
+    if (pending) removeKey('pending_message', { persist: 'session' });
     return pending || '';
   });
   const [status, setStatus] = useState<GenerationState>({
@@ -90,11 +82,11 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
     isSyncing: false,
   });
   const [isSidebarOpen, setIsSidebarOpen] = useState(() => {
-    return localStorage.getItem('isSidebarOpen') === 'true';
+    return readBoolean('isSidebarOpen', false);
   });
 
   useEffect(() => {
-    localStorage.setItem('isSidebarOpen', String(isSidebarOpen));
+    writeString('isSidebarOpen', String(isSidebarOpen), { persist: 'both' });
   }, [isSidebarOpen]);
   const [user, setUser] = useState<User | null>(null);
   const [authModal, setAuthModal] = useState<{ open: boolean; mode: 'signin' | 'signup' }>({
@@ -113,7 +105,7 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
   const [imageError, setImageError] = useState(false);
 
   const [selectedVoiceURI, setSelectedVoiceURI] = useState<string>(() => {
-    return localStorage.getItem('selectedVoiceURI') || '';
+    return readString('selectedVoiceURI', '');
   });
   const [selectedImage, setSelectedImage] = useState<{ data: string; mimeType: string } | null>(null);
   const [aiModel, setAiModel] = useState<'gemini' | 'groq' | 'research' | 'imagine' | 'motion' | 'multi'>('groq');
@@ -126,16 +118,16 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
   const [isPromptDisabled, setIsPromptDisabled] = useState(false);
   const [isPreviewVideoOpen, setIsPreviewVideoOpen] = useState(false);
   const [usageCount, setUsageCount] = useState<number>(() => {
-    const saved = localStorage.getItem('daily_usage_count');
-    const lastDate = localStorage.getItem('daily_usage_date');
+    const saved = readNumber('daily_usage_count', 0);
+    const lastDate = readString('daily_usage_date', '');
     const today = new Date().toDateString();
     
     if (lastDate !== today) {
-      localStorage.setItem('daily_usage_date', today);
-      localStorage.setItem('daily_usage_count', '0');
+      writeString('daily_usage_date', today, { persist: 'both' });
+      writeString('daily_usage_count', '0', { persist: 'both' });
       return 0;
     }
-    return saved ? parseInt(saved) : 0;
+    return saved;
   });
 
   const [systemConfig, setSystemConfig] = useState<any>(null);
@@ -164,14 +156,14 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
-    localStorage.setItem('theme', theme);
+    writeString('theme', theme, { persist: 'both' });
   }, [theme]);
 
   const toggleTheme = () => setTheme(prev => (prev === 'light' ? 'dark' : 'light'));
 
   const handleSelectVoice = (uri: string) => {
     setSelectedVoiceURI(uri);
-    localStorage.setItem('selectedVoiceURI', uri);
+    writeString('selectedVoiceURI', uri, { persist: 'both' });
   };
 
   const currentSession = useMemo(() => 
@@ -194,19 +186,14 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
       // If user is logged in, we need to switch from guest data to user data
       if (user) {
         // Load user-specific local cache first for speed
-        const saved = localStorage.getItem(key);
-        if (saved) {
-          try {
-            const loadedSessions = JSON.parse(saved);
-            setSessions(loadedSessions);
-            
-            // On fresh login or mount, if no URL session, we might want a new one 
-            // but let's wait for cloud sync to be sure
-            if (urlSessionId && loadedSessions.some((s: any) => s.id === urlSessionId)) {
-              setCurrentSessionId(urlSessionId);
-            }
-          } catch (err) {
-            console.error("User cache load failed:", err);
+        const loadedSessions = readJson<ChatSession[]>(key, [], { prefer: 'local' });
+        if (loadedSessions.length > 0) {
+          setSessions(loadedSessions);
+          
+          // On fresh login or mount, if no URL session, we might want a new one 
+          // but let's wait for cloud sync to be sure
+          if (urlSessionId && loadedSessions.some((s: any) => s.id === urlSessionId)) {
+            setCurrentSessionId(urlSessionId);
           }
         }
       }
@@ -214,21 +201,14 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
       if (user) {
         // Migrate Guest -> User Cloud if guest data exists
         const guestKey = `${STORAGE_KEY}_guest`;
-        const guestData = localStorage.getItem(guestKey);
-        if (guestData) {
-          try {
-            const guestSessions: ChatSession[] = JSON.parse(guestData);
-            if (guestSessions.length > 0) {
-              setStatus(prev => ({ ...prev, isSyncing: true }));
-              // Save each guest session to cloud
-              for (const s of guestSessions) {
-                await storageAggregator.saveSession(user.uid, s);
-              }
-              localStorage.removeItem(guestKey);
-            }
-          } catch (err) {
-            console.error("Migration failed:", err);
+        const guestSessions = readJson<ChatSession[]>(guestKey, [], { prefer: 'local' });
+        if (guestSessions.length > 0) {
+          setStatus(prev => ({ ...prev, isSyncing: true }));
+          // Save each guest session to cloud
+          for (const s of guestSessions) {
+            await storageAggregator.saveSession(user.uid, s);
           }
+          removeKey(guestKey, { persist: 'both' });
         }
 
         // Subscribe to real-time updates from cloud
@@ -248,7 +228,7 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
             });
 
             const finalSessions = merged.sort((a, b) => b.updatedAt - a.updatedAt);
-            localStorage.setItem(key, JSON.stringify(finalSessions));
+            writeJson(key, finalSessions, { persist: 'both' });
             return finalSessions;
           });
 
@@ -305,11 +285,11 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
     }
   }, [location.pathname, urlSessionId]);
 
-  // Persist last active session to localStorage 
+  // Persist last active session to local/session storage 
   useEffect(() => {
     if (currentSessionId && !overlayPaths.includes(currentSessionId)) {
       const key = user ? `${STORAGE_KEY}_last_session_id_${user.uid}` : `${STORAGE_KEY}_last_session_id_guest`;
-      localStorage.setItem(key, currentSessionId);
+      writeString(key, currentSessionId, { persist: 'both' });
     }
   }, [currentSessionId, overlayPaths, user]);
 
@@ -356,7 +336,7 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
         console.error("Redirect login error:", err);
         setStatus(prev => ({ ...prev, error: `Login failed: ${err.message}` }));
       } finally {
-        localStorage.removeItem('auth_redirect_pending');
+        removeKey('auth_redirect_pending', { persist: 'both' });
       }
     };
     handleRedirect();
@@ -607,7 +587,7 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
     if (!isPro) {
       const newCount = usageCount + 1;
       setUsageCount(newCount);
-      localStorage.setItem('daily_usage_count', newCount.toString());
+      writeString('daily_usage_count', newCount.toString(), { persist: 'both' });
     }
 
     const currentInput = inputValue.trim();
@@ -786,7 +766,7 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
         return s;
       });
       
-      localStorage.setItem(getUserStorageKey(), JSON.stringify(updatedSessions));
+      writeJson(getUserStorageKey(), updatedSessions, { persist: 'both' });
       return updatedSessions;
     });
 

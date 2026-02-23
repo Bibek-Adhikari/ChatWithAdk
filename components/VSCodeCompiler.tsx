@@ -27,6 +27,7 @@ import {
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { auth } from '../services/firebase';
+import { readNumber, readString, writeString } from '../services/storage';
 import { codeExplanationService } from '../services/codeExplanationService';
 
 // Utility for cleaner tailwind classes
@@ -149,7 +150,7 @@ export default function VSCodeCompiler({ onClose }: VSCodeCompilerProps) {
   const [isEditorVisible, setIsEditorVisible] = useState(true);
   const [activeOutputTab, setActiveOutputTab] = useState<'preview' | 'console'>('preview');
   const [activeTheme, setActiveTheme] = useState<Theme>(() => {
-    const saved = localStorage.getItem('codeadk_theme');
+    const saved = readString('codeadk_theme', 'github-dark');
     return (saved as Theme) || 'github-dark';
   });
   const [isThemeMenuOpen, setIsThemeMenuOpen] = useState(false);
@@ -171,16 +172,13 @@ export default function VSCodeCompiler({ onClose }: VSCodeCompilerProps) {
   // Resize States
   const [isDragging, setIsDragging] = useState<'horizontal' | 'vertical' | 'mobile' | false>(false);
   const [splitRatio, setSplitRatio] = useState(() => {
-    const saved = localStorage.getItem('codeadk_split_ratio');
-    return saved ? parseFloat(saved) : 50;
+    return readNumber('codeadk_split_ratio', 50);
   });
   const [consoleHeight, setConsoleHeight] = useState(() => {
-    const saved = localStorage.getItem('codeadk_console_height');
-    return saved ? parseFloat(saved) : 200;
+    return readNumber('codeadk_console_height', 200);
   });
   const [mobileOutputHeight, setMobileOutputHeight] = useState(() => {
-    const saved = localStorage.getItem('codeadk_mobile_output_height');
-    return saved ? parseFloat(saved) : 50;
+    return readNumber('codeadk_mobile_output_height', 50);
   });
 
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -233,19 +231,19 @@ export default function VSCodeCompiler({ onClose }: VSCodeCompilerProps) {
         const newWidth = ((e.clientX - containerRect.left) / containerRect.width) * 100;
         if (newWidth > 15 && newWidth < 85) {
           setSplitRatio(newWidth);
-          localStorage.setItem('codeadk_split_ratio', newWidth.toString());
+          writeString('codeadk_split_ratio', newWidth.toString(), { persist: 'both' });
         }
       } else if (isDragging === 'vertical') {
         const newHeight = containerRect.bottom - e.clientY;
         if (newHeight > 100 && newHeight < containerRect.height - 100) {
           setConsoleHeight(newHeight);
-          localStorage.setItem('codeadk_console_height', newHeight.toString());
+          writeString('codeadk_console_height', newHeight.toString(), { persist: 'both' });
         }
       } else if (isDragging === 'mobile') {
         const newHeight = ((e.clientY - containerRect.top) / containerRect.height) * 100;
         if (newHeight > 20 && newHeight < 80) {
           setMobileOutputHeight(newHeight);
-          localStorage.setItem('codeadk_mobile_output_height', newHeight.toString());
+          writeString('codeadk_mobile_output_height', newHeight.toString(), { persist: 'both' });
         }
       }
     };
@@ -849,7 +847,7 @@ ${jsCode}
                       key={t}
                       onClick={() => {
                         setActiveTheme(t);
-                        localStorage.setItem('codeadk_theme', t);
+                        writeString('codeadk_theme', t, { persist: 'both' });
                         setIsThemeMenuOpen(false);
                       }}
                       className={cn(

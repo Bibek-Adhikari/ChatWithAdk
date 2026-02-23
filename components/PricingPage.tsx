@@ -16,6 +16,7 @@ import {
   ShieldCheck,
   ChevronRight
 } from 'lucide-react';
+import { readString, writeString } from '../services/storage';
 
 // --- Types ---
 
@@ -341,20 +342,17 @@ const PaymentModal = ({
 
 const PricingPage: React.FC = () => {
   const navigate = useNavigate();
-  const [theme, setTheme] = useState<'light' | 'dark'>('dark');
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    const saved = readString('theme', 'dark');
+    return (saved as 'light' | 'dark') || 'dark';
+  });
   const [billingCycle, setBillingCycle] = useState<BillingCycle>('monthly');
   const [selectedTier, setSelectedTier] = useState<PricingTier | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   useEffect(() => {
-    // Initialize theme
-    const savedTheme = localStorage.getItem('theme') as 'light' | 'dark' | null;
-    if (savedTheme) setTheme(savedTheme);
-  }, []);
-
-  useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
-    localStorage.setItem('theme', theme);
+    writeString('theme', theme, { persist: 'both' });
   }, [theme]);
 
   const toggleTheme = () => setTheme(prev => prev === 'light' ? 'dark' : 'light');
