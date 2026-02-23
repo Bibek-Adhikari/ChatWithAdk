@@ -29,6 +29,16 @@ export interface GenerationState {
   isSyncing: boolean;
 }
 
+export interface AppUser {
+  uid: string;
+  email: string | null;
+  displayName: string | null;
+  photoURL: string | null;
+  metadata?: {
+    creationTime?: string;
+  };
+}
+
 export interface ConversionHistory {
   id: string;
   userId?: string;
