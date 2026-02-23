@@ -18,6 +18,8 @@ import {
   Workflow,
   RotateCcw,
   Lock,
+  Maximize2,
+  Minimize2,
   ArrowLeft
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -299,6 +301,7 @@ export default function LanguageConverter({ onClose, theme = 'vs-dark', showHist
   const [flowchartError, setFlowchartError] = useState<string | null>(null);
   const [flowchartRenderError, setFlowchartRenderError] = useState<string | null>(null);
   const [showFlowchartPanel, setShowFlowchartPanel] = useState(false);
+  const [isFlowchartExpanded, setIsFlowchartExpanded] = useState(false);
   const flowchartContainerRef = useRef<HTMLDivElement | null>(null);
 
   // Combined showHistory state - use prop if provided (from route), otherwise use local state
@@ -1126,11 +1129,25 @@ Note: Your explanation must prove this is a custom conversion for THIS specific 
                 )}
 
                 {showFlowchartPanel && (
-                  <div className="absolute inset-y-0 right-0 w-full lg:w-1/2 z-50 bg-[#0b1220]/95 border-l border-[#1f2937] shadow-2xl backdrop-blur-sm">
+                  <div
+                    className={cn(
+                      "bg-[#0b1220]/95 shadow-2xl backdrop-blur-sm",
+                      isFlowchartExpanded
+                        ? "fixed inset-0 z-[70] border border-[#1f2937]"
+                        : "absolute inset-y-0 right-0 w-full lg:w-1/2 z-50 border-l border-[#1f2937]"
+                    )}
+                  >
                     <div className="h-full flex flex-col">
                       <div className="h-10 flex items-center justify-between px-3 border-b border-[#1f2937] bg-[#0f172a]">
                         <span className="text-[11px] font-black uppercase tracking-widest text-cyan-300">Flow Chart Output</span>
                         <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => setIsFlowchartExpanded((prev) => !prev)}
+                            className="p-1.5 rounded bg-[#1e1e1e] text-gray-300 hover:text-white"
+                            title={isFlowchartExpanded ? "Exit Fullscreen" : "Expand"}
+                          >
+                            {isFlowchartExpanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+                          </button>
                           <button
                             onClick={() => setShowFlowchartPanel(false)}
                             className="px-2 py-1 rounded bg-[#1e1e1e] text-[10px] font-bold uppercase tracking-wide text-gray-300 hover:text-white"
@@ -1156,7 +1173,7 @@ Note: Your explanation must prove this is a custom conversion for THIS specific 
                           </button>
                         </div>
                       </div>
-                      <div className="flex-1 overflow-auto p-3 space-y-3">
+                      <div className={cn("flex-1 overflow-auto p-3 space-y-3", isFlowchartExpanded ? "p-6" : "")}>
                         {isGeneratingFlow && (
                           <div className="rounded-lg border border-cyan-500/20 bg-cyan-500/10 p-3 text-xs text-cyan-200">
                             Generating flowchart...
@@ -1170,8 +1187,8 @@ Note: Your explanation must prove this is a custom conversion for THIS specific 
                         )}
 
                         {flowchartText && (
-                          <div className="overflow-auto rounded-lg border border-slate-300 bg-white p-2">
-                            <div ref={flowchartContainerRef} className="min-h-[200px] w-full" />
+                          <div className={cn("overflow-auto rounded-lg border border-slate-300 bg-white p-2", isFlowchartExpanded ? "min-h-[70vh]" : "")}>
+                            <div ref={flowchartContainerRef} className={cn("min-h-[200px] w-full", isFlowchartExpanded ? "min-h-[65vh]" : "")} />
                           </div>
                         )}
 
