@@ -260,15 +260,91 @@ except Exception as e:
   return tryCandidate();
 };
 
+const generateFallbackFlowchart = (code, language = 'code') => {
+  const rawLines = code
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .filter((line) => !line.startsWith('//') && !line.startsWith('#') && !line.startsWith('/*') && !line.startsWith('*'))
+    .slice(0, 24);
+
+  const cleanedLines = rawLines.length > 0 ? rawLines : ['Process input code'];
+
+  const sanitize = (text) =>
+    text
+      .replace(/\s+/g, ' ')
+      .replace(/[:]/g, ' -')
+      .slice(0, 72);
+
+  const nodeDecls = [`st=>start: Start (${language})`];
+  const nodeIds = [];
+
+  cleanedLines.forEach((line, index) => {
+    const lower = line.toLowerCase();
+    const snippet = sanitize(line);
+
+    if (/\bif\b|\belse if\b|\bswitch\b|\bcase\b|\?.*:/.test(lower)) {
+      const id = `cond${index + 1}`;
+      nodeIds.push({ id, type: 'condition' });
+      nodeDecls.push(`${id}=>condition: ${snippet}`);
+      return;
+    }
+
+    if (/\breturn\b|\bprint\b|console\.log|echo\s|\boutput\b/.test(lower)) {
+      const id = `io${index + 1}`;
+      nodeIds.push({ id, type: 'inputoutput' });
+      nodeDecls.push(`${id}=>inputoutput: ${snippet}`);
+      return;
+    }
+
+    const id = `op${index + 1}`;
+    nodeIds.push({ id, type: 'operation' });
+    nodeDecls.push(`${id}=>operation: ${snippet}`);
+  });
+
+  nodeDecls.push('e=>end: End');
+
+  const edges = [];
+  if (nodeIds.length > 0) {
+    edges.push(`st->${nodeIds[0].id}`);
+  } else {
+    edges.push('st->e');
+  }
+
+  nodeIds.forEach((node, index) => {
+    const next = nodeIds[index + 1]?.id || 'e';
+    if (node.type === 'condition') {
+      edges.push(`${node.id}(yes)->${next}`);
+      edges.push(`${node.id}(no)->${next}`);
+    } else {
+      edges.push(`${node.id}->${next}`);
+    }
+  });
+
+  return `${nodeDecls.join('\n')}\n\n${edges.join('\n')}`;
+};
+
 app.post('/api/flowchart', async (req, res) => {
-  const { code } = req.body || {};
+  const { code, language } = req.body || {};
 
   if (!code || typeof code !== 'string') {
     return res.status(400).json({ success: false, error: 'Missing required field: code' });
   }
 
   try {
-    const flowchart = await runFlowchartGenerator(code);
+    const normalizedLanguage = (language || '').toString().toLowerCase();
+
+    // pyflowchart parses Python. For non-Python sources, use fallback flow synthesis.
+    if (normalizedLanguage && normalizedLanguage !== 'python') {
+      const flowchart = generateFallbackFlowchart(code, normalizedLanguage);
+      return res.json({ success: true, flowchart, fallback: true });
+    }
+
+    const flowchart = await runFlowchartGenerator(code).catch((err) => {
+      console.warn('Primary flowchart generation failed, using fallback:', err?.message || err);
+      return generateFallbackFlowchart(code, normalizedLanguage || 'python');
+    });
+
     return res.json({ success: true, flowchart });
   } catch (error) {
     console.error('Flowchart generation error:', error.message);

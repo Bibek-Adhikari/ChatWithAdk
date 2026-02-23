@@ -646,7 +646,7 @@ Note: Your explanation must prove this is a custom conversion for THIS specific 
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ code: sourceCode })
+        body: JSON.stringify({ code: sourceCode, language: sourceLang })
       });
 
       const rawBody = await response.text();

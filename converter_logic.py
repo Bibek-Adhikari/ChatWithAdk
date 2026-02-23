@@ -1,19 +1,41 @@
-# converter_logic.py
+import re
+from pyflowchart import Flowchart
+
+def generate_js_fallback(code):
+    """
+    Creates a simplified linear flowchart for JS/TS/Other logic 
+    to prevent syntax errors on your older hardware.
+    """
+    lines = [line.strip() for line in code.split('\n') if line.strip() and not line.startswith('/')]
+    nodes = ["st=>start: Start JS/TS Analysis"]
+    connections = ["st"]
+
+    # Limit to first 8 lines to save RAM on your 14yo laptop
+    for i, line in enumerate(lines[:8]):
+        # Sanitize text for flowchart.js
+        clean_text = line.replace('>', '').replace(':', '-').replace(';', '')
+        nodes.append(f"op{i}=>operation: {clean_text}")
+        connections.append(f"op{i}")
+
+    nodes.append("e=>end: End")
+    connections.append("e")
+    
+    return "\n".join(nodes) + "\n\n" + "->".join(connections)
+
 def language_converter(input_code, target_lang):
-    # The list of languages from your UI dropdown
     languages = ["JavaScript", "TypeScript", "Python", "Rust", "Go", "Java", "C#", "PHP", "Ruby", "Kotlin"]
     
     if not input_code:
-        return "Error: No code provided"
+        return "st=>start: Error\ne=>end: No code provided\nst->e"
 
-    # Selection Logic
-    if target_lang == "Go":
-        return "Transforming to Go syntax..."
-    elif target_lang == "Rust":
-        return "Applying Rust ownership rules..."
-    elif target_lang == "Python":
-        return "Converting to Pythonic code..."
-    elif target_lang in languages:
-        return f"Converting to {target_lang}..."
-    else:
-        return "Language not supported"
+    # 1. Attempt pyflowchart for Pythonic logic
+    try:
+        # If the code looks like Python, try to parse it
+        fc = Flowchart.from_code(input_code)
+        return fc.flowchart()
+    except Exception:
+        # 2. Trigger Fallback for JS/TS or syntax errors
+        return generate_js_fallback(input_code)
+
+# To test in your terminal:
+# python -m pyflowchart converter_logic.py
