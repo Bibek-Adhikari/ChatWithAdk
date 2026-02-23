@@ -45,6 +45,76 @@ const loadFlowchart = async () => {
   return flowchartLoaderPromise;
 };
 
+const getApiBase = () => {
+  const rawBase = import.meta.env.VITE_API_BASE_URL;
+  if (!rawBase) return '';
+  return rawBase.endsWith('/') ? rawBase.slice(0, -1) : rawBase;
+};
+
+const generateFallbackFlowchart = (code: string, language: string): string => {
+  const rawLines = code
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .filter((line) => !line.startsWith('//') && !line.startsWith('#') && !line.startsWith('/*') && !line.startsWith('*'))
+    .slice(0, 24);
+
+  const cleanedLines = rawLines.length > 0 ? rawLines : ['Process input code'];
+
+  const sanitize = (text: string) =>
+    text
+      .replace(/\s+/g, ' ')
+      .replace(/[:]/g, ' -')
+      .slice(0, 72);
+
+  const nodeDecls: string[] = [`st=>start: Start (${language || 'code'})`];
+  const nodeIds: Array<{ id: string; type: 'condition' | 'inputoutput' | 'operation' }> = [];
+
+  cleanedLines.forEach((line, index) => {
+    const lower = line.toLowerCase();
+    const snippet = sanitize(line);
+
+    if (/\bif\b|\belse if\b|\bswitch\b|\bcase\b|\?.*:/.test(lower)) {
+      const id = `cond${index + 1}`;
+      nodeIds.push({ id, type: 'condition' });
+      nodeDecls.push(`${id}=>condition: ${snippet}`);
+      return;
+    }
+
+    if (/\breturn\b|\bprint\b|console\.log|echo\s|\boutput\b/.test(lower)) {
+      const id = `io${index + 1}`;
+      nodeIds.push({ id, type: 'inputoutput' });
+      nodeDecls.push(`${id}=>inputoutput: ${snippet}`);
+      return;
+    }
+
+    const id = `op${index + 1}`;
+    nodeIds.push({ id, type: 'operation' });
+    nodeDecls.push(`${id}=>operation: ${snippet}`);
+  });
+
+  nodeDecls.push('e=>end: End');
+
+  const edges: string[] = [];
+  if (nodeIds.length > 0) {
+    edges.push(`st->${nodeIds[0].id}`);
+  } else {
+    edges.push('st->e');
+  }
+
+  nodeIds.forEach((node, index) => {
+    const next = nodeIds[index + 1]?.id || 'e';
+    if (node.type === 'condition') {
+      edges.push(`${node.id}(yes)->${next}`);
+      edges.push(`${node.id}(no)->${next}`);
+    } else {
+      edges.push(`${node.id}->${next}`);
+    }
+  });
+
+  return `${nodeDecls.join('\n')}\n\n${edges.join('\n')}`;
+};
+
 // --- Types ---
 type SourceLanguage = 'javascript' | 'typescript' | 'python' | 'rust' | 'go' | 'java' | 'csharp' | 'php' | 'ruby' | 'kotlin';
 type TargetLanguage = SourceLanguage;
@@ -684,8 +754,31 @@ Note: Your explanation must prove this is a custom conversion for THIS specific 
     setFlowchartError(null);
     setFlowchartRenderError(null);
 
+    const normalizedLanguage = (sourceLang || '').toString().toLowerCase();
+    const fallbackFlowchart = () => generateFallbackFlowchart(sourceCode, normalizedLanguage || 'code');
+    const applyFallback = (reason?: string) => {
+      try {
+        const fallback = fallbackFlowchart();
+        setFlowchartText(fallback);
+        setShowFlowchartPanel(true);
+        setFlowchartError(reason ? null : null);
+      } catch (fallbackError: any) {
+        setFlowchartError(fallbackError?.message || reason || 'Unable to generate flowchart');
+        setFlowchartText('');
+        setShowFlowchartPanel(true);
+      }
+    };
+
+    const isOnline = typeof navigator === 'undefined' ? true : navigator.onLine;
+    if (!isOnline) {
+      applyFallback('Offline mode - using local flowchart.');
+      setIsGeneratingFlow(false);
+      return;
+    }
+
     try {
-      const response = await fetch('/api/flowchart', {
+      const apiBase = getApiBase();
+      const response = await fetch(`${apiBase}/api/flowchart`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -703,16 +796,15 @@ Note: Your explanation must prove this is a custom conversion for THIS specific 
         }
       }
 
-      if (!response.ok || !data.success) {
+      if (!response.ok || !data?.success || !data?.flowchart) {
         throw new Error(data?.error || rawBody || 'Failed to generate flowchart');
       }
 
       setFlowchartText(data.flowchart || '');
       setShowFlowchartPanel(true);
     } catch (error: any) {
-      setFlowchartError(error.message || 'Unable to generate flowchart');
-      setFlowchartText('');
-      setShowFlowchartPanel(true);
+      console.warn('Flowchart API failed, using local fallback:', error);
+      applyFallback(error?.message || 'Unable to generate flowchart');
     } finally {
       setIsGeneratingFlow(false);
     }

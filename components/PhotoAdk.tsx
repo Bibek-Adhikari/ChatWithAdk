@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 
 // --- Types ---
-type ToolId = 'removebg' | 'genaiBackground' | 'upscaleUltra' | 'faceRetouch' | 'genaiReplace' | 'smartCrop';
+type ToolId = 'adktool' | 'genaiBackground' | 'upscaleUltra' | 'faceRetouch' | 'genaiReplace' | 'smartCrop';
 type Status = 'idle' | 'uploading' | 'processing' | 'complete' | 'error';
 type ToastType = 'error' | 'success' | 'info';
 
@@ -43,7 +43,7 @@ interface ToolConfig {
 // --- Constants ---
 const TOOLS: ToolConfig[] = [
   {
-    id: 'removebg',
+    id: 'adktool',
     label: 'Background Remover',
     endpoint: '/removebg',
     description: 'Instantly remove backgrounds with AI precision.',
@@ -133,7 +133,7 @@ export default function PhotoEditorPro({ onClose }: PhotoAdkProps) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [processedUrl, setProcessedUrl] = useState<string | null>(null);
-  const [activeToolId, setActiveToolId] = useState<ToolId>('removebg');
+  const [activeToolId, setActiveToolId] = useState<ToolId>('adktool');
   const [status, setStatus] = useState<Status>('idle');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [sliderPos, setSliderPos] = useState(50);
@@ -260,7 +260,7 @@ export default function PhotoEditorPro({ onClose }: PhotoAdkProps) {
       formData.append('image', selectedFile);
       
       // Append specific params based on tool
-      if (activeTool.id === 'removebg') formData.append('output_type', 'cutout');
+      if (activeTool.id === 'adktool') formData.append('output_type', 'cutout');
       if (activeTool.id === 'upscaleUltra') formData.append('upscale_factor', '2');
       if (activeTool.requiresPrompt) formData.append('prompt', prompt);
 
@@ -303,7 +303,7 @@ export default function PhotoEditorPro({ onClose }: PhotoAdkProps) {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `photoadk-${activeToolId}-${Date.now()}.png`;
+      a.download = `chatadk-photoadk-${activeToolId}-${Date.now()}.png`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
@@ -480,7 +480,7 @@ export default function PhotoEditorPro({ onClose }: PhotoAdkProps) {
             {processedUrl && (
               <div className="flex items-center gap-2 text-xs font-medium text-indigo-400 bg-indigo-500/10 px-3 py-1 rounded-full border border-indigo-500/20">
                 <CheckCircle2 size={14} />
-                Processing Complete
+                Cooking Complete
               </div>
             )}
           </div>
@@ -540,7 +540,7 @@ export default function PhotoEditorPro({ onClose }: PhotoAdkProps) {
                       Original
                     </div>
                     <div className="absolute top-4 right-4 bg-indigo-600/80 backdrop-blur text-white text-xs px-2 py-1 rounded pointer-events-none">
-                      AI Result
+                      PhotoAdk Result 
                     </div>
                   </>
                 )}
@@ -549,8 +549,8 @@ export default function PhotoEditorPro({ onClose }: PhotoAdkProps) {
                 {isProcessing && (
                   <div className="absolute inset-0 bg-slate-900/80 backdrop-blur-sm flex flex-col items-center justify-center z-30">
                     <Loader2 className="animate-spin text-indigo-500 mb-4" size={48} />
-                    <p className="text-slate-300 font-medium animate-pulse">Applying Magic...</p>
-                    <p className="text-slate-500 text-xs mt-2">Contacting Picsart API</p>
+                    <p className="text-slate-300 font-medium animate-pulse">PhotoAdk is...</p>
+                    <p className="text-slate-500 text-xs mt-2">Cooking your image🧑‍🍳</p>
                   </div>
                 )}
               </div>

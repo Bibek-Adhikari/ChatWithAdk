@@ -294,7 +294,7 @@ const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
             </div>
           </div>
           
-          <div className="flex items-center gap-2 sm:gap-3">
+          <div className="flex  items-center gap-2 sm:gap-3">
             <div className={`flex p-1 rounded-xl border ${theme === 'dark' ? 'bg-slate-800/50 border-white/5' : 'bg-slate-100 border-slate-200'}`}>
               <button 
                 onClick={() => setActiveTab('overview')}
