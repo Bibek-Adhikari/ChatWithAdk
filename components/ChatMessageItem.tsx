@@ -1,10 +1,11 @@
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { nightOwl, oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { ChatMessage } from '../types';
 import { Copy, Check, CornerDownLeft, Volume2, VolumeX, Pause, Play } from 'lucide-react';
 import remarkGfm from 'remark-gfm';
+import { voiceWorkflow } from '../services/voiceWorkflow';
 
 interface ChatMessageItemProps {
   message: ChatMessage;
@@ -28,7 +29,6 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
-  const speechRef = useRef<SpeechSynthesisUtterance | null>(null);
 
   const handleCopy = (code: string) => {
     navigator.clipboard.writeText(code);
@@ -47,73 +47,30 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
     }
   };
 
-  // Text-to-Speech functionality
+  // Text-to-Speech functionality (Cloud-first with warmup fallback)
   const speakText = useCallback((text: string) => {
-    if (!('speechSynthesis' in window)) {
-      alert('Text-to-speech is not supported in your browser');
-      return;
-    }
-
-    // Stop any current speech
-    window.speechSynthesis.cancel();
-
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.rate = 1;
-    utterance.pitch = 1;
-    utterance.volume = 1;
-
-    // Try to use the user-selected voice
-    const voices = window.speechSynthesis.getVoices();
-    if (selectedVoiceURI) {
-      const voice = voices.find(v => v.voiceURI === selectedVoiceURI);
-      if (voice) {
-        utterance.voice = voice;
-        utterance.lang = voice.lang;
+    voiceWorkflow.speak(text, {
+      selectedVoiceURI,
+      cloudTimeoutMs: 5000,
+      preferBrowserOnColdStart: true,
+      onStart: () => {
+        setIsSpeaking(true);
+        setIsPaused(false);
+      },
+      onPause: () => {
+        setIsPaused(true);
+      },
+      onResume: () => {
+        setIsPaused(false);
+      },
+      onEnd: () => {
+        setIsSpeaking(false);
+        setIsPaused(false);
+      },
+      onError: (error) => {
+        console.warn('Voice workflow error:', error.message);
       }
-    } else {
-      // Smart Fallback: Detect if text is likely Nepali/Hindi (Devanagari script)
-      const isDevanagari = /[\u0900-\u097F]/.test(text);
-      
-      if (isDevanagari) {
-        const regionalVoice = voices.find(v => v.lang.startsWith('ne') || v.lang.startsWith('hi'));
-        if (regionalVoice) {
-          utterance.voice = regionalVoice;
-          utterance.lang = regionalVoice.lang;
-        }
-      } else {
-        // Find a good high-quality English voice
-        const preferredVoice = voices.find(v => 
-          v.name.includes('Google') || 
-          v.name.includes('Samantha') || 
-          v.name.includes('Daniel') ||
-          v.lang === 'en-US'
-        );
-        if (preferredVoice) {
-          utterance.voice = preferredVoice;
-          utterance.lang = preferredVoice.lang;
-        }
-      }
-    }
-
-    utterance.onstart = () => {
-      setIsSpeaking(true);
-      setIsPaused(false);
-    };
-
-    utterance.onend = () => {
-      setIsSpeaking(false);
-      setIsPaused(false);
-      speechRef.current = null;
-    };
-
-    utterance.onerror = (e) => {
-      console.error('Speech error:', e);
-      setIsSpeaking(false);
-      setIsPaused(false);
-    };
-
-    speechRef.current = utterance;
-    window.speechSynthesis.speak(utterance);
+    });
   }, [selectedVoiceURI]);
 
   const toggleSpeech = () => {
@@ -126,10 +83,10 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
 
     if (isSpeaking) {
       if (isPaused) {
-        window.speechSynthesis.resume();
+        voiceWorkflow.resume();
         setIsPaused(false);
       } else {
-        window.speechSynthesis.pause();
+        voiceWorkflow.pause();
         setIsPaused(true);
       }
     } else {
@@ -153,7 +110,7 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
 
   const stopSpeech = (e?: React.MouseEvent) => {
     e?.stopPropagation();
-    window.speechSynthesis.cancel();
+    voiceWorkflow.stop();
     setIsSpeaking(false);
     setIsPaused(false);
   };
@@ -161,9 +118,7 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (speechRef.current) {
-        window.speechSynthesis.cancel();
-      }
+      voiceWorkflow.stop();
     };
   }, []);
 
