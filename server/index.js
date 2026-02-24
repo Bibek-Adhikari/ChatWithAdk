@@ -1,13 +1,12 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import { spawn } from 'child_process';
-import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { createClient } from '@supabase/supabase-js';
 import { initializeApp, applicationDefault, cert } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
+import paymentsRouter from './routes/payments.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -87,6 +86,7 @@ const requireFirebaseAuth = async (req, res, next) => {
 
 // Middleware
 app.use(cors());
+app.use('/api/payments', paymentsRouter);
 app.use(express.json());
 
 // ─── Health Check ────────────────────────────────────────────────
@@ -373,186 +373,12 @@ ${code}`;
   }
 });
 
-const runFlowchartGenerator = (code) => {
-  const pythonScript = `
-import sys
-from pyflowchart import Flowchart
-
-source = sys.stdin.read()
-if not source.strip():
-    print("No code provided", file=sys.stderr)
-    sys.exit(1)
-
-try:
-    flow = Flowchart.from_code(source)
-    print(flow.flowchart())
-except Exception as e:
-    print(str(e), file=sys.stderr)
-    sys.exit(2)
-`;
-
-  const runWith = (command, args = []) => new Promise((resolve, reject) => {
-    const proc = spawn(command, [...args, '-c', pythonScript], { windowsHide: true });
-    let stdout = '';
-    let stderr = '';
-
-    proc.stdout.on('data', (chunk) => {
-      stdout += chunk.toString();
-    });
-    proc.stderr.on('data', (chunk) => {
-      stderr += chunk.toString();
-    });
-    proc.on('error', reject);
-    proc.on('close', (exitCode) => {
-      if (exitCode === 0 && stdout.trim()) {
-        resolve(stdout.trim());
-      } else {
-        reject(new Error(stderr.trim() || 'Failed to generate flowchart'));
-      }
-    });
-
-    proc.stdin.write(code);
-    proc.stdin.end();
-  });
-
-  const configuredPython = process.env.FLOWCHART_PYTHON?.trim();
-  const candidatePaths = [
-    configuredPython || null,
-    path.join(REPO_ROOT, '.venv', 'Scripts', 'python.exe'),
-    path.join(REPO_ROOT, '.venv', 'bin', 'python'),
-    path.join(process.cwd(), '.venv', 'Scripts', 'python.exe'),
-    path.join(process.cwd(), '.venv', 'bin', 'python')
-  ].filter(Boolean);
-
-  const pathCandidates = candidatePaths
-    .filter((candidate) => fs.existsSync(candidate))
-    .map((candidate) => ({ command: candidate, args: [] }));
-
-  const commandCandidates = [
-    { command: 'python', args: [] },
-    { command: 'py', args: ['-3'] }
-  ];
-
-  const candidates = [...pathCandidates, ...commandCandidates];
-
-  const tryCandidate = (index = 0) => {
-    if (index >= candidates.length) {
-      return Promise.reject(new Error('No working Python interpreter found for flowchart generation.'));
-    }
-
-    const candidate = candidates[index];
-    return runWith(candidate.command, candidate.args).catch((err) => {
-      if (index === candidates.length - 1) {
-        throw new Error(err?.message || 'No working Python interpreter found for flowchart generation.');
-      }
-      return tryCandidate(index + 1);
-    });
-  };
-
-  return tryCandidate();
-};
-
-const generateFallbackFlowchart = (code, language = 'code') => {
-  const rawLines = code
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0)
-    .filter((line) => !line.startsWith('//') && !line.startsWith('#') && !line.startsWith('/*') && !line.startsWith('*'))
-    .slice(0, 24);
-
-  const cleanedLines = rawLines.length > 0 ? rawLines : ['Process input code'];
-
-  const sanitize = (text) =>
-    text
-      .replace(/\s+/g, ' ')
-      .replace(/[:]/g, ' -')
-      .slice(0, 72);
-
-  const nodeDecls = [`st=>start: Start (${language})`];
-  const nodeIds = [];
-
-  cleanedLines.forEach((line, index) => {
-    const lower = line.toLowerCase();
-    const snippet = sanitize(line);
-
-    if (/\bif\b|\belse if\b|\bswitch\b|\bcase\b|\?.*:/.test(lower)) {
-      const id = `cond${index + 1}`;
-      nodeIds.push({ id, type: 'condition' });
-      nodeDecls.push(`${id}=>condition: ${snippet}`);
-      return;
-    }
-
-    if (/\breturn\b|\bprint\b|console\.log|echo\s|\boutput\b/.test(lower)) {
-      const id = `io${index + 1}`;
-      nodeIds.push({ id, type: 'inputoutput' });
-      nodeDecls.push(`${id}=>inputoutput: ${snippet}`);
-      return;
-    }
-
-    const id = `op${index + 1}`;
-    nodeIds.push({ id, type: 'operation' });
-    nodeDecls.push(`${id}=>operation: ${snippet}`);
-  });
-
-  nodeDecls.push('e=>end: End');
-
-  const edges = [];
-  if (nodeIds.length > 0) {
-    edges.push(`st->${nodeIds[0].id}`);
-  } else {
-    edges.push('st->e');
-  }
-
-  nodeIds.forEach((node, index) => {
-    const next = nodeIds[index + 1]?.id || 'e';
-    if (node.type === 'condition') {
-      edges.push(`${node.id}(yes)->${next}`);
-      edges.push(`${node.id}(no)->${next}`);
-    } else {
-      edges.push(`${node.id}->${next}`);
-    }
-  });
-
-  return `${nodeDecls.join('\n')}\n\n${edges.join('\n')}`;
-};
-
-app.post('/api/flowchart', async (req, res) => {
-  const { code, language } = req.body || {};
-
-  if (!code || typeof code !== 'string') {
-    return res.status(400).json({ success: false, error: 'Missing required field: code' });
-  }
-
-  try {
-    const normalizedLanguage = (language || '').toString().toLowerCase();
-
-    // pyflowchart parses Python. For non-Python sources, use fallback flow synthesis.
-    if (normalizedLanguage && normalizedLanguage !== 'python') {
-      const flowchart = generateFallbackFlowchart(code, normalizedLanguage);
-      return res.json({ success: true, flowchart, fallback: true });
-    }
-
-    const flowchart = await runFlowchartGenerator(code).catch((err) => {
-      console.warn('Primary flowchart generation failed, using fallback:', err?.message || err);
-      return generateFallbackFlowchart(code, normalizedLanguage || 'python');
-    });
-
-    return res.json({ success: true, flowchart });
-  } catch (error) {
-    console.error('Flowchart generation error:', error.message);
-    return res.status(500).json({
-      success: false,
-      error: error.message || 'Unable to generate flowchart. Ensure Python and pyflowchart are installed.'
-    });
-  }
-});
-
 // ─── Start Server ────────────────────────────────────────────────
 app.listen(PORT, () => {
   console.log(`\n🚀 ChatADK Express Server running on http://localhost:${PORT}`);
   console.log(`   Health: http://localhost:${PORT}/api/health`);
   console.log(`   Keys:   http://localhost:${PORT}/api/keys/status`);
   console.log(`   Convert: POST http://localhost:${PORT}/api/convert`);
-  console.log(`   Flowchart: POST http://localhost:${PORT}/api/flowchart\n`);
+  console.log(`\n`);
 });
 

@@ -1,5 +1,5 @@
 {
-  "name": "chatwithadk-smart-chat",
+  "name": "chatadk-smart-agent-development-kit",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -8,12 +8,13 @@
     "build": "vite build",
     "preview": "vite preview",
     "server": "nodemon server/index.js",
-    "start": "npm run server & npm run dev",
-    "setup:flowchart-env": "python -m venv .venv && .\\.venv\\Scripts\\python.exe -m pip install -r requirements-flowchart.txt"
+    "start": "npm run server & npm run dev"
   },
   "dependencies": {
     "@google/genai": "^1.39.0",
     "@monaco-editor/react": "^4.7.0",
+    "@stripe/react-stripe-js": "^5.6.0",
+    "@stripe/stripe-js": "^8.8.0",
     "@supabase/supabase-js": "^2.97.0",
     "@types/react-syntax-highlighter": "^15.5.13",
     "@typescript/ata": "^0.9.8",
@@ -25,6 +26,7 @@
     "flowchart.js": "^1.18.0",
     "framer-motion": "^12.34.3",
     "lucide-react": "^0.563.0",
+    "mermaid": "^11.12.3",
     "pyodide": "^0.29.3",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
@@ -32,6 +34,7 @@
     "react-router-dom": "^7.13.0",
     "react-syntax-highlighter": "^16.1.0",
     "remark-gfm": "^4.0.1",
+    "stripe": "^20.3.1",
     "tailwind-merge": "^3.5.0"
   },
   "devDependencies": {

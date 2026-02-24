@@ -89,6 +89,8 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
     writeString('isSidebarOpen', String(isSidebarOpen), { persist: 'both' });
   }, [isSidebarOpen]);
   const [user, setUser] = useState<User | null>(null);
+  const [isProUser, setIsProUser] = useState(false);
+  const [planId, setPlanId] = useState<string | null>(null);
   const [authModal, setAuthModal] = useState<{ open: boolean; mode: 'signin' | 'signup' }>({
     open: false,
     mode: 'signin'
@@ -131,6 +133,51 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
   });
 
   const [systemConfig, setSystemConfig] = useState<any>(null);
+
+  const handleMagicPasteFile = useCallback((file: File) => {
+    const name = file.name.toLowerCase();
+    const isJs = name.endsWith('.js');
+    const isJpg = name.endsWith('.jpg') || name.endsWith('.jpeg');
+
+    if (!isJs && !isJpg) return;
+
+    if (location.pathname.startsWith('/chat/') && currentSessionId && !overlayPaths.includes(currentSessionId)) {
+      setPreviousSessionId(currentSessionId);
+    }
+
+    if (isJs && location.pathname !== '/codeadk') {
+      navigate('/codeadk');
+    } else if (isJpg && location.pathname !== '/photoadk') {
+      navigate('/photoadk');
+    }
+  }, [currentSessionId, location.pathname, navigate, overlayPaths]);
+
+  useEffect(() => {
+    const hasFiles = (e: DragEvent) => {
+      const types = Array.from(e.dataTransfer?.types || []);
+      return types.includes('Files');
+    };
+
+    const handleDragOver = (e: DragEvent) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+    };
+
+    const handleDrop = (e: DragEvent) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      const file = e.dataTransfer?.files?.[0];
+      if (file) handleMagicPasteFile(file);
+    };
+
+    window.addEventListener('dragover', handleDragOver);
+    window.addEventListener('drop', handleDrop);
+    return () => {
+      window.removeEventListener('dragover', handleDragOver);
+      window.removeEventListener('drop', handleDrop);
+    };
+  }, [handleMagicPasteFile]);
 
   useEffect(() => {
     const fetchConfig = async () => {
@@ -343,6 +390,10 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
 
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
+      if (!currentUser) {
+        setIsProUser(false);
+        setPlanId(null);
+      }
       if (currentUser) {
         setAuthModal(prev => ({ ...prev, open: false }));
         // Ensure user is synced
@@ -360,10 +411,42 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
     return user && user.email && ADMIN_EMAILS.includes(user.email);
   }, [user]);
 
+  useEffect(() => {
+    let isActive = true;
+    const loadClaims = async () => {
+      if (!user) {
+        if (isActive) {
+          setIsProUser(false);
+          setPlanId(null);
+        }
+        return;
+      }
+
+      try {
+        const tokenResult = await user.getIdTokenResult(true);
+        const claims = tokenResult.claims as { pro?: boolean; planId?: string };
+        if (isActive) {
+          setIsProUser(!!claims.pro);
+          setPlanId(claims.planId ?? null);
+        }
+      } catch (err) {
+        console.error('Failed to load user claims:', err);
+        if (isActive) {
+          setIsProUser(false);
+          setPlanId(null);
+        }
+      }
+    };
+
+    loadClaims();
+    return () => {
+      isActive = false;
+    };
+  }, [user?.uid]);
+
   const isPro = useMemo(() => {
-    // Admins are always Pro, plus anyone with a 'pro' flag in custom claims or profile (placeholder here)
-    return isAdmin || (user && (user.displayName?.toLowerCase().includes('pro') || user.email?.toLowerCase().includes('pro')));
-  }, [user, isAdmin]);
+    return isAdmin || isProUser;
+  }, [isAdmin, isProUser]);
 
   useEffect(() => {
 
@@ -933,10 +1016,6 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
           setIsProfileOpen({ open: true, showPricing: false });
         }}
         onOpenPlans={() => {
-          if (!user) {
-            handleAuthClick('signin');
-            return;
-          }
           navigate('/plans');
         }}
         isAdmin={isAdmin}

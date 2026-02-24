@@ -1,6 +1,8 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { loadStripe } from '@stripe/stripe-js';
+import { Elements } from '@stripe/react-stripe-js';
 import App from './App';
 import LandingPage from './components/LandingPage';
 import UsersData from './components/UsersData';
@@ -15,31 +17,44 @@ if (!rootElement) {
 
 const theme = (readString('theme', 'dark') as 'light' | 'dark');
 
+// Initialize Stripe
+const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLIC_KEY || '');
+
+// Component that conditionally wraps with Elements
+const StripeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const location = useLocation();
+  const needsStripe = ['/plans', '/admin'].some(path => location.pathname.startsWith(path));
+  
+  if (!needsStripe) return <>{children}</>;
+  
+  return (
+    <Elements stripe={stripePromise}>
+      {children}
+    </Elements>
+  );
+};
+
 const root = ReactDOM.createRoot(rootElement);
 root.render(
   <React.StrictMode>
     <BrowserRouter>
-      <Routes>
-        {/* Landing page — only shown at exact root */}
-        <Route path="/" element={<LandingPage />} />
-
-        {/* Main chat app — requires a session ID */}
-        <Route path="/chat/:sessionId" element={<App />} />
-
-        {/* Specialist tool overlays — App handles showing the tool based on path */}
-        <Route path="/codeadk" element={<App initialTool="codeadk" />} />
-        <Route path="/photoadk" element={<App initialTool="photoadk" />} />
-        <Route path="/converteradk" element={<App initialTool="converteradk" />} />
-        <Route path="/converteradk/history" element={<App initialTool="converteradk" />} />
-
-        {/* Other standalone pages */}
-        <Route path="/plans" element={<PricingPage />} />
-        <Route path="/notifications" element={<NotificationsPage />} />
-        <Route path="/admin/usersData/:userId" element={<UsersData theme={theme} />} />
-
-        {/* Fallback — redirect anything unknown to home */}
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+      <StripeProvider>
+        <Routes>
+          <Route path="/" element={<LandingPage />} />
+          <Route path="/chat/:sessionId" element={<App />} />
+          <Route path="/codeadk" element={<App initialTool="codeadk" />} />
+          <Route path="/photoadk" element={<App initialTool="photoadk" />} />
+          <Route path="/converteradk" element={<App initialTool="converteradk" />} />
+          <Route path="/converteradk/history" element={<App initialTool="converteradk" />} />
+          
+          {/* These routes now have access to useStripe */}
+          <Route path="/plans" element={<PricingPage />} />
+          <Route path="/notifications" element={<NotificationsPage />} />
+          <Route path="/admin/usersData/:userId" element={<UsersData theme={theme} />} />
+          
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </StripeProvider>
     </BrowserRouter>
   </React.StrictMode>
 );

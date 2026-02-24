@@ -2,8 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { auth } from '../services/firebase';
 import { adminService } from '../services/adminService';
+import { useStripe, useElements, CardElement } from '@stripe/react-stripe-js';
+import { createPaymentIntent, confirmCardPayment } from '../services/stripeService';
 
-// Types
+// Types remain the same...
 interface PlanFeature {
   id: string;
   name: string;
@@ -15,7 +17,7 @@ interface PlanFeature {
 interface PricingTier {
   monthly: number;
   yearly: number;
-  discount?: number; // percentage off for yearly
+  discount?: number;
 }
 
 interface ProPlan {
@@ -47,16 +49,26 @@ interface UserPlan {
   userEmail: string;
   userName: string;
   planId: string;
-  status: 'active' | 'cancelled' | 'past_due' | 'trialing';
+  status: 'active' | 'cancelled' | 'past_due' | 'trialing' | 'pending_payment';
   startedAt: string;
   expiresAt: string | null;
   paymentMethod: string;
   totalSpent: number;
+  lastPaymentStatus?: 'succeeded' | 'failed' | 'pending';
+}
+
+interface PaymentMethod {
+  id: string;
+  type: 'card' | 'paypal' | 'crypto';
+  last4?: string;
+  brand?: string;
+  expiryMonth?: number;
+  expiryYear?: number;
+  isDefault: boolean;
 }
 
 const ADMIN_EMAILS = ['crazybibek4444@gmail.com', 'geniusbibek4444@gmail.com'];
 
-// Default plan template
 const defaultPlan: Omit<ProPlan, 'id' | 'createdAt' | 'updatedAt'> = {
   name: '',
   description: '',
@@ -68,7 +80,7 @@ const defaultPlan: Omit<ProPlan, 'id' | 'createdAt' | 'updatedAt'> = {
     { id: '3', name: 'Advanced Models', description: 'Access to GPT-4, Claude 3, etc.', included: true, icon: 'fa-brain' },
   ],
   limits: {
-    messagesPerDay: -1, // -1 = unlimited
+    messagesPerDay: -1,
     storageGB: 10,
     maxChatHistory: 100,
     apiAccess: false,
@@ -95,6 +107,25 @@ const colorThemes = [
   { name: 'Rose', value: 'rose', gradient: 'from-rose-500 to-pink-600' },
 ];
 
+// Payment processing mock - replace with Stripe/PayPal integration
+const processPayment = async (amount: number, paymentMethod: PaymentMethod, planId: string): Promise<{ success: boolean; transactionId?: string; error?: string }> => {
+  // Simulate API call
+  await new Promise(resolve => setTimeout(resolve, 1500));
+  
+  // Mock validation - 90% success rate for demo
+  if (Math.random() > 0.1) {
+    return {
+      success: true,
+      transactionId: `txn_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    };
+  } else {
+    return {
+      success: false,
+      error: 'Card declined. Please check your payment details or try a different method.'
+    };
+  }
+};
+
 const Plans: React.FC<{ theme: 'light' | 'dark'; onClose?: () => void }> = ({ theme, onClose }) => {
   const navigate = useNavigate();
   const [plans, setPlans] = useState<ProPlan[]>([]);
@@ -107,6 +138,19 @@ const Plans: React.FC<{ theme: 'light' | 'dark'; onClose?: () => void }> = ({ th
   const [editingPlan, setEditingPlan] = useState<ProPlan | null>(null);
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [selectedPlanForAssign, setSelectedPlanForAssign] = useState<ProPlan | null>(null);
+  
+  // Payment states
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [assignFormData, setAssignFormData] = useState({
+    email: '',
+    billingCycle: 'monthly' as 'monthly' | 'yearly',
+    requirePayment: true,
+    skipTrial: false,
+  });
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string>('');
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
   
   // Form state
   const [formData, setFormData] = useState(defaultPlan);
@@ -130,7 +174,7 @@ const Plans: React.FC<{ theme: 'light' | 'dark'; onClose?: () => void }> = ({ th
       }
 
       try {
-        // Mock data - replace with actual API calls
+        // Mock data
         const mockPlans: ProPlan[] = [
           {
             id: 'pro-basic',
@@ -186,6 +230,7 @@ const Plans: React.FC<{ theme: 'light' | 'dark'; onClose?: () => void }> = ({ th
             expiresAt: '2025-01-15',
             paymentMethod: 'card_ending_4242',
             totalSpent: 99.99,
+            lastPaymentStatus: 'succeeded',
           },
           {
             userId: 'user2',
@@ -197,11 +242,21 @@ const Plans: React.FC<{ theme: 'light' | 'dark'; onClose?: () => void }> = ({ th
             expiresAt: null,
             paymentMethod: 'paypal',
             totalSpent: 0,
+            lastPaymentStatus: 'pending',
           },
+        ];
+
+        // Mock payment methods for demo
+        const mockPaymentMethods: PaymentMethod[] = [
+          { id: 'pm_1', type: 'card', last4: '4242', brand: 'Visa', expiryMonth: 12, expiryYear: 2025, isDefault: true },
+          { id: 'pm_2', type: 'card', last4: '8888', brand: 'Mastercard', expiryMonth: 8, expiryYear: 2026, isDefault: false },
+          { id: 'pm_3', type: 'paypal', isDefault: false },
         ];
 
         setPlans(mockPlans);
         setUserSubscriptions(mockUsers);
+        setPaymentMethods(mockPaymentMethods);
+        setSelectedPaymentMethod(mockPaymentMethods[0].id);
         setStats({
           totalRevenue: 15499.50,
           activeSubscribers: 234,
@@ -218,7 +273,136 @@ const Plans: React.FC<{ theme: 'light' | 'dark'; onClose?: () => void }> = ({ th
     checkAdminAndFetch();
   }, [navigate]);
 
+  const validatePaymentRequirements = (plan: ProPlan, formData: typeof assignFormData): { valid: boolean; error?: string; amount?: number } => {
+    // Free plans don't require payment
+    if (plan.pricing.monthly === 0 && plan.pricing.yearly === 0) {
+      return { valid: true, amount: 0 };
+    }
+
+    // If skipping trial or trial days is 0, payment required
+    if (formData.skipTrial || plan.trialDays === 0) {
+      const amount = formData.billingCycle === 'yearly' ? plan.pricing.yearly : plan.pricing.monthly;
+      
+      if (formData.requirePayment && amount > 0) {
+        if (!selectedPaymentMethod) {
+          return { valid: false, error: 'Please select a payment method or add a new card.' };
+        }
+      }
+      return { valid: true, amount };
+    }
+
+    // Trial period - no immediate payment but payment method required for future billing
+    if (formData.requirePayment && !selectedPaymentMethod) {
+      return { valid: false, error: 'Payment method required for trial (for future billing).' };
+    }
+
+    return { valid: true, amount: 0 };
+  };
+
+  const handleAssignPlan = async () => {
+    if (!selectedPlanForAssign) return;
+    
+    setPaymentError(null);
+    
+    // Validate email
+    if (!assignFormData.email || !assignFormData.email.includes('@')) {
+      setPaymentError('Please enter a valid email address.');
+      return;
+    }
+
+    const validation = validatePaymentRequirements(selectedPlanForAssign, assignFormData);
+    
+    if (!validation.valid) {
+      setPaymentError(validation.error || 'Validation failed');
+      return;
+    }
+
+    // If payment required and amount > 0, process payment
+    if (assignFormData.requirePayment && validation.amount && validation.amount > 0) {
+      setIsProcessingPayment(true);
+      
+      const paymentMethod = paymentMethods.find(pm => pm.id === selectedPaymentMethod);
+      if (!paymentMethod) {
+        setPaymentError('Selected payment method not found.');
+        setIsProcessingPayment(false);
+        return;
+      }
+
+      const result = await processPayment(validation.amount, paymentMethod, selectedPlanForAssign.id);
+      
+      if (!result.success) {
+        setPaymentError(result.error || 'Payment failed. Please try again.');
+        setIsProcessingPayment(false);
+        return;
+      }
+
+      // Payment succeeded - create subscription
+      const newSubscription: UserPlan = {
+        userId: `user_${Date.now()}`,
+        userEmail: assignFormData.email,
+        userName: assignFormData.email.split('@')[0],
+        planId: selectedPlanForAssign.id,
+        status: 'active',
+        startedAt: new Date().toISOString(),
+        expiresAt: assignFormData.billingCycle === 'yearly' 
+          ? new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString()
+          : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+        paymentMethod: `${paymentMethod.type}_${paymentMethod.last4 || 'account'}`,
+        totalSpent: validation.amount,
+        lastPaymentStatus: 'succeeded',
+      };
+
+      setUserSubscriptions(prev => [...prev, newSubscription]);
+      setStats(prev => ({
+        ...prev,
+        totalRevenue: prev.totalRevenue + validation.amount,
+        activeSubscribers: prev.activeSubscribers + 1,
+      }));
+      
+      setIsProcessingPayment(false);
+      setShowPaymentModal(false);
+      setShowAssignModal(false);
+      alert(`Plan assigned successfully! Payment of $${validation.amount.toFixed(2)} processed.`);
+    } else {
+      // Trial or free plan - no immediate payment
+      const newSubscription: UserPlan = {
+        userId: `user_${Date.now()}`,
+        userEmail: assignFormData.email,
+        userName: assignFormData.email.split('@')[0],
+        planId: selectedPlanForAssign.id,
+        status: assignFormData.skipTrial ? 'active' : 'trialing',
+        startedAt: new Date().toISOString(),
+        expiresAt: assignFormData.skipTrial 
+          ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+          : new Date(Date.now() + selectedPlanForAssign.trialDays * 24 * 60 * 60 * 1000).toISOString(),
+        paymentMethod: selectedPaymentMethod ? paymentMethods.find(pm => pm.id === selectedPaymentMethod)?.type || 'none' : 'none',
+        totalSpent: 0,
+        lastPaymentStatus: 'pending',
+      };
+
+      setUserSubscriptions(prev => [...prev, newSubscription]);
+      setStats(prev => ({
+        ...prev,
+        activeSubscribers: prev.activeSubscribers + 1,
+      }));
+      
+      setShowPaymentModal(false);
+      setShowAssignModal(false);
+      alert(`Plan assigned successfully! ${assignFormData.skipTrial ? 'Active immediately.' : `Trial started (${selectedPlanForAssign.trialDays} days).`}`);
+    }
+  };
+
   const handleSavePlan = async () => {
+    // Validation
+    if (!formData.name.trim()) {
+      alert('Plan name is required');
+      return;
+    }
+    if (formData.pricing.monthly < 0 || formData.pricing.yearly < 0) {
+      alert('Pricing cannot be negative');
+      return;
+    }
+
     const planData: ProPlan = {
       ...formData,
       id: editingPlan?.id || `plan_${Date.now()}`,
@@ -238,7 +422,14 @@ const Plans: React.FC<{ theme: 'light' | 'dark'; onClose?: () => void }> = ({ th
   };
 
   const handleDeletePlan = (planId: string) => {
-    if (confirm('Are you sure? This will affect active subscribers.')) {
+    // Check if any active subscriptions use this plan
+    const activeSubs = userSubscriptions.filter(sub => sub.planId === planId && sub.status === 'active');
+    if (activeSubs.length > 0) {
+      alert(`Cannot delete: ${activeSubs.length} active subscription(s) using this plan. Please migrate users first.`);
+      return;
+    }
+    
+    if (confirm('Are you sure? This action cannot be undone.')) {
       setPlans(plans.filter(p => p.id !== planId));
     }
   };
@@ -270,6 +461,26 @@ const Plans: React.FC<{ theme: 'light' | 'dark'; onClose?: () => void }> = ({ th
     setEditingPlan(null);
     setFormData(defaultPlan);
     setShowPlanModal(true);
+  };
+
+  const openAssignModal = (plan: ProPlan) => {
+    setSelectedPlanForAssign(plan);
+    setAssignFormData({
+      email: '',
+      billingCycle: 'monthly',
+      requirePayment: plan.pricing.monthly > 0,
+      skipTrial: false,
+    });
+    setPaymentError(null);
+    setShowAssignModal(true);
+  };
+
+  const proceedToPayment = () => {
+    if (!assignFormData.email || !assignFormData.email.includes('@')) {
+      setPaymentError('Please enter a valid email address.');
+      return;
+    }
+    setShowPaymentModal(true);
   };
 
   const addFeature = () => {
@@ -463,7 +674,7 @@ const Plans: React.FC<{ theme: 'light' | 'dark'; onClose?: () => void }> = ({ th
                 {/* Actions */}
                 <div className="flex gap-3">
                   <button 
-                    onClick={() => { setSelectedPlanForAssign(plan); setShowAssignModal(true); }}
+                    onClick={() => openAssignModal(plan)}
                     className={`flex-1 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all active:scale-95
                       ${theme === 'dark' ? 'bg-white/5 hover:bg-white/10 text-white' : 'bg-slate-100 hover:bg-slate-200 text-slate-800'}`}>
                     <i className="fas fa-user-plus mr-2" /> Assign User
@@ -500,6 +711,7 @@ const Plans: React.FC<{ theme: 'light' | 'dark'; onClose?: () => void }> = ({ th
                   <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-500">User</th>
                   <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-500">Plan</th>
                   <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-500">Status</th>
+                  <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-500">Payment</th>
                   <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-500">Started</th>
                   <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-500">Revenue</th>
                   <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-500">Actions</th>
@@ -534,8 +746,17 @@ const Plans: React.FC<{ theme: 'light' | 'dark'; onClose?: () => void }> = ({ th
                           ${sub.status === 'active' ? 'bg-emerald-500/10 text-emerald-500' : ''}
                           ${sub.status === 'trialing' ? 'bg-blue-500/10 text-blue-500' : ''}
                           ${sub.status === 'cancelled' ? 'bg-red-500/10 text-red-500' : ''}
-                          ${sub.status === 'past_due' ? 'bg-orange-500/10 text-orange-500' : ''}`}>
+                          ${sub.status === 'past_due' ? 'bg-orange-500/10 text-orange-500' : ''}
+                          ${sub.status === 'pending_payment' ? 'bg-yellow-500/10 text-yellow-500' : ''}`}>
                           {sub.status}
+                        </span>
+                      </td>
+                      <td className="p-4">
+                        <span className={`text-xs font-bold ${
+                          sub.lastPaymentStatus === 'succeeded' ? 'text-emerald-500' :
+                          sub.lastPaymentStatus === 'failed' ? 'text-red-500' : 'text-slate-500'
+                        }`}>
+                          {sub.paymentMethod}
                         </span>
                       </td>
                       <td className="p-4 text-sm font-medium text-slate-600 dark:text-slate-400">
@@ -563,7 +784,7 @@ const Plans: React.FC<{ theme: 'light' | 'dark'; onClose?: () => void }> = ({ th
         </div>
       </div>
 
-      {/* Plan Editor Modal */}
+      {/* Plan Editor Modal - Same as before... */}
       {showPlanModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowPlanModal(false)} />
@@ -841,30 +1062,104 @@ const Plans: React.FC<{ theme: 'light' | 'dark'; onClose?: () => void }> = ({ th
         </div>
       )}
 
-      {/* Assign User Modal (Placeholder) */}
-      {showAssignModal && selectedPlanForAssign && (
+      {/* Assign User Modal - Step 1: Email & Options */}
+      {showAssignModal && selectedPlanForAssign && !showPaymentModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowAssignModal(false)} />
-          <div className={`relative w-full max-w-md p-8 rounded-[32px] shadow-2xl text-center
+          <div className={`relative w-full max-w-md p-8 rounded-[32px] shadow-2xl
             ${theme === 'dark' ? 'bg-slate-900 border border-white/10' : 'bg-white border border-slate-200'}`}>
             
-            <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-blue-500/10 text-blue-500 flex items-center justify-center text-2xl">
-              <i className="fas fa-user-plus" />
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h3 className="text-xl font-black">Assign Plan</h3>
+                <p className="text-sm text-slate-500 mt-1">{selectedPlanForAssign.name}</p>
+              </div>
+              <button onClick={() => setShowAssignModal(false)} className="w-10 h-10 rounded-xl hover:bg-slate-100 dark:hover:bg-white/10 flex items-center justify-center">
+                <i className="fas fa-times" />
+              </button>
             </div>
             
-            <h3 className="text-xl font-black mb-2">Assign Plan to User</h3>
-            <p className="text-sm text-slate-500 mb-6">
-              Assign <span className="text-blue-500 font-bold">{selectedPlanForAssign.name}</span> to a user by email
-            </p>
+            {paymentError && (
+              <div className="mb-4 p-4 rounded-xl bg-red-500/10 border border-red-500/30 text-red-500 text-sm flex items-center gap-2">
+                <i className="fas fa-exclamation-circle" />
+                {paymentError}
+              </div>
+            )}
             
-            <input 
-              type="email" 
-              placeholder="user@example.com"
-              className={`w-full p-4 rounded-xl border outline-none focus:ring-2 focus:ring-blue-500/50 mb-4
-                ${theme === 'dark' ? 'bg-slate-800 border-white/10 text-white placeholder-slate-500' : 'bg-slate-50 border-slate-200'}`}
-            />
+            <div className="space-y-4">
+              <div>
+                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">User Email</label>
+                <input 
+                  type="email" 
+                  value={assignFormData.email}
+                  onChange={e => setAssignFormData({...assignFormData, email: e.target.value})}
+                  placeholder="user@example.com"
+                  className={`w-full p-4 rounded-xl border outline-none focus:ring-2 focus:ring-blue-500/50
+                    ${theme === 'dark' ? 'bg-slate-800 border-white/10 text-white placeholder-slate-500' : 'bg-slate-50 border-slate-200'}`}
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">Billing Cycle</label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    onClick={() => setAssignFormData({...assignFormData, billingCycle: 'monthly'})}
+                    className={`p-4 rounded-xl border text-left transition-all
+                      ${assignFormData.billingCycle === 'monthly' 
+                        ? 'border-blue-500 bg-blue-500/10' 
+                        : theme === 'dark' ? 'border-white/10 bg-slate-800' : 'border-slate-200 bg-slate-50'}`}>
+                    <div className="text-sm font-bold">Monthly</div>
+                    <div className="text-lg font-black text-blue-500">${selectedPlanForAssign.pricing.monthly}</div>
+                  </button>
+                  <button
+                    onClick={() => setAssignFormData({...assignFormData, billingCycle: 'yearly'})}
+                    className={`p-4 rounded-xl border text-left transition-all relative overflow-hidden
+                      ${assignFormData.billingCycle === 'yearly' 
+                        ? 'border-blue-500 bg-blue-500/10' 
+                        : theme === 'dark' ? 'border-white/10 bg-slate-800' : 'border-slate-200 bg-slate-50'}`}>
+                    {selectedPlanForAssign.pricing.discount && (
+                      <div className="absolute top-2 right-2 px-2 py-1 bg-emerald-500 text-white text-[10px] font-black rounded-lg">
+                        SAVE {selectedPlanForAssign.pricing.discount}%
+                      </div>
+                    )}
+                    <div className="text-sm font-bold">Yearly</div>
+                    <div className="text-lg font-black text-blue-500">${selectedPlanForAssign.pricing.yearly}</div>
+                  </button>
+                </div>
+              </div>
+
+              {selectedPlanForAssign.trialDays > 0 && (
+                <label className="flex items-center gap-3 p-4 rounded-xl border cursor-pointer transition-all hover:bg-slate-50 dark:hover:bg-white/5
+                  ${theme === 'dark' ? 'border-white/10' : 'border-slate-200'}">
+                  <input 
+                    type="checkbox"
+                    checked={!assignFormData.skipTrial}
+                    onChange={e => setAssignFormData({...assignFormData, skipTrial: !e.target.checked})}
+                    className="w-5 h-5 rounded-lg border-2 border-slate-300 text-blue-500"
+                  />
+                  <div>
+                    <div className="font-bold text-sm">Start with {selectedPlanForAssign.trialDays}-day free trial</div>
+                    <div className="text-xs text-slate-500">Payment method required for future billing</div>
+                  </div>
+                </label>
+              )}
+
+              <label className="flex items-center gap-3 p-4 rounded-xl border cursor-pointer transition-all hover:bg-slate-50 dark:hover:bg-white/5
+                ${theme === 'dark' ? 'border-white/10' : 'border-slate-200'}">
+                <input 
+                  type="checkbox"
+                  checked={assignFormData.requirePayment}
+                  onChange={e => setAssignFormData({...assignFormData, requirePayment: e.target.checked})}
+                  className="w-5 h-5 rounded-lg border-2 border-slate-300 text-blue-500"
+                />
+                <div>
+                  <div className="font-bold text-sm">Require immediate payment</div>
+                  <div className="text-xs text-slate-500">Charge now instead of waiting for trial end</div>
+                </div>
+              </label>
+            </div>
             
-            <div className="flex gap-3">
+            <div className="flex gap-3 mt-8">
               <button 
                 onClick={() => setShowAssignModal(false)}
                 className={`flex-1 py-3 rounded-xl text-xs font-black uppercase tracking-widest
@@ -872,11 +1167,135 @@ const Plans: React.FC<{ theme: 'light' | 'dark'; onClose?: () => void }> = ({ th
                 Cancel
               </button>
               <button 
-                onClick={() => { setShowAssignModal(false); alert('Feature: Connect to user management API'); }}
+                onClick={proceedToPayment}
                 className="flex-1 py-3 rounded-xl bg-blue-600 text-white text-xs font-black uppercase tracking-widest shadow-xl shadow-blue-500/20">
-                Assign Plan
+                Continue
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Payment Modal - Step 2: Payment Details */}
+      {showPaymentModal && selectedPlanForAssign && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowPaymentModal(false)} />
+          <div className={`relative w-full max-w-md p-8 rounded-[32px] shadow-2xl
+            ${theme === 'dark' ? 'bg-slate-900 border border-white/10' : 'bg-white border border-slate-200'}`}>
+            
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h3 className="text-xl font-black">Payment</h3>
+                <p className="text-sm text-slate-500 mt-1">Complete subscription setup</p>
+              </div>
+              <button onClick={() => setShowPaymentModal(false)} className="w-10 h-10 rounded-xl hover:bg-slate-100 dark:hover:bg-white/10 flex items-center justify-center">
+                <i className="fas fa-times" />
+              </button>
+            </div>
+
+            {/* Order Summary */}
+            <div className={`p-4 rounded-2xl border mb-6 ${theme === 'dark' ? 'bg-slate-800/50 border-white/5' : 'bg-slate-50 border-slate-100'}`}>
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-slate-500 text-sm">Plan</span>
+                <span className="font-bold">{selectedPlanForAssign.name}</span>
+              </div>
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-slate-500 text-sm">Billing</span>
+                <span className="font-bold capitalize">{assignFormData.billingCycle}</span>
+              </div>
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-slate-500 text-sm">User</span>
+                <span className="font-bold text-sm truncate max-w-[150px]">{assignFormData.email}</span>
+              </div>
+              <div className="border-t border-slate-200 dark:border-white/10 my-3" />
+              <div className="flex justify-between items-center">
+                <span className="text-slate-500 text-sm">Total Due</span>
+                <span className="text-2xl font-black text-blue-500">
+                  ${assignFormData.billingCycle === 'yearly' 
+                    ? selectedPlanForAssign.pricing.yearly 
+                    : selectedPlanForAssign.pricing.monthly}
+                </span>
+              </div>
+            </div>
+
+            {paymentError && (
+              <div className="mb-4 p-4 rounded-xl bg-red-500/10 border border-red-500/30 text-red-500 text-sm flex items-center gap-2">
+                <i className="fas fa-exclamation-circle" />
+                {paymentError}
+              </div>
+            )}
+
+            {/* Payment Methods */}
+            <div className="space-y-3 mb-6">
+              <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500">Select Payment Method</label>
+              
+              {paymentMethods.map(method => (
+                <button
+                  key={method.id}
+                  onClick={() => setSelectedPaymentMethod(method.id)}
+                  className={`w-full p-4 rounded-xl border flex items-center gap-4 transition-all
+                    ${selectedPaymentMethod === method.id 
+                      ? 'border-blue-500 bg-blue-500/10' 
+                      : theme === 'dark' ? 'border-white/10 bg-slate-800' : 'border-slate-200 bg-slate-50'}`}>
+                  <div className={`w-12 h-8 rounded-lg flex items-center justify-center text-lg
+                    ${method.type === 'card' ? 'bg-slate-200 dark:bg-slate-700' : 'bg-blue-500 text-white'}`}>
+                    {method.type === 'card' ? <i className="fab fa-cc-visa" /> : <i className="fab fa-paypal" />}
+                  </div>
+                  <div className="flex-1 text-left">
+                    {method.type === 'card' ? (
+                      <>
+                        <div className="font-bold">•••• {method.last4}</div>
+                        <div className="text-xs text-slate-500">Expires {method.expiryMonth}/{method.expiryYear}</div>
+                      </>
+                    ) : (
+                      <div className="font-bold">PayPal Account</div>
+                    )}
+                  </div>
+                  {method.isDefault && (
+                    <span className="px-2 py-1 bg-slate-200 dark:bg-slate-700 rounded-lg text-[10px] font-bold">DEFAULT</span>
+                  )}
+                  {selectedPaymentMethod === method.id && (
+                    <i className="fas fa-check-circle text-blue-500 text-xl" />
+                  )}
+                </button>
+              ))}
+
+              <button className={`w-full p-4 rounded-xl border-2 border-dashed flex items-center justify-center gap-2 transition-all
+                ${theme === 'dark' ? 'border-white/10 hover:border-white/30 text-slate-400' : 'border-slate-300 hover:border-slate-400 text-slate-500'}`}>
+                <i className="fas fa-plus" />
+                <span className="font-bold text-sm">Add New Card</span>
+              </button>
+            </div>
+
+            <div className="flex gap-3">
+              <button 
+                onClick={() => setShowPaymentModal(false)}
+                disabled={isProcessingPayment}
+                className={`flex-1 py-3 rounded-xl text-xs font-black uppercase tracking-widest disabled:opacity-50
+                  ${theme === 'dark' ? 'bg-white/5 text-white' : 'bg-slate-100 text-slate-800'}`}>
+                Back
+              </button>
+              <button 
+                onClick={handleAssignPlan}
+                disabled={isProcessingPayment}
+                className="flex-1 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:bg-blue-600/50 text-white text-xs font-black uppercase tracking-widest shadow-xl shadow-blue-500/20 flex items-center justify-center gap-2">
+                {isProcessingPayment ? (
+                  <>
+                    <i className="fas fa-circle-notch fa-spin" />
+                    Processing...
+                  </>
+                ) : (
+                  <>
+                    <i className="fas fa-lock" />
+                    Pay & Assign
+                  </>
+                )}
+              </button>
+            </div>
+
+            <p className="text-center text-xs text-slate-500 mt-4">
+              <i className="fas fa-shield-alt mr-1" /> Secure payment processing
+            </p>
           </div>
         </div>
       )}

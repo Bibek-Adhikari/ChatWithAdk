@@ -93,6 +93,7 @@ const LandingPage: React.FC = () => {
   const [isProfileOpen, setIsProfileOpen] = useState<{ open: boolean; showPricing: boolean }>({ open: false, showPricing: false });
   const [isAdminDashboardOpen, setIsAdminDashboardOpen] = useState(false);
   const [isPlansOpen, setIsPlansOpen] = useState(false);
+  const [isProUser, setIsProUser] = useState(false);
   const [imageError, setImageError] = useState(false);
 
   useEffect(() => {
@@ -126,9 +127,31 @@ const LandingPage: React.FC = () => {
     return user && user.email && ADMIN_EMAILS.includes(user.email);
   }, [user]);
 
+  useEffect(() => {
+    let isActive = true;
+    const loadClaims = async () => {
+      if (!user) {
+        if (isActive) setIsProUser(false);
+        return;
+      }
+      try {
+        const tokenResult = await user.getIdTokenResult(true);
+        const claims = tokenResult.claims as { pro?: boolean };
+        if (isActive) setIsProUser(!!claims.pro);
+      } catch (err) {
+        console.error('Failed to load user claims:', err);
+        if (isActive) setIsProUser(false);
+      }
+    };
+    loadClaims();
+    return () => {
+      isActive = false;
+    };
+  }, [user?.uid]);
+
   const isPro = useMemo(() => {
-    return isAdmin || (user && (user.displayName?.toLowerCase().includes('pro') || user.email?.toLowerCase().includes('pro')));
-  }, [user, isAdmin]);
+    return isAdmin || isProUser;
+  }, [isAdmin, isProUser]);
 
   const startChat = useCallback((message?: string) => {
     const id = `new_${Date.now()}`;
@@ -197,7 +220,7 @@ const LandingPage: React.FC = () => {
         onOpenProfile={() => setIsProfileOpen({ open: true, showPricing: false })}
         isAdmin={isAdmin}
         onOpenAdmin={() => setIsAdminDashboardOpen(true)}
-        onOpenPlans={() => setIsPlansOpen(true)}
+        onOpenPlans={() => navigate('/plans')}
         usageCount={0}
         dailyLimit={20}
         isPro={isPro}

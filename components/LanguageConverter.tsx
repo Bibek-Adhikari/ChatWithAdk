@@ -28,27 +28,17 @@ import { auth } from '../services/firebase';
 import { conversionHistoryService } from '../services/conversionHistoryService';
 import { conversionHistorySupabaseService } from '../services/conversionHistorySupabaseService';
 
-let flowchartLoaderPromise: Promise<any> | null = null;
+let mermaidLoaderPromise: Promise<any> | null = null;
 
-const loadFlowchart = async () => {
-  if (flowchartLoaderPromise) return flowchartLoaderPromise;
+const loadMermaid = async () => {
+  if (mermaidLoaderPromise) return mermaidLoaderPromise;
 
-  flowchartLoaderPromise = (async () => {
-    const mod: any = await import('flowchart.js');
-    const resolved = mod?.default ?? mod;
-    if (!resolved?.parse) {
-      throw new Error('flowchart.js failed to load');
-    }
-    return resolved;
+  mermaidLoaderPromise = (async () => {
+    const mod: any = await import('mermaid');
+    return mod?.default ?? mod;
   })();
 
-  return flowchartLoaderPromise;
-};
-
-const getApiBase = () => {
-  const rawBase = import.meta.env.VITE_API_BASE_URL;
-  if (!rawBase) return '';
-  return rawBase.endsWith('/') ? rawBase.slice(0, -1) : rawBase;
+  return mermaidLoaderPromise;
 };
 
 const generateFallbackFlowchart = (code: string, language: string): string => {
@@ -65,54 +55,56 @@ const generateFallbackFlowchart = (code: string, language: string): string => {
     text
       .replace(/\s+/g, ' ')
       .replace(/[:]/g, ' -')
+      .replace(/["`]/g, "'")
+      .replace(/[{}\[\]<>]/g, '')
       .slice(0, 72);
 
-  const nodeDecls: string[] = [`st=>start: Start (${language || 'code'})`];
   const nodeIds: Array<{ id: string; type: 'condition' | 'inputoutput' | 'operation' }> = [];
+  const lines: string[] = [`flowchart TD`, `st([Start ${language || 'code'}])`];
 
   cleanedLines.forEach((line, index) => {
     const lower = line.toLowerCase();
     const snippet = sanitize(line);
+    let id = '';
 
     if (/\bif\b|\belse if\b|\bswitch\b|\bcase\b|\?.*:/.test(lower)) {
-      const id = `cond${index + 1}`;
+      id = `cond${index + 1}`;
       nodeIds.push({ id, type: 'condition' });
-      nodeDecls.push(`${id}=>condition: ${snippet}`);
+      lines.push(`${id}{${snippet}}`);
       return;
     }
 
     if (/\breturn\b|\bprint\b|console\.log|echo\s|\boutput\b/.test(lower)) {
-      const id = `io${index + 1}`;
+      id = `io${index + 1}`;
       nodeIds.push({ id, type: 'inputoutput' });
-      nodeDecls.push(`${id}=>inputoutput: ${snippet}`);
+      lines.push(`${id}[/${snippet}/]`);
       return;
     }
 
-    const id = `op${index + 1}`;
+    id = `op${index + 1}`;
     nodeIds.push({ id, type: 'operation' });
-    nodeDecls.push(`${id}=>operation: ${snippet}`);
+    lines.push(`${id}[${snippet}]`);
   });
 
-  nodeDecls.push('e=>end: End');
+  lines.push('e([End])');
 
-  const edges: string[] = [];
   if (nodeIds.length > 0) {
-    edges.push(`st->${nodeIds[0].id}`);
+    lines.push(`st --> ${nodeIds[0].id}`);
   } else {
-    edges.push('st->e');
+    lines.push('st --> e');
   }
 
   nodeIds.forEach((node, index) => {
     const next = nodeIds[index + 1]?.id || 'e';
     if (node.type === 'condition') {
-      edges.push(`${node.id}(yes)->${next}`);
-      edges.push(`${node.id}(no)->${next}`);
+      lines.push(`${node.id} -- yes --> ${next}`);
+      lines.push(`${node.id} -- no --> ${next}`);
     } else {
-      edges.push(`${node.id}->${next}`);
+      lines.push(`${node.id} --> ${next}`);
     }
   });
 
-  return `${nodeDecls.join('\n')}\n\n${edges.join('\n')}`;
+  return lines.join('\n');
 };
 
 // --- Types ---
@@ -754,57 +746,16 @@ Note: Your explanation must prove this is a custom conversion for THIS specific 
     setFlowchartError(null);
     setFlowchartRenderError(null);
 
-    const normalizedLanguage = (sourceLang || '').toString().toLowerCase();
-    const fallbackFlowchart = () => generateFallbackFlowchart(sourceCode, normalizedLanguage || 'code');
-    const applyFallback = (reason?: string) => {
-      try {
-        const fallback = fallbackFlowchart();
-        setFlowchartText(fallback);
-        setShowFlowchartPanel(true);
-        setFlowchartError(reason ? null : null);
-      } catch (fallbackError: any) {
-        setFlowchartError(fallbackError?.message || reason || 'Unable to generate flowchart');
-        setFlowchartText('');
-        setShowFlowchartPanel(true);
-      }
-    };
-
-    const isOnline = typeof navigator === 'undefined' ? true : navigator.onLine;
-    if (!isOnline) {
-      applyFallback('Offline mode - using local flowchart.');
-      setIsGeneratingFlow(false);
-      return;
-    }
-
     try {
-      const apiBase = getApiBase();
-      const response = await fetch(`${apiBase}/api/flowchart`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ code: sourceCode, language: sourceLang })
-      });
-
-      const rawBody = await response.text();
-      let data: any = null;
-      if (rawBody.trim()) {
-        try {
-          data = JSON.parse(rawBody);
-        } catch {
-          throw new Error(`Flowchart API returned non-JSON response (status ${response.status}).`);
-        }
-      }
-
-      if (!response.ok || !data?.success || !data?.flowchart) {
-        throw new Error(data?.error || rawBody || 'Failed to generate flowchart');
-      }
-
-      setFlowchartText(data.flowchart || '');
+      const normalizedLanguage = (sourceLang || '').toString().toLowerCase();
+      const flowchart = generateFallbackFlowchart(sourceCode, normalizedLanguage || 'code');
+      setFlowchartText(flowchart);
       setShowFlowchartPanel(true);
     } catch (error: any) {
-      console.warn('Flowchart API failed, using local fallback:', error);
-      applyFallback(error?.message || 'Unable to generate flowchart');
+      console.warn('Flowchart generation failed:', error);
+      setFlowchartError(error?.message || 'Unable to generate flowchart');
+      setFlowchartText('');
+      setShowFlowchartPanel(true);
     } finally {
       setIsGeneratingFlow(false);
     }
@@ -821,29 +772,22 @@ Note: Your explanation must prove this is a custom conversion for THIS specific 
 
     const render = async () => {
       try {
-        const flowchart = await loadFlowchart();
+        const mermaid = await loadMermaid();
         if (!isActive || !container) return;
 
-        if (!container.id) {
-          container.id = 'flowchart-render';
-        }
+        const themeName = theme?.includes('dark') ? 'dark' : 'default';
+        mermaid.initialize({ startOnLoad: false, theme: themeName });
 
-        container.innerHTML = '';
-        const chart = flowchart.parse(flowchartText);
-        chart.drawSVG(container.id, {
-          'line-width': 2,
-          'line-color': '#111827',
-          'font-color': '#111827',
-          'element-color': '#111827',
-          'fill': '#ffffff',
-          'yes-text': 'yes',
-          'no-text': 'no',
-          'font-size': 12
-        });
+        const renderId = `flowchart-${Date.now()}`;
+        const { svg, bindFunctions } = await mermaid.render(renderId, flowchartText);
+        container.innerHTML = svg;
+        if (bindFunctions) {
+          bindFunctions(container);
+        }
         setFlowchartRenderError(null);
       } catch (error: any) {
         if (!isActive) return;
-        console.warn('Flowchart render failed:', error);
+        console.warn('Mermaid render failed:', error);
         setFlowchartRenderError(error?.message || 'Unable to render flowchart diagram.');
       }
     };

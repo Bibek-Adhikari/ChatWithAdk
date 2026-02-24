@@ -17,7 +17,7 @@ export default defineConfig(({ mode }) => {
     },
     plugins: [react()],
     optimizeDeps: {
-      include: ['flowchart.js', 'raphael']
+      include: ['mermaid']
     },
     build: {
       commonjsOptions: {
