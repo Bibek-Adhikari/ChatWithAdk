@@ -1,4 +1,5 @@
-import { getVoiceById } from './voiceLibrary';
+import { EDGE_TTS_BASE_URL, fetchEdgeVoiceIds } from './edgeVoiceService';
+import { getVoiceById, VOICE_LIBRARY } from './voiceLibrary';
 
 type VoiceMode = 'cloud' | 'browser';
 
@@ -36,6 +37,7 @@ const DEFAULT_WARMUP_WINDOW_MS = 2 * 60 * 1000;
 const DEFAULT_MAX_CHUNK_CHARS = 240;
 const EDGE_HEALTH_TTL_MS = 30 * 1000;
 const EDGE_HEALTH_TIMEOUT_MS = 1200;
+const EDGE_VOICE_TTL_MS = 5 * 60 * 1000;
 const DEFAULT_NEPALI_VOICE = 'ne-NP-SagarNeural';
 const DEFAULT_ENGLISH_VOICE = 'en-US-DarrenNeural';
 
@@ -47,12 +49,52 @@ type VoiceChunk = {
   voiceCode: string;
 };
 
+let edgeVoiceCache: { ids: Set<string> | null; checkedAt: number; inFlight?: Promise<Set<string> | null> } = {
+  ids: null,
+  checkedAt: 0
+};
+
 const buildCloudUrl = (text: string, voiceCode: string) => {
-  const url = new URL('https://bibekadk-chatadk.hf.space/speak');
+  const url = new URL('/speak', EDGE_TTS_BASE_URL);
   url.searchParams.set('text', text.trim());
   url.searchParams.set('voice', voiceCode);
   url.searchParams.set('rate', '+20%');
   return url.toString();
+};
+
+const ensureEdgeVoices = async (): Promise<Set<string> | null> => {
+  const isFresh = Date.now() - edgeVoiceCache.checkedAt < EDGE_VOICE_TTL_MS;
+  if (edgeVoiceCache.ids && isFresh) return edgeVoiceCache.ids;
+  if (edgeVoiceCache.inFlight) return edgeVoiceCache.inFlight;
+  edgeVoiceCache.inFlight = fetchEdgeVoiceIds()
+    .then(ids => new Set(ids))
+    .catch(() => null)
+    .finally(() => {
+      edgeVoiceCache.checkedAt = Date.now();
+      delete edgeVoiceCache.inFlight;
+    });
+  return edgeVoiceCache.inFlight;
+};
+
+const pickVoiceForChunk = (
+  isNepaliChunk: boolean,
+  preferredVoiceId: string | undefined,
+  serverVoiceIds: Set<string> | null
+) => {
+  if (preferredVoiceId && (!serverVoiceIds || serverVoiceIds.has(preferredVoiceId))) {
+    return preferredVoiceId;
+  }
+
+  const matchesLang = (lang: string) =>
+    isNepaliChunk ? (lang.startsWith('ne') || lang.startsWith('hi')) : !(lang.startsWith('ne') || lang.startsWith('hi'));
+
+  const candidates = VOICE_LIBRARY.filter(voice => matchesLang(voice.lang));
+  if (serverVoiceIds && serverVoiceIds.size > 0) {
+    const available = candidates.find(voice => serverVoiceIds.has(voice.id));
+    if (available) return available.id;
+  }
+
+  return isNepaliChunk ? DEFAULT_NEPALI_VOICE : DEFAULT_ENGLISH_VOICE;
 };
 
 const getEdgeCache = (voiceCode: string) => {
@@ -504,20 +546,18 @@ const speak = async (text: string, options: SpeakOptions = {}) => {
   const rawChunks = splitLongText(text, maxChunkChars);
   if (!rawChunks.length) return;
   const preferredVoice = getVoiceById(options.selectedVoiceId);
+  const serverVoiceIds = await ensureEdgeVoices();
   const chunks: VoiceChunk[] = rawChunks.map(chunkText => {
     const isNepaliChunk = detectNepali(chunkText);
     const preferredIsNepali = preferredVoice?.lang.startsWith('ne') || preferredVoice?.lang.startsWith('hi');
     const preferredMatches = preferredVoice
       ? (isNepaliChunk ? preferredIsNepali : !preferredIsNepali)
       : false;
+    const preferredVoiceId = preferredMatches ? preferredVoice?.id : undefined;
     return {
       text: chunkText,
       isNepali: isNepaliChunk,
-      voiceCode: preferredMatches
-        ? preferredVoice!.id
-        : isNepaliChunk
-          ? DEFAULT_NEPALI_VOICE
-          : DEFAULT_ENGLISH_VOICE
+      voiceCode: pickVoiceForChunk(isNepaliChunk, preferredVoiceId, serverVoiceIds)
     };
   });
 

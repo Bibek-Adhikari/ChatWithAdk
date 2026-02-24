@@ -1,4 +1,5 @@
 import React, { useEffect, useCallback, memo, useState, useMemo } from 'react';
+import { fetchEdgeVoiceIds } from '../services/edgeVoiceService';
 import { VOICE_LIBRARY } from '../services/voiceLibrary';
 
 interface ShortcutItem {
@@ -122,6 +123,40 @@ const SettingsModal: React.FC<SettingsModalProps> = memo(({
   onSelectVoice
 }) => {
   const [voiceGender, setVoiceGender] = useState<'all' | 'male' | 'female'>('all');
+  const [serverVoiceIds, setServerVoiceIds] = useState<Set<string> | null>(null);
+  const [isLoadingVoices, setIsLoadingVoices] = useState(false);
+  const [voiceError, setVoiceError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    let isMounted = true;
+    setIsLoadingVoices(true);
+    setVoiceError(null);
+    fetchEdgeVoiceIds()
+      .then(ids => {
+        if (!isMounted) return;
+        setServerVoiceIds(new Set(ids));
+      })
+      .catch(() => {
+        if (!isMounted) return;
+        setVoiceError('Voice server offline (showing local list)');
+        setServerVoiceIds(null);
+      })
+      .finally(() => {
+        if (!isMounted) return;
+        setIsLoadingVoices(false);
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!serverVoiceIds || serverVoiceIds.size === 0) return;
+    if (selectedVoiceId && !serverVoiceIds.has(selectedVoiceId)) {
+      onSelectVoice('');
+    }
+  }, [serverVoiceIds, selectedVoiceId, onSelectVoice]);
   // Handle escape key and body scroll lock
   useEffect(() => {
     if (!isOpen) return;
@@ -149,6 +184,11 @@ const SettingsModal: React.FC<SettingsModalProps> = memo(({
     if (voiceGender === 'all') return VOICE_LIBRARY;
     return VOICE_LIBRARY.filter(voice => voice.gender === voiceGender);
   }, [voiceGender]);
+
+  const availableVoices = useMemo(() => {
+    if (!serverVoiceIds || serverVoiceIds.size === 0) return filteredVoices;
+    return filteredVoices.filter(voice => serverVoiceIds.has(voice.id));
+  }, [filteredVoices, serverVoiceIds]);
 
   if (!isOpen) return null;
 
@@ -232,7 +272,11 @@ const SettingsModal: React.FC<SettingsModalProps> = memo(({
                     Voice Selection
                   </p>
                   <p className="text-xs text-slate-500 font-medium">
-                    {VOICE_LIBRARY.length} cloud voices available
+                    {isLoadingVoices
+                      ? 'Loading voice server...'
+                      : voiceError
+                        ? voiceError
+                        : `${availableVoices.length} cloud voices available`}
                   </p>
                 </div>
               </div>
@@ -268,6 +312,7 @@ const SettingsModal: React.FC<SettingsModalProps> = memo(({
                 <select 
                   value={selectedVoiceId}
                   onChange={handleVoiceSelect}
+                  disabled={isLoadingVoices}
                   className={`w-full p-3 pr-10 rounded-xl border text-sm font-bold appearance-none outline-none focus:ring-2 focus:ring-blue-500/50 transition-all cursor-pointer ${
                     theme === 'dark' 
                       ? 'bg-slate-900 border-white/10 text-white' 
@@ -275,7 +320,7 @@ const SettingsModal: React.FC<SettingsModalProps> = memo(({
                   }`}
                 >
                   <option value="">Auto (Language Default)</option>
-                  {filteredVoices.map(voice => (
+                  {availableVoices.map(voice => (
                     <option key={voice.id} value={voice.id}>
                       {voice.name} - {voice.lang}
                     </option>
