@@ -51,8 +51,8 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
   const speakText = useCallback((text: string) => {
     voiceWorkflow.speak(text, {
       selectedVoiceURI,
-      cloudTimeoutMs: 5000,
-      preferBrowserOnColdStart: true,
+      cloudTimeoutMs: 3000,
+      preferBrowserOnColdStart: false,
       onStart: () => {
         setIsSpeaking(true);
         setIsPaused(false);

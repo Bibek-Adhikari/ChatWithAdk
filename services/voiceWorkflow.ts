@@ -23,13 +23,20 @@ let lastCloudSuccessAt = 0;
 let warmupInFlight = false;
 let warmupBypassUntil = 0;
 let cancelCloudPlayback: (() => void) | null = null;
+let activeMode: VoiceMode | null = null;
 
-const DEFAULT_CLOUD_TIMEOUT_MS = 5000;
+const DEFAULT_CLOUD_TIMEOUT_MS = 3000;
 const DEFAULT_COLD_START_MS = 5 * 60 * 1000;
 const DEFAULT_WARMUP_WINDOW_MS = 2 * 60 * 1000;
 const DEFAULT_MAX_CHUNK_CHARS = 240;
 
 const detectNepali = (text: string) => /[\u0900-\u097F]/.test(text);
+
+type VoiceChunk = {
+  text: string;
+  isNepali: boolean;
+  voiceCode: string;
+};
 
 const buildCloudUrl = (text: string, voiceCode: string) =>
   `https://bibekadk-chatadk.hf.space/speak?text=${encodeURIComponent(text)}&voice=${voiceCode}`;
@@ -87,12 +94,18 @@ const stopCloudAudio = () => {
   currentAudio.src = '';
   currentAudio.load();
   currentAudio = null;
+  if (activeMode === 'cloud') {
+    activeMode = null;
+  }
 };
 
 const stopBrowserSpeech = () => {
   if (!currentUtterance) return;
   window.speechSynthesis.cancel();
   currentUtterance = null;
+  if (activeMode === 'browser') {
+    activeMode = null;
+  }
 };
 
 const warmUpCloud = async (voiceCode: string, warmupWindowMs: number) => {
@@ -109,12 +122,7 @@ const warmUpCloud = async (voiceCode: string, warmupWindowMs: number) => {
   }
 };
 
-const speakBrowser = (
-  chunks: string[],
-  isNepali: boolean,
-  options: SpeakOptions,
-  handlers: SpeakHandlers
-) => {
+const speakBrowser = (chunks: VoiceChunk[], options: SpeakOptions, handlers: SpeakHandlers) => {
   if (!('speechSynthesis' in window)) {
     handlers.onError?.(new Error('Text-to-speech is not supported in your browser'), 'browser');
     return;
@@ -126,7 +134,7 @@ const speakBrowser = (
   const lastIndex = chunks.length - 1;
 
   chunks.forEach((chunk, index) => {
-    const utterance = new SpeechSynthesisUtterance(chunk);
+    const utterance = new SpeechSynthesisUtterance(chunk.text);
     currentUtterance = utterance;
 
     utterance.rate = 1.1;
@@ -139,7 +147,7 @@ const speakBrowser = (
         utterance.voice = voice;
         utterance.lang = voice.lang;
       }
-    } else if (isNepali) {
+    } else if (chunk.isNepali) {
       const regionalVoice = voices.find(v => v.lang.startsWith('ne') || v.lang.startsWith('hi'));
       if (regionalVoice) {
         utterance.voice = regionalVoice;
@@ -163,7 +171,10 @@ const speakBrowser = (
     }
 
     if (index === 0) {
-      utterance.onstart = () => handlers.onStart?.('browser');
+      utterance.onstart = () => {
+        activeMode = 'browser';
+        handlers.onStart?.('browser');
+      };
     }
     utterance.onpause = () => handlers.onPause?.('browser');
     utterance.onresume = () => handlers.onResume?.('browser');
@@ -172,6 +183,9 @@ const speakBrowser = (
       if (index === lastIndex) {
         handlers.onEnd?.('browser');
         currentUtterance = null;
+        if (activeMode === 'browser') {
+          activeMode = null;
+        }
       }
     };
 
@@ -191,24 +205,33 @@ const createCloudCancel = () => {
 };
 
 const playCloudChunk = (
-  chunk: string,
-  voiceCode: string,
+  chunk: VoiceChunk,
   timeoutMs: number,
   handlers: SpeakHandlers,
   onStart: () => void
 ) => {
   stopCloudAudio();
-  const cloudUrl = buildCloudUrl(chunk, voiceCode);
+  const cloudUrl = buildCloudUrl(chunk.text, chunk.voiceCode);
   const audio = new Audio(cloudUrl);
   currentAudio = audio;
 
   let started = false;
   let paused = false;
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+  const clearTimeoutSafe = () => {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+      timeoutId = null;
+    }
+  };
 
   audio.onplay = () => {
     if (!started) {
       started = true;
+      activeMode = 'cloud';
       onStart();
+      clearTimeoutSafe();
     } else if (paused) {
       paused = false;
       handlers.onResume?.('cloud');
@@ -223,14 +246,25 @@ const playCloudChunk = (
 
   const playCloud = new Promise<void>((resolve, reject) => {
     audio.oncanplaythrough = () => {
-      audio.play().then(resolve).catch(reject);
+      audio
+        .play()
+        .catch(err => {
+          clearTimeoutSafe();
+          reject(err);
+        });
     };
-    audio.onerror = () => reject(new Error('Network/Server Error'));
-    audio.onended = () => resolve();
+    audio.onerror = () => {
+      clearTimeoutSafe();
+      reject(new Error('Network/Server Error'));
+    };
+    audio.onended = () => {
+      clearTimeoutSafe();
+      resolve();
+    };
   });
 
   const forceFallback = new Promise<void>((_, reject) =>
-    setTimeout(() => {
+    timeoutId = setTimeout(() => {
       stopCloudAudio();
       reject(new Error('Cloud Too Slow - Using Local Voice'));
     }, timeoutMs)
@@ -240,11 +274,10 @@ const playCloudChunk = (
 };
 
 const speakCloud = async (
-  chunks: string[],
-  voiceCode: string,
+  chunks: VoiceChunk[],
   options: SpeakOptions,
   handlers: SpeakHandlers
-) => {
+): Promise<boolean> => {
   const timeoutMs = options.cloudTimeoutMs ?? DEFAULT_CLOUD_TIMEOUT_MS;
   const { promise: cancelPromise, cancel } = createCloudCancel();
   cancelCloudPlayback = cancel;
@@ -260,12 +293,18 @@ const speakCloud = async (
   try {
     for (const chunk of chunks) {
       await Promise.race([
-        playCloudChunk(chunk, voiceCode, timeoutMs, handlers, handleStart),
+        playCloudChunk(chunk, timeoutMs, handlers, handleStart),
         cancelPromise
       ]);
     }
     handlers.onEnd?.('cloud');
     lastCloudSuccessAt = Date.now();
+    return started;
+  } catch (error: any) {
+    if (error && typeof error === 'object') {
+      (error as any).cloudStarted = started;
+    }
+    throw error;
   } finally {
     if (cancelCloudPlayback === cancel) {
       cancelCloudPlayback = null;
@@ -281,19 +320,45 @@ const stop = () => {
 };
 
 const pause = () => {
-  if (currentAudio) {
-    currentAudio.pause();
+  if (activeMode === 'cloud') {
+    if (currentAudio && !currentAudio.paused) {
+      currentAudio.pause();
+    }
     return;
   }
-  window.speechSynthesis.pause();
+  if (activeMode === 'browser') {
+    if (window.speechSynthesis.speaking && !window.speechSynthesis.paused) {
+      window.speechSynthesis.pause();
+    }
+    return;
+  }
+  if (currentAudio && !currentAudio.paused) {
+    currentAudio.pause();
+  }
+  if (window.speechSynthesis.speaking && !window.speechSynthesis.paused) {
+    window.speechSynthesis.pause();
+  }
 };
 
 const resume = () => {
-  if (currentAudio) {
-    currentAudio.play().catch(() => {});
+  if (activeMode === 'cloud') {
+    if (currentAudio && currentAudio.paused) {
+      currentAudio.play().catch(() => {});
+    }
     return;
   }
-  window.speechSynthesis.resume();
+  if (activeMode === 'browser') {
+    if (window.speechSynthesis.paused) {
+      window.speechSynthesis.resume();
+    }
+    return;
+  }
+  if (currentAudio && currentAudio.paused) {
+    currentAudio.play().catch(() => {});
+  }
+  if (window.speechSynthesis.paused) {
+    window.speechSynthesis.resume();
+  }
 };
 
 const isColdStart = (coldStartWindowMs: number) => {
@@ -314,32 +379,41 @@ const speak = async (text: string, options: SpeakOptions = {}) => {
 
   stop();
 
-  const isNepali = detectNepali(text);
-  const voiceCode = isNepali ? 'ne-NP-SagarNeural' : 'en-US-ChristopherNeural';
   const coldStartWindowMs = options.coldStartWindowMs ?? DEFAULT_COLD_START_MS;
   const warmupWindowMs = options.warmupWindowMs ?? DEFAULT_WARMUP_WINDOW_MS;
   const maxChunkChars = options.maxChunkChars ?? DEFAULT_MAX_CHUNK_CHARS;
-  const preferBrowser = options.preferBrowserOnColdStart !== false;
-  const chunks = splitLongText(text, maxChunkChars);
-  if (!chunks.length) return;
+  const preferBrowser = options.preferBrowserOnColdStart === true;
+  const rawChunks = splitLongText(text, maxChunkChars);
+  if (!rawChunks.length) return;
+  const chunks: VoiceChunk[] = rawChunks.map(chunkText => {
+    const isNepaliChunk = detectNepali(chunkText);
+    return {
+      text: chunkText,
+      isNepali: isNepaliChunk,
+      voiceCode: isNepaliChunk ? 'ne-NP-SagarNeural' : 'en-AU-KenNeural'
+    };
+  });
 
   const coldStart = isColdStart(coldStartWindowMs);
   const allowCloudAttemptAfterWarmup = warmupBypassUntil && Date.now() < warmupBypassUntil;
 
   if (preferBrowser && coldStart && !allowCloudAttemptAfterWarmup) {
-    warmUpCloud(voiceCode, warmupWindowMs).catch(() => {});
-    speakBrowser(chunks, isNepali, options, handlers);
+    warmUpCloud(chunks[0].voiceCode, warmupWindowMs).catch(() => {});
+    speakBrowser(chunks, options, handlers);
     return;
   }
 
   try {
-    await speakCloud(chunks, voiceCode, options, handlers);
+    await speakCloud(chunks, options, handlers);
   } catch (error: any) {
     if (error?.message === 'Cloud playback cancelled') {
       return;
     }
     handlers.onError?.(error, 'cloud');
-    speakBrowser(chunks, isNepali, options, handlers);
+    if (error?.cloudStarted) {
+      return;
+    }
+    speakBrowser(chunks, options, handlers);
   }
 };
 
