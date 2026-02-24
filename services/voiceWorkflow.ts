@@ -25,13 +25,19 @@ let warmupInFlight = false;
 let warmupBypassUntil = 0;
 let cancelCloudPlayback: (() => void) | null = null;
 let activeMode: VoiceMode | null = null;
+let browserSessionId = 0;
+let edgeHealthState: 'unknown' | 'up' | 'down' = 'unknown';
+let edgeHealthCheckedAt = 0;
+let edgeHealthPromise: Promise<'up' | 'down'> | null = null;
 
 const DEFAULT_CLOUD_TIMEOUT_MS = 3000;
 const DEFAULT_COLD_START_MS = 5 * 60 * 1000;
 const DEFAULT_WARMUP_WINDOW_MS = 2 * 60 * 1000;
 const DEFAULT_MAX_CHUNK_CHARS = 240;
+const EDGE_HEALTH_TTL_MS = 30 * 1000;
+const EDGE_HEALTH_TIMEOUT_MS = 1200;
 const DEFAULT_NEPALI_VOICE = 'ne-NP-SagarNeural';
-const DEFAULT_ENGLISH_VOICE = 'en-GB-RyanNeural';
+const DEFAULT_ENGLISH_VOICE = 'en-US-DarrenNeural';
 
 const detectNepali = (text: string) => /[\u0900-\u097F]/.test(text);
 
@@ -43,6 +49,51 @@ type VoiceChunk = {
 
 const buildCloudUrl = (text: string, voiceCode: string) =>
   `https://bibekadk-chatadk.hf.space/speak?text=${encodeURIComponent(text)}&voice=${voiceCode}`;
+
+const markEdgeUp = () => {
+  edgeHealthState = 'up';
+  edgeHealthCheckedAt = Date.now();
+};
+
+const markEdgeDown = () => {
+  edgeHealthState = 'down';
+  edgeHealthCheckedAt = Date.now();
+};
+
+const checkEdgeHealth = async (): Promise<'up' | 'down'> => {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), EDGE_HEALTH_TIMEOUT_MS);
+  try {
+    const url = buildCloudUrl('ping', DEFAULT_ENGLISH_VOICE);
+    const response = await fetch(url, {
+      method: 'GET',
+      cache: 'no-store',
+      headers: { Range: 'bytes=0-0' },
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+    if (response.ok) {
+      markEdgeUp();
+      return 'up';
+    }
+    markEdgeDown();
+    return 'down';
+  } catch {
+    clearTimeout(timeoutId);
+    markEdgeDown();
+    return 'down';
+  }
+};
+
+const ensureEdgeHealth = async (): Promise<'up' | 'down' | 'unknown'> => {
+  const isFresh = Date.now() - edgeHealthCheckedAt < EDGE_HEALTH_TTL_MS;
+  if (edgeHealthState !== 'unknown' && isFresh) return edgeHealthState;
+  if (edgeHealthPromise) return edgeHealthPromise;
+  edgeHealthPromise = checkEdgeHealth().finally(() => {
+    edgeHealthPromise = null;
+  });
+  return edgeHealthPromise;
+};
 
 const splitLongText = (text: string, maxChars: number) => {
   const cleaned = text.replace(/\s+/g, ' ').trim();
@@ -103,6 +154,7 @@ const stopCloudAudio = () => {
 };
 
 const stopBrowserSpeech = () => {
+  browserSessionId += 1;
   if (!currentUtterance) return;
   window.speechSynthesis.cancel();
   currentUtterance = null;
@@ -125,7 +177,17 @@ const warmUpCloud = async (voiceCode: string, warmupWindowMs: number) => {
   }
 };
 
-const speakBrowser = (chunks: VoiceChunk[], handlers: SpeakHandlers) => {
+const waitForVoices = async (timeoutMs = 1200) => {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const voices = window.speechSynthesis.getVoices();
+    if (voices.length) return voices;
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+  return window.speechSynthesis.getVoices();
+};
+
+const speakBrowser = async (chunks: VoiceChunk[], handlers: SpeakHandlers) => {
   if (!('speechSynthesis' in window)) {
     handlers.onError?.(new Error('Text-to-speech is not supported in your browser'), 'browser');
     return;
@@ -133,61 +195,86 @@ const speakBrowser = (chunks: VoiceChunk[], handlers: SpeakHandlers) => {
 
   stopBrowserSpeech();
 
-  const voices = window.speechSynthesis.getVoices();
-  const lastIndex = chunks.length - 1;
+  const voices = await waitForVoices();
+  const sessionId = ++browserSessionId;
 
-  chunks.forEach((chunk, index) => {
+  const buildUtterance = (chunk: VoiceChunk, useLang: boolean) => {
     const utterance = new SpeechSynthesisUtterance(chunk.text);
-    currentUtterance = utterance;
-
     utterance.rate = 1.1;
     utterance.pitch = 1.0;
     utterance.volume = 1.0;
 
-    if (chunk.isNepali) {
-      const regionalVoice = voices.find(v => v.lang.startsWith('ne') || v.lang.startsWith('hi'));
-      if (regionalVoice) {
-        utterance.voice = regionalVoice;
-        utterance.lang = regionalVoice.lang;
+    if (useLang) {
+      if (chunk.isNepali) {
+        const regionalVoice = voices.find(v => v.lang.startsWith('ne') || v.lang.startsWith('hi'));
+        if (regionalVoice) {
+          utterance.voice = regionalVoice;
+          utterance.lang = regionalVoice.lang;
+        } else {
+          utterance.lang = 'ne-NP';
+        }
       } else {
-        utterance.lang = 'ne-NP';
-      }
-    } else {
-      const preferredVoice = voices.find(v =>
-        v.name.includes('Google') ||
-        v.name.includes('Samantha') ||
-        v.name.includes('Daniel') ||
-        v.lang === 'en-US'
-      );
-      if (preferredVoice) {
-        utterance.voice = preferredVoice;
-        utterance.lang = preferredVoice.lang;
-      } else {
-        utterance.lang = 'en-US';
-      }
-    }
-
-    if (index === 0) {
-      utterance.onstart = () => {
-        activeMode = 'browser';
-        handlers.onStart?.('browser');
-      };
-    }
-    utterance.onpause = () => handlers.onPause?.('browser');
-    utterance.onresume = () => handlers.onResume?.('browser');
-    utterance.onerror = () => handlers.onError?.(new Error('Browser TTS error'), 'browser');
-    utterance.onend = () => {
-      if (index === lastIndex) {
-        handlers.onEnd?.('browser');
-        currentUtterance = null;
-        if (activeMode === 'browser') {
-          activeMode = null;
+        const preferredVoice = voices.find(v =>
+          v.name.includes('Google') ||
+          v.name.includes('Samantha') ||
+          v.name.includes('Daniel') ||
+          v.lang === 'en-US'
+        );
+        if (preferredVoice) {
+          utterance.voice = preferredVoice;
+          utterance.lang = preferredVoice.lang;
+        } else {
+          utterance.lang = 'en-US';
         }
       }
-    };
+    }
 
-    window.speechSynthesis.speak(utterance);
-  });
+    return utterance;
+  };
+
+  const speakChunk = (chunk: VoiceChunk, isFirst: boolean, useLang: boolean) =>
+    new Promise<void>((resolve, reject) => {
+      const utterance = buildUtterance(chunk, useLang);
+      currentUtterance = utterance;
+
+      if (isFirst) {
+        utterance.onstart = () => {
+          if (sessionId !== browserSessionId) return;
+          activeMode = 'browser';
+          handlers.onStart?.('browser');
+        };
+      }
+      utterance.onpause = () => handlers.onPause?.('browser');
+      utterance.onresume = () => handlers.onResume?.('browser');
+      utterance.onerror = () => reject(new Error('Browser TTS error'));
+      utterance.onend = () => resolve();
+
+      window.speechSynthesis.speak(utterance);
+    });
+
+  for (let i = 0; i < chunks.length; i += 1) {
+    if (sessionId !== browserSessionId) return;
+    try {
+      await speakChunk(chunks[i], i === 0, true);
+    } catch {
+      if (sessionId !== browserSessionId) return;
+      window.speechSynthesis.cancel();
+      await new Promise(resolve => setTimeout(resolve, 150));
+      try {
+        await speakChunk(chunks[i], i === 0, false);
+      } catch (error) {
+        handlers.onError?.(error instanceof Error ? error : new Error('Browser TTS error'), 'browser');
+        return;
+      }
+    }
+  }
+
+  if (sessionId !== browserSessionId) return;
+  handlers.onEnd?.('browser');
+  currentUtterance = null;
+  if (activeMode === 'browser') {
+    activeMode = null;
+  }
 };
 
 const createCloudCancel = () => {
@@ -216,6 +303,7 @@ const playCloudChunk = (
   let started = false;
   let paused = false;
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  let aborted = false;
 
   const clearTimeoutSafe = () => {
     if (timeoutId) {
@@ -224,15 +312,26 @@ const playCloudChunk = (
     }
   };
 
-  audio.onplay = () => {
+  const markStarted = () => {
+    if (aborted) return;
     if (!started) {
       started = true;
       activeMode = 'cloud';
       onStart();
       clearTimeoutSafe();
-    } else if (paused) {
+    }
+  };
+
+  audio.onplaying = () => {
+    markStarted();
+    if (paused) {
       paused = false;
       handlers.onResume?.('cloud');
+    }
+  };
+  audio.ontimeupdate = () => {
+    if (audio.currentTime > 0.05) {
+      markStarted();
     }
   };
   audio.onpause = () => {
@@ -252,16 +351,22 @@ const playCloudChunk = (
       resolve();
     };
 
-    audio.onerror = () => fail(new Error('Network/Server Error'));
+    audio.onerror = () => {
+      stopCloudAudio();
+      fail(new Error('Network/Server Error'));
+    };
     audio.onended = () => done();
 
-    audio.play().catch(err => {
-      fail(err instanceof Error ? err : new Error('Audio play failed'));
-    });
+    audio.play()
+      .catch(err => {
+        stopCloudAudio();
+        fail(err instanceof Error ? err : new Error('Audio play failed'));
+      });
   });
 
   const forceFallback = new Promise<void>((_, reject) =>
     timeoutId = setTimeout(() => {
+      aborted = true;
       stopCloudAudio();
       reject(new Error('Cloud Too Slow - Using Local Voice'));
     }, timeoutMs)
@@ -404,6 +509,43 @@ const speak = async (text: string, options: SpeakOptions = {}) => {
     warmUpCloud(chunks[0].voiceCode, warmupWindowMs).catch(() => {});
   }
 
+  const edgeHealth = await ensureEdgeHealth();
+  if (edgeHealth === 'down') {
+    await speakBrowser(chunks, handlers);
+    return;
+  }
+
+  let attempt = 0;
+  while (attempt < 2) {
+    try {
+      await speakCloud(chunks, options, handlers);
+      markEdgeUp();
+      return;
+    } catch (error: any) {
+      if (error?.message === 'Cloud playback cancelled') {
+        return;
+      }
+      if (error?.cloudStarted) {
+        return;
+      }
+      if (error?.message?.includes('Network/Server Error') || error?.message?.includes('Cloud Too Slow')) {
+        markEdgeDown();
+      }
+      handlers.onError?.(error, 'cloud');
+      attempt += 1;
+      if (attempt < 2) {
+        await new Promise(resolve => setTimeout(resolve, 300));
+        continue;
+      }
+      stopCloudAudio();
+      await speakBrowser(chunks, handlers);
+      return;
+    }
+  }
+  return;
+
+  /*
+  // legacy single-try path
   try {
     await speakCloud(chunks, options, handlers);
   } catch (error: any) {
@@ -414,8 +556,10 @@ const speak = async (text: string, options: SpeakOptions = {}) => {
     if (error?.cloudStarted) {
       return;
     }
-    speakBrowser(chunks, handlers);
+    stopCloudAudio();
+    await speakBrowser(chunks, handlers);
   }
+  */
 };
 
 export const voiceWorkflow = {
