@@ -1,6 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
-dotenv.config({ path: ".env.local" });
+dotenv.config({ path: ".env" });
 
 const apiKey = process.env.VITE_GEMINI_API_KEY;
 const ai = new GoogleGenAI({ apiKey });

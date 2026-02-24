@@ -13,7 +13,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const REPO_ROOT = path.resolve(__dirname, '..');
 
-dotenv.config({ path: path.join(REPO_ROOT, '.env.local') });
+dotenv.config({ path: path.join(REPO_ROOT, '.env') });
 
 const app = express();
 const PORT = process.env.PORT || 5000;

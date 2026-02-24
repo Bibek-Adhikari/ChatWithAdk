@@ -1,11 +1,17 @@
 
-const WORLD_NEWS_KEY = import.meta.env.VITE_WORLD_NEWS_API_KEY || "52baf80a5b2d43feb817cf585def1cc1";
-const NEWSDATA_KEY = import.meta.env.VITE_NEWSDATA_API_KEY || "pub_11299103b1234c4ab2663e91ce5f4cba";
-const TAVILY_KEY = import.meta.env.VITE_TAVILY_API_KEY;
+const WORLD_NEWS_KEY = import.meta.env.VITE_WORLD_NEWS_API_KEY || "";
+const NEWSDATA_KEY = import.meta.env.VITE_NEWSDATA_API_KEY || "";
+const TAVILY_KEY = import.meta.env.VITE_TAVILY_API_KEY || "";
 
 // Warn if Tavily API key is not configured
 if (!TAVILY_KEY) {
   console.warn('[NewsService] Tavily API key not configured. Set VITE_TAVILY_API_KEY in .env');
+}
+if (!WORLD_NEWS_KEY) {
+  console.warn('[NewsService] World News API key not configured. Set VITE_WORLD_NEWS_API_KEY in .env');
+}
+if (!NEWSDATA_KEY) {
+  console.warn('[NewsService] NewsData API key not configured. Set VITE_NEWSDATA_API_KEY in .env');
 }
 
 export interface NewsArticle {
@@ -104,17 +110,23 @@ export async function fetchLatestNews(input: string): Promise<NewsArticle[]> {
         .catch(() => []);
     };
     
-    const getWorldNewsTask = (q: string): (() => Promise<any[]>) => () =>
-      fetch(`https://api.worldnewsapi.com/search-news?api-key=${WORLD_NEWS_KEY}&text=${encodeURIComponent(q)}&number=10&language=en&sort=publish-time&sort-direction=DESC`)
-        .then(r => r.ok ? r.json() : { news: [] })
-        .then(data => data.news || [])
-        .catch(() => []);
+    const getWorldNewsTask = (q: string): (() => Promise<any[]>) => {
+      if (!WORLD_NEWS_KEY) return () => Promise.resolve([]);
+      return () =>
+        fetch(`https://api.worldnewsapi.com/search-news?api-key=${WORLD_NEWS_KEY}&text=${encodeURIComponent(q)}&number=10&language=en&sort=publish-time&sort-direction=DESC`)
+          .then(r => r.ok ? r.json() : { news: [] })
+          .then(data => data.news || [])
+          .catch(() => []);
+    };
     
-    const getNewsDataTask = (q: string): (() => Promise<any[]>) => () =>
-      fetch(`https://newsdata.io/api/1/latest?apikey=${NEWSDATA_KEY}&q=${encodeURIComponent(q)}&language=en&size=10${isPolitical ? '&category=politics' : ''}`)
-        .then(r => r.ok ? r.json() : { results: [] })
-        .then(data => data.results || [])
-        .catch(() => []);
+    const getNewsDataTask = (q: string): (() => Promise<any[]>) => {
+      if (!NEWSDATA_KEY) return () => Promise.resolve([]);
+      return () =>
+        fetch(`https://newsdata.io/api/1/latest?apikey=${NEWSDATA_KEY}&q=${encodeURIComponent(q)}&language=en&size=10${isPolitical ? '&category=politics' : ''}`)
+          .then(r => r.ok ? r.json() : { results: [] })
+          .then(data => data.results || [])
+          .catch(() => []);
+    };
     
     const allTasks: (() => Promise<any[]>)[] = subjectQueries.flatMap(q => [
       getTavilyTask(q),

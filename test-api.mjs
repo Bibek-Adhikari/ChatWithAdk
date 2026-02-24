@@ -1,7 +1,7 @@
 
 import fs from 'fs';
 
-const env = fs.readFileSync('.env.local', 'utf8');
+const env = fs.readFileSync('.env', 'utf8');
 const keyMatch = env.match(/VITE_GEMINI_API_KEY=(.*)/);
 const key = keyMatch ? keyMatch[1].trim() : null;
 
