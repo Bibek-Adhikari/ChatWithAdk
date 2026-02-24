@@ -1,11 +1,5 @@
-import React, { useEffect, useState, useCallback, memo, useMemo } from 'react';
-
-interface VoiceOption {
-  uri: string;
-  name: string;
-  lang: string;
-  isDefault?: boolean;
-}
+import React, { useEffect, useCallback, memo } from 'react';
+import { VOICE_LIBRARY } from '../services/voiceLibrary';
 
 interface ShortcutItem {
   key: string;
@@ -18,8 +12,8 @@ interface SettingsModalProps {
   onClose: () => void;
   theme: 'light' | 'dark';
   onToggleTheme: () => void;
-  selectedVoiceURI: string;
-  onSelectVoice: (uri: string) => void;
+  selectedVoiceId: string;
+  onSelectVoice: (voiceId: string) => void;
 }
 
 const SHORTCUTS: ShortcutItem[] = [
@@ -29,8 +23,6 @@ const SHORTCUTS: ShortcutItem[] = [
   { key: 'Esc', task: 'Close Modals', icon: 'fa-times' },
   { key: '/', task: 'Focus Input', icon: 'fa-comment-dots' },
 ];
-
-const VOICE_LANGUAGES = ['en', 'ne', 'hi', 'en-GB', 'en-US'] as const;
 
 // Memoized section component
 interface SettingsSectionProps {
@@ -126,81 +118,9 @@ const SettingsModal: React.FC<SettingsModalProps> = memo(({
   onClose, 
   theme, 
   onToggleTheme,
-  selectedVoiceURI,
+  selectedVoiceId,
   onSelectVoice
 }) => {
-  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
-  const [isLoadingVoices, setIsLoadingVoices] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  // Memoize filtered and deduplicated voices
-  const availableVoices = useMemo(() => {
-    if (!window.speechSynthesis || voices.length === 0) return [];
-    
-    const allVoices = voices;
-    
-    // Filter for supported languages
-    const filtered = allVoices.filter(v => 
-      VOICE_LANGUAGES.some(lang => v.lang.toLowerCase().startsWith(lang))
-    );
-    
-    // Remove duplicates by URI and map to our interface
-    const uniqueVoices = Array.from(
-      new Map(filtered.map(v => [v.voiceURI, {
-        uri: v.voiceURI,
-        name: v.name.replace(/Google |Microsoft |Apple /g, ''), // Clean up names
-        lang: v.lang,
-        isDefault: v.default
-      }])).values()
-    );
-    
-    return uniqueVoices.sort((a, b) => {
-      // Sort by language priority, then name
-      const aPriority = VOICE_LANGUAGES.findIndex(l => a.lang.startsWith(l));
-      const bPriority = VOICE_LANGUAGES.findIndex(l => b.lang.startsWith(l));
-      if (aPriority !== bPriority) return aPriority - bPriority;
-      return a.name.localeCompare(b.name);
-    });
-  }, [voices]); // Recalculate when voices state changes
-
-  const updateVoices = useCallback(() => {
-    if (!window.speechSynthesis) {
-      setError('Speech synthesis not supported');
-      setIsLoadingVoices(false);
-      return;
-    }
-
-    setIsLoadingVoices(true);
-    setError(null);
-    
-    try {
-      const allVoices = window.speechSynthesis.getVoices();
-      setVoices(allVoices);
-      setIsLoadingVoices(false);
-    } catch (err) {
-      setError('Failed to load voices');
-      setIsLoadingVoices(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!isOpen) return;
-
-    // Initial load
-    updateVoices();
-
-    // Setup event listener for voice changes
-    if (window.speechSynthesis) {
-      window.speechSynthesis.onvoiceschanged = updateVoices;
-    }
-
-    return () => {
-      if (window.speechSynthesis) {
-        window.speechSynthesis.onvoiceschanged = null;
-      }
-    };
-  }, [isOpen, updateVoices]);
-
   // Handle escape key and body scroll lock
   useEffect(() => {
     if (!isOpen) return;
@@ -220,19 +140,9 @@ const SettingsModal: React.FC<SettingsModalProps> = memo(({
 
   // Handle voice selection with feedback
   const handleVoiceSelect = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
-    const uri = e.target.value;
-    onSelectVoice(uri);
-    
-    // Optional: Preview voice
-    if (uri && window.speechSynthesis) {
-      const utterance = new SpeechSynthesisUtterance('Voice updated');
-      const selectedVoice = voices.find(v => v.voiceURI === uri);
-      if (selectedVoice) {
-        utterance.voice = selectedVoice;
-        window.speechSynthesis.speak(utterance);
-      }
-    }
-  }, [onSelectVoice, voices]);
+    const voiceId = e.target.value;
+    onSelectVoice(voiceId);
+  }, [onSelectVoice]);
 
   if (!isOpen) return null;
 
@@ -316,45 +226,34 @@ const SettingsModal: React.FC<SettingsModalProps> = memo(({
                     Voice Selection
                   </p>
                   <p className="text-xs text-slate-500 font-medium">
-                    {isLoadingVoices ? 'Loading available voices...' : 
-                     error ? 'Unable to load voices' : 
-                     `${availableVoices.length} voices available`}
+                    {VOICE_LIBRARY.length} cloud voices available
                   </p>
                 </div>
               </div>
-              
-              {error ? (
-                <div className={`p-3 rounded-xl text-xs ${theme === 'dark' ? 'bg-red-500/10 text-red-400' : 'bg-red-50 text-red-600'}`}>
-                  <i className="fas fa-exclamation-circle mr-2" />
-                  {error}
-                </div>
-              ) : (
-                <div className="relative">
-                  <select 
-                    value={selectedVoiceURI}
-                    onChange={handleVoiceSelect}
-                    disabled={isLoadingVoices}
-                    className={`w-full p-3 pr-10 rounded-xl border text-sm font-bold appearance-none outline-none focus:ring-2 focus:ring-blue-500/50 transition-all cursor-pointer disabled:opacity-50 ${
-                      theme === 'dark' 
-                        ? 'bg-slate-900 border-white/10 text-white' 
-                        : 'bg-white border-slate-200 text-slate-900'
-                    }`}
-                  >
-                    <option value="">System Default</option>
-                    {availableVoices.map(voice => (
-                      <option key={voice.uri} value={voice.uri}>
-                        {voice.name} • {voice.lang}
-                      </option>
-                    ))}
-                  </select>
-                  <i className={`fas fa-chevron-down absolute right-3 top-1/2 -translate-y-1/2 text-xs pointer-events-none ${
-                    theme === 'dark' ? 'text-slate-500' : 'text-slate-400'
-                  }`} />
-                </div>
-              )}
+
+              <div className="relative">
+                <select 
+                  value={selectedVoiceId}
+                  onChange={handleVoiceSelect}
+                  className={`w-full p-3 pr-10 rounded-xl border text-sm font-bold appearance-none outline-none focus:ring-2 focus:ring-blue-500/50 transition-all cursor-pointer ${
+                    theme === 'dark' 
+                      ? 'bg-slate-900 border-white/10 text-white' 
+                      : 'bg-white border-slate-200 text-slate-900'
+                  }`}
+                >
+                  <option value="">Auto (Language Default)</option>
+                  {VOICE_LIBRARY.map(voice => (
+                    <option key={voice.id} value={voice.id}>
+                      {voice.name} ??? {voice.lang}
+                    </option>
+                  ))}
+                </select>
+                <i className={`fas fa-chevron-down absolute right-3 top-1/2 -translate-y-1/2 text-xs pointer-events-none ${
+                  theme === 'dark' ? 'text-slate-500' : 'text-slate-400'
+                }`} />
+              </div>
             </div>
           </SettingsSection>
-
           {/* Appearance Section */}
           <SettingsSection title="Interface Theme" theme={theme} icon="fa-palette">
             <div className={`flex items-center justify-between p-5 rounded-2xl border ${

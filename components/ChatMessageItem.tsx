@@ -12,7 +12,7 @@ interface ChatMessageItemProps {
   onImageClick?: (url: string) => void;
   theme?: 'light' | 'dark';
   onReusePrompt?: (text: string) => void; // New callback for reusing prompt
-  selectedVoiceURI?: string;
+  selectedVoiceId?: string;
   isAuthenticated?: boolean;
 }
 
@@ -21,7 +21,7 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
   onImageClick, 
   theme = 'dark',
   onReusePrompt,
-  selectedVoiceURI,
+  selectedVoiceId,
   isAuthenticated = false 
 }) => {
   const isUser = message.role === 'user';
@@ -29,6 +29,7 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
+  const [isBuffering, setIsBuffering] = useState(false);
 
   const handleCopy = (code: string) => {
     navigator.clipboard.writeText(code);
@@ -50,12 +51,12 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
   // Text-to-Speech functionality (Cloud-first with warmup fallback)
   const speakText = useCallback((text: string) => {
     voiceWorkflow.speak(text, {
-      selectedVoiceURI,
+      selectedVoiceId,
       cloudTimeoutMs: 3000,
-      preferBrowserOnColdStart: false,
       onStart: () => {
         setIsSpeaking(true);
         setIsPaused(false);
+        setIsBuffering(false);
       },
       onPause: () => {
         setIsPaused(true);
@@ -66,12 +67,16 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
       onEnd: () => {
         setIsSpeaking(false);
         setIsPaused(false);
+        setIsBuffering(false);
       },
       onError: (error) => {
         console.warn('Voice workflow error:', error.message);
+        setIsBuffering(false);
+        setIsSpeaking(false);
+        setIsPaused(false);
       }
     });
-  }, [selectedVoiceURI]);
+  }, [selectedVoiceId]);
 
   const toggleSpeech = () => {
     const allText = (message.parts || [])
@@ -103,7 +108,9 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
         .replace(/(\u00a9|\u00ae|[\u2000-\u3300]|\ud83c[\ud000-\udfff]|\ud83d[\ud000-\udfff]|\ud83e[\ud000-\udfff])/g, '') // Remove emojis
         .replace(/\n+/g, ' ') // Replace newlines with space
         .trim();
-      
+      setIsSpeaking(true);
+      setIsPaused(false);
+      setIsBuffering(true);
       speakText(cleanText);
     }
   };
@@ -113,6 +120,7 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
     voiceWorkflow.stop();
     setIsSpeaking(false);
     setIsPaused(false);
+    setIsBuffering(false);
   };
 
   // Cleanup on unmount
@@ -194,7 +202,7 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
         
         <div className="flex flex-col gap-2 w-full">
           {/* Audio Player Bar - Shows when speaking */}
-          {isSpeaking && isAssistant && (
+          {(isSpeaking || isBuffering) && isAssistant && (
             <div className={`flex items-center gap-3 px-4 py-2 rounded-2xl mb-2 animate-fadeIn ${
               theme === 'dark' ? 'bg-blue-500/10 border border-blue-500/20' : 'bg-blue-50 border border-blue-200'
             }`}>
@@ -212,7 +220,7 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
                   ))}
                 </div>
                 <span className="text-[10px] font-bold uppercase tracking-widest text-blue-500">
-                  {isPaused ? 'Paused' : 'Reading...'}
+                  {isPaused ? 'Paused' : isBuffering ? 'Buffering...' : 'Reading...'}
                 </span>
               </div>
               <div className="flex-1" />

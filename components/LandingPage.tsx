@@ -440,7 +440,7 @@ const LandingPage: React.FC = () => {
         onClose={() => setIsSettingsOpen(false)}
         theme={theme}
         onToggleTheme={toggleTheme}
-        selectedVoiceURI=""
+        selectedVoiceId=""
         onSelectVoice={() => {}}
       />
 

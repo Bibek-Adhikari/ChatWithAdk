@@ -33,6 +33,7 @@ import { fetchLatestNews, shouldFetchNews } from './services/newsService';
 import VSCodeCompiler from './components/VSCodeCompiler'
 import LanguageConverter from './components/LanguageConverter'
 import PhotoAdk from './components/PhotoAdk'
+import { VOICE_LIBRARY } from './services/voiceLibrary';
 import { readBoolean, readJson, readNumber, readString, removeKey, writeJson, writeString } from './services/storage';
 
 
@@ -106,8 +107,11 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
   const [previousSessionId, setPreviousSessionId] = useState<string | null>(null);
   const [imageError, setImageError] = useState(false);
 
-  const [selectedVoiceURI, setSelectedVoiceURI] = useState<string>(() => {
-    return readString('selectedVoiceURI', '');
+  const [selectedVoiceId, setSelectedVoiceId] = useState<string>(() => {
+    const savedId = readString('selectedVoiceId', '');
+    if (savedId && VOICE_LIBRARY.some(v => v.id === savedId)) return savedId;
+    const legacy = readString('selectedVoiceURI', '');
+    return VOICE_LIBRARY.some(v => v.id === legacy) ? legacy : '';
   });
   const [selectedImage, setSelectedImage] = useState<{ data: string; mimeType: string } | null>(null);
   const [aiModel, setAiModel] = useState<'gemini' | 'groq' | 'research' | 'imagine' | 'motion' | 'multi'>('groq');
@@ -208,9 +212,9 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
 
   const toggleTheme = () => setTheme(prev => (prev === 'light' ? 'dark' : 'light'));
 
-  const handleSelectVoice = (uri: string) => {
-    setSelectedVoiceURI(uri);
-    writeString('selectedVoiceURI', uri, { persist: 'both' });
+  const handleSelectVoice = (voiceId: string) => {
+    setSelectedVoiceId(voiceId);
+    writeString('selectedVoiceId', voiceId, { persist: 'both' });
   };
 
   const currentSession = useMemo(() => 
@@ -1153,7 +1157,7 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
                     key={msg.id} 
                     message={msg as any} 
                     theme={theme}
-                    selectedVoiceURI={selectedVoiceURI}
+                    selectedVoiceId={selectedVoiceId}
                     isAuthenticated={!!user}
                     onReusePrompt={(text) => {
                       setInputValue(text);
@@ -1247,7 +1251,7 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
                       key={msg.id} 
                       message={msg as any} 
                       theme={theme}
-                      selectedVoiceURI={selectedVoiceURI}
+                        selectedVoiceId={selectedVoiceId}
                       isAuthenticated={!!user}
                     />
                   ))}
@@ -1297,7 +1301,7 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
                       key={msg.id} 
                       message={msg as any} 
                       theme={theme}
-                      selectedVoiceURI={selectedVoiceURI}
+                        selectedVoiceId={selectedVoiceId}
                       isAuthenticated={!!user}
                     />
                   ))}
@@ -1696,7 +1700,7 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
         onClose={() => setIsSettingsOpen(false)}
         theme={theme}
         onToggleTheme={toggleTheme}
-        selectedVoiceURI={selectedVoiceURI}
+        selectedVoiceId={selectedVoiceId}
         onSelectVoice={handleSelectVoice}
       />
       <UserProfileModal 

@@ -1,3 +1,5 @@
+import { getVoiceById } from './voiceLibrary';
+
 type VoiceMode = 'cloud' | 'browser';
 
 interface SpeakHandlers {
@@ -9,12 +11,11 @@ interface SpeakHandlers {
 }
 
 interface SpeakOptions extends SpeakHandlers {
-  selectedVoiceURI?: string;
+  selectedVoiceId?: string;
   cloudTimeoutMs?: number;
   coldStartWindowMs?: number;
   warmupWindowMs?: number;
   maxChunkChars?: number;
-  preferBrowserOnColdStart?: boolean;
 }
 
 let currentAudio: HTMLAudioElement | null = null;
@@ -29,6 +30,8 @@ const DEFAULT_CLOUD_TIMEOUT_MS = 3000;
 const DEFAULT_COLD_START_MS = 5 * 60 * 1000;
 const DEFAULT_WARMUP_WINDOW_MS = 2 * 60 * 1000;
 const DEFAULT_MAX_CHUNK_CHARS = 240;
+const DEFAULT_NEPALI_VOICE = 'ne-NP-SagarNeural';
+const DEFAULT_ENGLISH_VOICE = 'en-GB-RyanNeural';
 
 const detectNepali = (text: string) => /[\u0900-\u097F]/.test(text);
 
@@ -122,7 +125,7 @@ const warmUpCloud = async (voiceCode: string, warmupWindowMs: number) => {
   }
 };
 
-const speakBrowser = (chunks: VoiceChunk[], options: SpeakOptions, handlers: SpeakHandlers) => {
+const speakBrowser = (chunks: VoiceChunk[], handlers: SpeakHandlers) => {
   if (!('speechSynthesis' in window)) {
     handlers.onError?.(new Error('Text-to-speech is not supported in your browser'), 'browser');
     return;
@@ -141,13 +144,7 @@ const speakBrowser = (chunks: VoiceChunk[], options: SpeakOptions, handlers: Spe
     utterance.pitch = 1.0;
     utterance.volume = 1.0;
 
-    if (options.selectedVoiceURI) {
-      const voice = voices.find(v => v.voiceURI === options.selectedVoiceURI);
-      if (voice) {
-        utterance.voice = voice;
-        utterance.lang = voice.lang;
-      }
-    } else if (chunk.isNepali) {
+    if (chunk.isNepali) {
       const regionalVoice = voices.find(v => v.lang.startsWith('ne') || v.lang.startsWith('hi'));
       if (regionalVoice) {
         utterance.voice = regionalVoice;
@@ -213,6 +210,7 @@ const playCloudChunk = (
   stopCloudAudio();
   const cloudUrl = buildCloudUrl(chunk.text, chunk.voiceCode);
   const audio = new Audio(cloudUrl);
+  audio.preload = 'auto';
   currentAudio = audio;
 
   let started = false;
@@ -245,22 +243,21 @@ const playCloudChunk = (
   };
 
   const playCloud = new Promise<void>((resolve, reject) => {
-    audio.oncanplaythrough = () => {
-      audio
-        .play()
-        .catch(err => {
-          clearTimeoutSafe();
-          reject(err);
-        });
-    };
-    audio.onerror = () => {
+    const fail = (err: Error) => {
       clearTimeoutSafe();
-      reject(new Error('Network/Server Error'));
+      reject(err);
     };
-    audio.onended = () => {
+    const done = () => {
       clearTimeoutSafe();
       resolve();
     };
+
+    audio.onerror = () => fail(new Error('Network/Server Error'));
+    audio.onended = () => done();
+
+    audio.play().catch(err => {
+      fail(err instanceof Error ? err : new Error('Audio play failed'));
+    });
   });
 
   const forceFallback = new Promise<void>((_, reject) =>
@@ -382,25 +379,29 @@ const speak = async (text: string, options: SpeakOptions = {}) => {
   const coldStartWindowMs = options.coldStartWindowMs ?? DEFAULT_COLD_START_MS;
   const warmupWindowMs = options.warmupWindowMs ?? DEFAULT_WARMUP_WINDOW_MS;
   const maxChunkChars = options.maxChunkChars ?? DEFAULT_MAX_CHUNK_CHARS;
-  const preferBrowser = options.preferBrowserOnColdStart === true;
   const rawChunks = splitLongText(text, maxChunkChars);
   if (!rawChunks.length) return;
+  const preferredVoice = getVoiceById(options.selectedVoiceId);
   const chunks: VoiceChunk[] = rawChunks.map(chunkText => {
     const isNepaliChunk = detectNepali(chunkText);
+    const preferredIsNepali = preferredVoice?.lang.startsWith('ne') || preferredVoice?.lang.startsWith('hi');
+    const preferredMatches = preferredVoice
+      ? (isNepaliChunk ? preferredIsNepali : !preferredIsNepali)
+      : false;
     return {
       text: chunkText,
       isNepali: isNepaliChunk,
-      voiceCode: isNepaliChunk ? 'ne-NP-SagarNeural' : 'en-AU-KenNeural'
+      voiceCode: preferredMatches
+        ? preferredVoice!.id
+        : isNepaliChunk
+          ? DEFAULT_NEPALI_VOICE
+          : DEFAULT_ENGLISH_VOICE
     };
   });
 
   const coldStart = isColdStart(coldStartWindowMs);
-  const allowCloudAttemptAfterWarmup = warmupBypassUntil && Date.now() < warmupBypassUntil;
-
-  if (preferBrowser && coldStart && !allowCloudAttemptAfterWarmup) {
+  if (coldStart) {
     warmUpCloud(chunks[0].voiceCode, warmupWindowMs).catch(() => {});
-    speakBrowser(chunks, options, handlers);
-    return;
   }
 
   try {
@@ -413,7 +414,7 @@ const speak = async (text: string, options: SpeakOptions = {}) => {
     if (error?.cloudStarted) {
       return;
     }
-    speakBrowser(chunks, options, handlers);
+    speakBrowser(chunks, handlers);
   }
 };
 
