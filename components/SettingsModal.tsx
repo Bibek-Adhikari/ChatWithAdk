@@ -1,4 +1,4 @@
-import React, { useEffect, useCallback, memo } from 'react';
+import React, { useEffect, useCallback, memo, useState, useMemo } from 'react';
 import { VOICE_LIBRARY } from '../services/voiceLibrary';
 
 interface ShortcutItem {
@@ -121,6 +121,7 @@ const SettingsModal: React.FC<SettingsModalProps> = memo(({
   selectedVoiceId,
   onSelectVoice
 }) => {
+  const [voiceGender, setVoiceGender] = useState<'all' | 'male' | 'female'>('all');
   // Handle escape key and body scroll lock
   useEffect(() => {
     if (!isOpen) return;
@@ -143,6 +144,11 @@ const SettingsModal: React.FC<SettingsModalProps> = memo(({
     const voiceId = e.target.value;
     onSelectVoice(voiceId);
   }, [onSelectVoice]);
+
+  const filteredVoices = useMemo(() => {
+    if (voiceGender === 'all') return VOICE_LIBRARY;
+    return VOICE_LIBRARY.filter(voice => voice.gender === voiceGender);
+  }, [voiceGender]);
 
   if (!isOpen) return null;
 
@@ -232,6 +238,33 @@ const SettingsModal: React.FC<SettingsModalProps> = memo(({
               </div>
 
               <div className="relative">
+                <div className="flex items-center gap-2 mb-3">
+                  <span className={`text-[10px] font-black uppercase tracking-[0.2em] ${
+                    theme === 'dark' ? 'text-slate-500' : 'text-slate-400'
+                  }`}>
+                    Gender Filter
+                  </span>
+                  <div className="flex gap-2">
+                    {(['all', 'male', 'female'] as const).map(option => (
+                      <button
+                        key={option}
+                        type="button"
+                        onClick={() => setVoiceGender(option)}
+                        className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${
+                          voiceGender === option
+                            ? theme === 'dark'
+                              ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+                              : 'bg-blue-50 text-blue-700 border border-blue-200'
+                            : theme === 'dark'
+                              ? 'bg-slate-900/40 text-slate-500 border border-white/5 hover:text-slate-300'
+                              : 'bg-white text-slate-400 border border-slate-200 hover:text-slate-600'
+                        }`}
+                      >
+                        {option}
+                      </button>
+                    ))}
+                  </div>
+                </div>
                 <select 
                   value={selectedVoiceId}
                   onChange={handleVoiceSelect}
@@ -242,9 +275,9 @@ const SettingsModal: React.FC<SettingsModalProps> = memo(({
                   }`}
                 >
                   <option value="">Auto (Language Default)</option>
-                  {VOICE_LIBRARY.map(voice => (
+                  {filteredVoices.map(voice => (
                     <option key={voice.id} value={voice.id}>
-                      {voice.name} ??? {voice.lang}
+                      {voice.name} - {voice.lang}
                     </option>
                   ))}
                 </select>

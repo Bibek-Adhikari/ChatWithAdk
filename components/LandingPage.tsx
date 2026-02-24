@@ -13,6 +13,7 @@ import Plans from './Plans';
 import { chatStorageService } from '../services/chatStorageService';
 import { adminService } from '../services/adminService';
 import { ChatSession } from '../types';
+import { VOICE_LIBRARY } from '../services/voiceLibrary';
 import { readBoolean, readJson, readString, writeString } from '../services/storage';
 
 const ADMIN_EMAILS = [
@@ -77,6 +78,11 @@ const LandingPage: React.FC = () => {
     });
   }, []);
 
+  const handleSelectVoice = useCallback((voiceId: string) => {
+    setSelectedVoiceId(voiceId);
+    writeString('selectedVoiceId', voiceId, { persist: 'both' });
+  }, []);
+
   const [user, setUser] = useState<User | null>(null);
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(() => {
@@ -93,6 +99,12 @@ const LandingPage: React.FC = () => {
   const [isProfileOpen, setIsProfileOpen] = useState<{ open: boolean; showPricing: boolean }>({ open: false, showPricing: false });
   const [isAdminDashboardOpen, setIsAdminDashboardOpen] = useState(false);
   const [isPlansOpen, setIsPlansOpen] = useState(false);
+  const [selectedVoiceId, setSelectedVoiceId] = useState<string>(() => {
+    const savedId = readString('selectedVoiceId', '');
+    if (savedId && VOICE_LIBRARY.some(v => v.id === savedId)) return savedId;
+    const legacy = readString('selectedVoiceURI', '');
+    return VOICE_LIBRARY.some(v => v.id === legacy) ? legacy : '';
+  });
   const [isProUser, setIsProUser] = useState(false);
   const [imageError, setImageError] = useState(false);
 
@@ -440,8 +452,8 @@ const LandingPage: React.FC = () => {
         onClose={() => setIsSettingsOpen(false)}
         theme={theme}
         onToggleTheme={toggleTheme}
-        selectedVoiceId=""
-        onSelectVoice={() => {}}
+        selectedVoiceId={selectedVoiceId}
+        onSelectVoice={handleSelectVoice}
       />
 
       <UserProfileModal 
