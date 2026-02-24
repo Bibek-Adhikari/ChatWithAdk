@@ -8,7 +8,6 @@ import {
   Loader2,
   Sparkles,
   Download,
-  RefreshCw,
   Eye,
   Code2,
   Shield,
@@ -51,13 +50,22 @@ const generateFallbackFlowchart = (code: string, language: string): string => {
 
   const cleanedLines = rawLines.length > 0 ? rawLines : ['Process input code'];
 
-  const sanitize = (text: string) =>
-    text
+  const sanitize = (text: string) => {
+    let cleaned = text
       .replace(/\s+/g, ' ')
-      .replace(/[:]/g, ' -')
-      .replace(/["`]/g, "'")
+      .replace(/=>/g, '=')
+      .replace(/->/g, '-')
+      .replace(/[:?]/g, ' ')
+      .replace(/[\\/]/g, '-')
+      .replace(/["'`]/g, '')
       .replace(/[{}\[\]<>]/g, '')
-      .slice(0, 72);
+      .replace(/[()]/g, '')
+      .replace(/\|/g, ' ')
+      .trim();
+
+    cleaned = cleaned.replace(/[^a-zA-Z0-9 _.,+=-]/g, '').trim();
+    return (cleaned || 'step').slice(0, 72);
+  };
 
   const nodeIds: Array<{ id: string; type: 'condition' | 'inputoutput' | 'operation' }> = [];
   const lines: string[] = [`flowchart TD`, `st([Start ${language || 'code'}])`];
