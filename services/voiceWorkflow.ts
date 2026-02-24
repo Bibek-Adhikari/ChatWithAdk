@@ -26,9 +26,9 @@ let warmupBypassUntil = 0;
 let cancelCloudPlayback: (() => void) | null = null;
 let activeMode: VoiceMode | null = null;
 let browserSessionId = 0;
-let edgeHealthState: 'unknown' | 'up' | 'down' = 'unknown';
-let edgeHealthCheckedAt = 0;
-let edgeHealthPromise: Promise<'up' | 'down'> | null = null;
+type EdgeHealthState = 'unknown' | 'up' | 'down';
+
+const edgeHealthCache = new Map<string, { state: EdgeHealthState; checkedAt: number; inFlight?: Promise<'up' | 'down'> }>();
 
 const DEFAULT_CLOUD_TIMEOUT_MS = 3000;
 const DEFAULT_COLD_START_MS = 5 * 60 * 1000;
@@ -47,24 +47,38 @@ type VoiceChunk = {
   voiceCode: string;
 };
 
-const buildCloudUrl = (text: string, voiceCode: string) =>
-  `https://bibekadk-chatadk.hf.space/speak?text=${encodeURIComponent(text)}&voice=${voiceCode}`;
-
-const markEdgeUp = () => {
-  edgeHealthState = 'up';
-  edgeHealthCheckedAt = Date.now();
+const buildCloudUrl = (text: string, voiceCode: string) => {
+  const url = new URL('https://bibekadk-chatadk.hf.space/speak');
+  url.searchParams.set('text', text.trim());
+  url.searchParams.set('voice', voiceCode);
+  url.searchParams.set('rate', '+20%');
+  return url.toString();
 };
 
-const markEdgeDown = () => {
-  edgeHealthState = 'down';
-  edgeHealthCheckedAt = Date.now();
+const getEdgeCache = (voiceCode: string) => {
+  if (!edgeHealthCache.has(voiceCode)) {
+    edgeHealthCache.set(voiceCode, { state: 'unknown', checkedAt: 0 });
+  }
+  return edgeHealthCache.get(voiceCode)!;
 };
 
-const checkEdgeHealth = async (): Promise<'up' | 'down'> => {
+const markEdgeUp = (voiceCode: string) => {
+  const entry = getEdgeCache(voiceCode);
+  entry.state = 'up';
+  entry.checkedAt = Date.now();
+};
+
+const markEdgeDown = (voiceCode: string) => {
+  const entry = getEdgeCache(voiceCode);
+  entry.state = 'down';
+  entry.checkedAt = Date.now();
+};
+
+const checkEdgeHealth = async (voiceCode: string): Promise<'up' | 'down'> => {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), EDGE_HEALTH_TIMEOUT_MS);
   try {
-    const url = buildCloudUrl('ping', DEFAULT_ENGLISH_VOICE);
+    const url = buildCloudUrl('ping', voiceCode || DEFAULT_ENGLISH_VOICE);
     const response = await fetch(url, {
       method: 'GET',
       cache: 'no-store',
@@ -72,27 +86,30 @@ const checkEdgeHealth = async (): Promise<'up' | 'down'> => {
       signal: controller.signal
     });
     clearTimeout(timeoutId);
-    if (response.ok) {
-      markEdgeUp();
+    const contentType = response.headers.get('content-type') || '';
+    if (response.ok && contentType.startsWith('audio/')) {
+      markEdgeUp(voiceCode);
       return 'up';
     }
-    markEdgeDown();
+    markEdgeDown(voiceCode);
     return 'down';
   } catch {
     clearTimeout(timeoutId);
-    markEdgeDown();
+    markEdgeDown(voiceCode);
     return 'down';
   }
 };
 
-const ensureEdgeHealth = async (): Promise<'up' | 'down' | 'unknown'> => {
-  const isFresh = Date.now() - edgeHealthCheckedAt < EDGE_HEALTH_TTL_MS;
-  if (edgeHealthState !== 'unknown' && isFresh) return edgeHealthState;
-  if (edgeHealthPromise) return edgeHealthPromise;
-  edgeHealthPromise = checkEdgeHealth().finally(() => {
-    edgeHealthPromise = null;
+const ensureEdgeHealth = async (voiceCode: string): Promise<'up' | 'down' | 'unknown'> => {
+  const entry = getEdgeCache(voiceCode);
+  const isFresh = Date.now() - entry.checkedAt < EDGE_HEALTH_TTL_MS;
+  if (entry.state !== 'unknown' && isFresh) return entry.state;
+  if (entry.inFlight) return entry.inFlight;
+  entry.inFlight = checkEdgeHealth(voiceCode).finally(() => {
+    const freshEntry = getEdgeCache(voiceCode);
+    delete freshEntry.inFlight;
   });
-  return edgeHealthPromise;
+  return entry.inFlight;
 };
 
 const splitLongText = (text: string, maxChars: number) => {
@@ -509,7 +526,8 @@ const speak = async (text: string, options: SpeakOptions = {}) => {
     warmUpCloud(chunks[0].voiceCode, warmupWindowMs).catch(() => {});
   }
 
-  const edgeHealth = await ensureEdgeHealth();
+  const primaryVoice = chunks[0]?.voiceCode || DEFAULT_ENGLISH_VOICE;
+  const edgeHealth = await ensureEdgeHealth(primaryVoice);
   if (edgeHealth === 'down') {
     await speakBrowser(chunks, handlers);
     return;
@@ -519,7 +537,7 @@ const speak = async (text: string, options: SpeakOptions = {}) => {
   while (attempt < 2) {
     try {
       await speakCloud(chunks, options, handlers);
-      markEdgeUp();
+      markEdgeUp(primaryVoice);
       return;
     } catch (error: any) {
       if (error?.message === 'Cloud playback cancelled') {
@@ -529,7 +547,7 @@ const speak = async (text: string, options: SpeakOptions = {}) => {
         return;
       }
       if (error?.message?.includes('Network/Server Error') || error?.message?.includes('Cloud Too Slow')) {
-        markEdgeDown();
+        markEdgeDown(primaryVoice);
       }
       handlers.onError?.(error, 'cloud');
       attempt += 1;
