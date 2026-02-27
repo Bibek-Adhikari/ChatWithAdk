@@ -154,6 +154,7 @@ export default function VSCodeCompiler({ onClose }: VSCodeCompilerProps) {
     return (saved as Theme) || 'github-dark';
   });
   const [isThemeMenuOpen, setIsThemeMenuOpen] = useState(false);
+  const [programInput, setProgramInput] = useState('');
 
   // Auth State
   const [currentUser, setCurrentUser] = useState(auth.currentUser);
@@ -185,6 +186,62 @@ export default function VSCodeCompiler({ onClose }: VSCodeCompilerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const bcRef = useRef<BroadcastChannel | null>(null);
   const retryCount = useRef(0);
+
+  // Debug instrumentation for mobile layout behavior
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    // #region agent log
+    fetch('http://127.0.0.1:7474/ingest/c59c9dec-5bbc-4cec-bd5a-d774d9dad2f8', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Debug-Session-Id': '5fa0c0',
+      },
+      body: JSON.stringify({
+        sessionId: '5fa0c0',
+        runId: 'pre-redesign',
+        hypothesisId: 'H1',
+        location: 'components/VSCodeCompiler.tsx:mobileLayoutMount',
+        message: 'VSCodeCompiler mounted with initial viewport',
+        data: {
+          innerWidth: window.innerWidth,
+          innerHeight: window.innerHeight,
+        },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+    // #endregion
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    // #region agent log
+    fetch('http://127.0.0.1:7474/ingest/c59c9dec-5bbc-4cec-bd5a-d774d9dad2f8', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Debug-Session-Id': '5fa0c0',
+      },
+      body: JSON.stringify({
+        sessionId: '5fa0c0',
+        runId: 'pre-redesign',
+        hypothesisId: 'H2',
+        location: 'components/VSCodeCompiler.tsx:mobileLayoutState',
+        message: 'VSCodeCompiler layout state changed',
+        data: {
+          device,
+          splitRatio,
+          consoleHeight,
+          mobileOutputHeight,
+          isEditorVisible,
+          isPreviewVisible,
+          isConsoleVisible,
+        },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+    // #endregion
+  }, [device, splitRatio, consoleHeight, mobileOutputHeight, isEditorVisible, isPreviewVisible, isConsoleVisible]);
 
   // Initialize BroadcastChannel
   useEffect(() => {
@@ -328,6 +385,30 @@ export default function VSCodeCompiler({ onClose }: VSCodeCompilerProps) {
 
       const config = LANGUAGE_CONFIGS[activeLanguage as Exclude<Language, 'web'>];
       const code = polyglotCode[activeLanguage];
+      const stdin = programInput;
+
+      // #region agent log
+      fetch('http://127.0.0.1:7474/ingest/c59c9dec-5bbc-4cec-bd5a-d774d9dad2f8', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Debug-Session-Id': '5fa0c0',
+        },
+        body: JSON.stringify({
+          sessionId: '5fa0c0',
+          runId: 'pre-stdin-support',
+          hypothesisId: 'H3',
+          location: 'components/VSCodeCompiler.tsx:runCode-nonWeb',
+          message: 'Running non-web code with stdin',
+          data: {
+            activeLanguage,
+            hasInput: !!stdin,
+            inputLength: stdin.length,
+          },
+          timestamp: Date.now(),
+        }),
+      }).catch(() => {});
+      // #endregion
 
       try {
         if (activeLanguage === 'kotlin') {
@@ -357,6 +438,7 @@ export default function VSCodeCompiler({ onClose }: VSCodeCompilerProps) {
             body: JSON.stringify({
               compiler: config.compiler,
               code: code,
+              stdin: stdin,
               save: false
             })
           });
@@ -379,6 +461,30 @@ export default function VSCodeCompiler({ onClose }: VSCodeCompilerProps) {
           if (result.compiler_error) {
             addLog('error', result.compiler_error);
           }
+
+          // #region agent log
+          fetch('http://127.0.0.1:7474/ingest/c59c9dec-5bbc-4cec-bd5a-d774d9dad2f8', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Debug-Session-Id': '5fa0c0',
+            },
+            body: JSON.stringify({
+              sessionId: '5fa0c0',
+              runId: 'pre-stdin-support',
+              hypothesisId: 'H4',
+              location: 'components/VSCodeCompiler.tsx:runCode-wandbox',
+              message: 'Non-web execution completed',
+              data: {
+                hasProgramOutput: !!result.program_output,
+                hasProgramError: !!result.program_error,
+                hasCompilerError: !!result.compiler_error,
+              },
+              timestamp: Date.now(),
+            }),
+          }).catch(() => {});
+          // #endregion
+
           if (!result.program_output && !result.program_error && !result.compiler_error) {
             addLog('info', 'Program executed successfully with no output.');
           }
@@ -1321,6 +1427,22 @@ ${jsCode}
                     </button>
                   </div>
                 </div>
+
+                {activeLanguage !== 'web' && (
+                  <div className="border-b border-[#333] bg-[#18181a] px-4 py-2 flex flex-col gap-1">
+                    <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">
+                      Program Input (stdin)
+                    </label>
+                    <textarea
+                      value={programInput}
+                      onChange={(e) => setProgramInput(e.target.value)}
+                      rows={2}
+                      placeholder="Type values here for scanf / input() / readLine()..."
+                      className="w-full bg-[#111] border border-[#333] rounded-md px-2 py-1.5 text-xs text-gray-200 placeholder:text-gray-500 resize-y focus:outline-none focus:ring-1 focus:ring-blue-500/60"
+                    />
+                  </div>
+                )}
+
                 <div className="flex-1 overflow-y-auto p-2 font-mono text-xs space-y-1">
                   {logs.length === 0 && (
                     <div className="text-gray-600 italic p-2">Console is empty. Run code to see logs.</div>
