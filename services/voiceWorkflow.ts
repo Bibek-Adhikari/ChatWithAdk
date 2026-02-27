@@ -31,7 +31,8 @@ type EdgeHealthState = 'unknown' | 'up' | 'down';
 
 const edgeHealthCache = new Map<string, { state: EdgeHealthState; checkedAt: number; inFlight?: Promise<'up' | 'down'> }>();
 
-const DEFAULT_CLOUD_TIMEOUT_MS = 3000;
+const DEFAULT_CLOUD_TIMEOUT_MS = 6000;
+const DEFAULT_COLD_START_TIMEOUT_MS = 12000;
 const DEFAULT_COLD_START_MS = 5 * 60 * 1000;
 const DEFAULT_WARMUP_WINDOW_MS = 2 * 60 * 1000;
 const DEFAULT_MAX_CHUNK_CHARS = 240;
@@ -562,21 +563,21 @@ const speak = async (text: string, options: SpeakOptions = {}) => {
   });
 
   const coldStart = isColdStart(coldStartWindowMs);
+  const cloudTimeoutMs = options.cloudTimeoutMs
+    ?? (coldStart ? DEFAULT_COLD_START_TIMEOUT_MS : DEFAULT_CLOUD_TIMEOUT_MS);
+  const cloudOptions: SpeakOptions = { ...options, cloudTimeoutMs };
   if (coldStart) {
     warmUpCloud(chunks[0].voiceCode, warmupWindowMs).catch(() => {});
   }
 
+  // Try Edge-TTS first, then browser
   const primaryVoice = chunks[0]?.voiceCode || DEFAULT_ENGLISH_VOICE;
-  const edgeHealth = await ensureEdgeHealth(primaryVoice);
-  if (edgeHealth === 'down') {
-    await speakBrowser(chunks, handlers);
-    return;
-  }
+  console.log('[TTS] Trying Edge-TTS...');
 
   let attempt = 0;
   while (attempt < 2) {
     try {
-      await speakCloud(chunks, options, handlers);
+      await speakCloud(chunks, cloudOptions, handlers);
       markEdgeUp(primaryVoice);
       return;
     } catch (error: any) {
@@ -596,28 +597,12 @@ const speak = async (text: string, options: SpeakOptions = {}) => {
         continue;
       }
       stopCloudAudio();
+      console.log('[TTS] Edge-TTS failed, using browser speech...');
       await speakBrowser(chunks, handlers);
       return;
     }
   }
   return;
-
-  /*
-  // legacy single-try path
-  try {
-    await speakCloud(chunks, options, handlers);
-  } catch (error: any) {
-    if (error?.message === 'Cloud playback cancelled') {
-      return;
-    }
-    handlers.onError?.(error, 'cloud');
-    if (error?.cloudStarted) {
-      return;
-    }
-    stopCloudAudio();
-    await speakBrowser(chunks, handlers);
-  }
-  */
 };
 
 export const voiceWorkflow = {

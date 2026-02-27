@@ -36,5 +36,12 @@ service cloud.firestore {
       allow read: if isAuthenticated() && isOwner(userId);
       allow write: if false; // Only programmable via Admin SDK or specifically synced
     }
+
+    // System configuration - readable by authenticated users
+    // WARNING: Ensure /system collection only contains non-sensitive public config
+    match /system/{document=**} {
+      allow read: if isAuthenticated() && resource.data.isPublic == true;
+      allow write: if false; // Only programmable via Admin SDK
+    }
   }
 }

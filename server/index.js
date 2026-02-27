@@ -86,8 +86,9 @@ const requireFirebaseAuth = async (req, res, next) => {
 
 // Middleware
 app.use(cors());
+app.set('trust proxy', 1); // Enable trust proxy for correct IP detection behind load balancers
+app.use(express.json()); // MUST be before route handlers
 app.use('/api/payments', paymentsRouter);
-app.use(express.json());
 
 // ─── Health Check ────────────────────────────────────────────────
 app.get('/api/health', (req, res) => {
@@ -381,4 +382,3 @@ app.listen(PORT, () => {
   console.log(`   Convert: POST http://localhost:${PORT}/api/convert`);
   console.log(`\n`);
 });
-
