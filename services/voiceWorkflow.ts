@@ -570,7 +570,7 @@ const speak = async (text: string, options: SpeakOptions = {}) => {
     warmUpCloud(chunks[0].voiceCode, warmupWindowMs).catch(() => {});
   }
 
-  // Try Edge-TTS first, then browser
+  // Try Edge-TTS (cloud) first, then fall back to browser speech if cloud is unavailable
   const primaryVoice = chunks[0]?.voiceCode || DEFAULT_ENGLISH_VOICE;
   console.log('[TTS] Trying Edge-TTS...');
 
@@ -597,7 +597,7 @@ const speak = async (text: string, options: SpeakOptions = {}) => {
         continue;
       }
       stopCloudAudio();
-      console.log('[TTS] Edge-TTS failed, using browser speech...');
+      console.log('[TTS] Edge-TTS failed after retries, falling back to browser speech...');
       await speakBrowser(chunks, handlers);
       return;
     }

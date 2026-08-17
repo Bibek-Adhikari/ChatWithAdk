@@ -3,6 +3,10 @@ export const EDGE_TTS_BASE_URL = (import.meta.env.VITE_EDGE_TTS_URL || DEFAULT_E
   .replace(/\/+$/, '');
 
 const EDGE_VOICES_TIMEOUT_MS = 1500;
+const EDGE_HEALTH_TTL_MS = 30 * 1000;
+
+let lastHealthCheckAt = 0;
+let lastHealthStatus: boolean | null = null;
 
 type EdgeVoiceRecord = {
   ShortName?: string;
@@ -31,4 +35,32 @@ export const fetchEdgeVoiceIds = async (): Promise<string[]> => {
   } finally {
     clearTimeout(timeoutId);
   }
+};
+
+/**
+ * Lightweight health check to verify Edge TTS is reachable
+ * before starting any speech synthesis.
+ *
+ * Returns:
+ * - true  → Edge TTS reachable and returned at least one voice id
+ * - false → Request failed, timed out, or returned no usable voices
+ */
+export const isEdgeTtsAvailable = async (): Promise<boolean> => {
+  const now = Date.now();
+
+  // Reuse recent result to avoid hammering the edge service
+  if (lastHealthStatus !== null && now - lastHealthCheckAt < EDGE_HEALTH_TTL_MS) {
+    return lastHealthStatus;
+  }
+
+  try {
+    const ids = await fetchEdgeVoiceIds();
+    lastHealthStatus = ids.length > 0;
+  } catch {
+    lastHealthStatus = false;
+  } finally {
+    lastHealthCheckAt = now;
+  }
+
+  return lastHealthStatus;
 };
