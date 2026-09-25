@@ -1,86 +1,53 @@
-import { supabase } from "../supabaseClient";
-import { ChatSession, ChatMessage } from "../types";
+import { ChatSession } from "../types";
+import { authedFetch, authedGet, authedPost } from "./serverApi";
 
+/**
+ * Chat backup in Supabase — now fully server-mediated.
+ *
+ * Old behavior: the browser wrote straight to Supabase with the anon key and
+ * a self-reported user_id (no verification). New behavior: every call goes to
+ * the Express gateway, which verifies the Firebase ID token and uses the
+ * service-role key. Same method names, so callers (storageAggregator, admin
+ * dashboard) are unchanged. Guests (no Firebase user) silently skip backup.
+ */
 export const supabaseStorageService = {
   /**
-   * Saves or updates a chat session in Supabase
+   * Saves or updates a chat session in Supabase (verified backup).
    */
   async saveSession(userId: string, session: ChatSession): Promise<void> {
-    try {
-      // 1. Upsert the session metadata
-      const { error: sessionError } = await supabase
-        .from('sessions')
-        .upsert({
-          id: session.id,
-          user_id: userId,
-          title: session.title,
-          updated_at: new Date(session.updatedAt).toISOString()
-        });
-
-      if (sessionError) throw sessionError;
-
-      // 2. Clear existing messages for this session and re-insert 
-      // (Simple strategy for secondary backup)
-      const { error: deleteError } = await supabase
-        .from('messages')
-        .delete()
-        .eq('session_id', session.id);
-
-      if (deleteError) throw deleteError;
-
-      if (session.messages.length > 0) {
-        const messagesToInsert = session.messages.map(msg => ({
-          session_id: session.id,
-          role: msg.role,
-          parts: msg.parts, // JSONB column
-          timestamp: msg.timestamp,
-          model_id: msg.modelId
-        }));
-
-        const { error: messageError } = await supabase
-          .from('messages')
-          .insert(messagesToInsert);
-
-        if (messageError) throw messageError;
-      }
-    } catch (error) {
-      console.error("Error saving session to Supabase:", error);
-      // We don't throw here to avoid breaking the primary firebase flow
-    }
+    await authedPost('/api/supabase/chat/sessions', {
+      id: session.id,
+      title: session.title,
+      updatedAt: session.updatedAt,
+      messages: (session.messages || []).map((msg) => ({
+        role: msg.role,
+        parts: msg.parts,
+        timestamp: msg.timestamp,
+        modelId: msg.modelId,
+      })),
+    });
   },
 
   /**
-   * Deletes a specific session from Supabase
+   * Deletes a specific session from Supabase (scoped to the verified user).
    */
   async deleteSession(sessionId: string): Promise<void> {
     try {
-      // cascade delete should handle messages if foreign keys are set, 
-      // but we do it manually to be safe
-      await supabase.from('messages').delete().eq('session_id', sessionId);
-      await supabase.from('sessions').delete().eq('id', sessionId);
+      const res = await authedFetch(`/api/supabase/chat/sessions/${encodeURIComponent(sessionId)}`, {
+        method: 'DELETE',
+      });
+      if (!res || !res.ok) {
+        throw new Error((res && (await res.text().catch(() => ''))) || 'Delete failed');
+      }
     } catch (error) {
-      console.error("Error deleting session from Supabase:", error);
+      console.error('Error deleting session from Supabase:', error);
     }
   },
 
   /**
-   * Fetches latest sessions for admin view
+   * Fetches latest sessions for admin view (server enforces admin emails).
    */
   async getAllSessionsForAdmin(): Promise<any[]> {
-    try {
-      const { data, error } = await supabase
-        .from('sessions')
-        .select(`
-          *,
-          messages (count)
-        `)
-        .order('updated_at', { ascending: false });
-
-      if (error) throw error;
-      return data || [];
-    } catch (error) {
-      console.error("Error fetching admin sessions:", error);
-      return [];
-    }
-  }
+    return authedGet<any>('/api/supabase/admin/sessions?limit=100');
+  },
 };

@@ -6,7 +6,7 @@ import { getFirestore, Timestamp } from 'firebase-admin/firestore';
 
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
 const stripeWebhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
-const stripe = stripeSecretKey ? new Stripe(stripeSecretKey, { apiVersion: '2023-10-16' }) : null;
+const stripe = stripeSecretKey ? new Stripe(stripeSecretKey) : null;
 const router = express.Router();
 const jsonParser = express.json();
 

@@ -1,13 +1,22 @@
 
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Plus,
   Code2,
   Image as ImageIcon,
   RefreshCw,
   Sparkles,
   Zap,
-  ArrowRight
+  ArrowUp,
+  PanelLeft,
+  SquarePen,
+  ChevronDown,
+  Check,
+  Paperclip,
+  X,
+  Globe,
+  Lightbulb,
+  PenLine,
+  GraduationCap
 } from 'lucide-react';
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { ChatMessage, ChatSession, GenerationState, MessagePart } from './types';
@@ -195,7 +204,35 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
     fetchConfig();
   }, [isAdminDashboardOpen]); // Re-fetch when dashboard closes in case of changes
 
-  const [dailyLimit] = useState(20); // Free limit: 20 messages
+  const [dailyLimit, setDailyLimit] = useState(20); // Free limit: 20 messages (server quota wins when available)
+  const [quotaServerActive, setQuotaServerActive] = useState(false);
+  const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/, '');
+
+  // Server quota is the source of truth when reachable (per-user, per-day,
+  // enforced server-side — the localStorage count is only a fallback for
+  // guests / unreachable-server mode).
+  const refreshServerQuota = useCallback(async () => {
+    try {
+      const token = await auth.currentUser?.getIdToken().catch(() => null);
+      if (!token) {
+        setQuotaServerActive(false);
+        return;
+      }
+      const r = await fetch(`${API_BASE_URL}/api/proxy/quota`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!r.ok) {
+        setQuotaServerActive(false);
+        return;
+      }
+      const q = await r.json();
+      if (typeof q?.used?.chat === 'number') setUsageCount(q.used.chat);
+      if (typeof q?.limits?.chat === 'number') setDailyLimit(q.limits.chat);
+      setQuotaServerActive(true);
+    } catch {
+      setQuotaServerActive(false);
+    }
+  }, []);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const modelMenuRef = useRef<HTMLDivElement>(null);
 
@@ -402,6 +439,10 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
         setAuthModal(prev => ({ ...prev, open: false }));
         // Ensure user is synced
         adminService.syncUser(currentUser);
+        // Pull server-side chat quota (source of truth when reachable)
+        refreshServerQuota();
+      } else {
+        setQuotaServerActive(false);
       }
       // Reset to Groq if user logs out and was on a restricted model
       if (!currentUser) {
@@ -670,8 +711,9 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
 
     updateSessionMessages(sessionId, (prev) => [...prev, userMessage], inputValue.trim());
     
-    // Increment usage count
-    if (!isPro) {
+    // Local usage count only when the server quota is not authoritative
+    // (guests / server unreachable). The server counts metered messages itself.
+    if (!isPro && !quotaServerActive) {
       const newCount = usageCount + 1;
       setUsageCount(newCount);
       writeString('daily_usage_count', newCount.toString(), { persist: 'both' });
@@ -828,6 +870,8 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
       setStatus(prev => ({ ...prev, isTyping: false }));
       setSelectedImage(null);
       if (fileInputRef.current) fileInputRef.current.value = '';
+      // Re-sync server quota display after each message (no-op when unreachable)
+      void refreshServerQuota();
     }
   };
 
@@ -992,13 +1036,7 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
   );
 
   return (
-    <div className={`flex h-screen overflow-hidden transition-colors duration-500 relative ${theme === 'dark' ? 'bg-[#020617] text-white' : 'bg-white text-slate-900'}`}>
-      {/* Global Background Decor - Unified Blue Theme for Dark Mode */}
-      <div className="absolute inset-0 pointer-events-none overflow-hidden z-0">
-        <div className={`absolute top-[-20%] left-[-10%] w-[60%] h-[70%] rounded-full blur-[120px] opacity-20 transition-colors duration-1000 ${theme === 'dark' ? 'bg-blue-600' : 'bg-blue-300'}`}></div>
-        <div className={`absolute bottom-[-20%] right-[-10%] w-[60%] h-[70%] rounded-full blur-[120px] opacity-20 transition-colors duration-1000 ${theme === 'dark' ? 'bg-indigo-600' : 'bg-blue-200'}`}></div>
-      </div>
-
+    <div className={`flex h-screen overflow-hidden transition-colors duration-300 relative ${theme === 'dark' ? 'bg-[#212121] text-[#ececec]' : 'bg-white text-neutral-900'}`}>
       <Sidebar 
         sessions={sessions}
         currentSessionId={currentSessionId}
@@ -1030,125 +1068,102 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
       />
 
 
-      <div className={`flex-1 flex flex-col min-w-0 transition-all duration-500 ${theme === 'dark' ? 'bg-slate-950/20' : 'bg-slate-50'}`}>
+      <div className={`flex-1 flex flex-col min-w-0 transition-all duration-300 ${theme === 'dark' ? 'bg-[#212121]' : 'bg-white'}`}>
 
-        {/* Mobile Mini Navbar (Visible only on mobile) */}
-        <div className={`lg:hidden flex items-center justify-between p-3 border-b sticky top-0 z-30
-          ${theme === 'dark' ? 'bg-slate-950/80 border-white/5' : 'bg-white/80 border-slate-100'} backdrop-blur-md`}>
-          <button 
-            onClick={() => setIsSidebarOpen(true)}
-            className={`w-9 h-9 flex items-center justify-center rounded-lg transition-all active:scale-90
-              ${theme === 'dark' ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-slate-900'}`}
-          >
-            <i className="fas fa-bars-staggered text-sm"></i>
-          </button>
-          
-          <button 
-            onClick={() => navigate('/')}
-            className="flex items-center gap-2 -ml-8 transition-transform active:scale-95"
-          >
-            <img src="/assets/logo.webp" alt="ChatADK" className="w-9 h-9 rounded-xl shadow-xl object-cover border border-white/5" />
-            <span className={`text-[11px] font-black uppercase tracking-[0.2em] ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>ChatADK</span>
-          </button>
-
-          {user ? (
-            <button 
-              onClick={() => setIsProfileOpen({ open: true, showPricing: false })}
-              className={`w-9 h-9 rounded-lg border border-white/5 flex items-center justify-center transition-all overflow-hidden ${theme === 'dark' ? 'bg-slate-900' : 'bg-slate-100'}`}
-            >
-              {user.photoURL && !imageError ? (
-                <img 
-                  src={user.photoURL} 
-                  alt="Avatar" 
-                  className="w-full h-full object-cover" 
-                  referrerPolicy="no-referrer"
-                  onError={() => setImageError(true)}
-                />
-              ) : (
-                <i className="fas fa-user-circle text-base text-blue-500"></i>
-              )}
-            </button>
-          ) : (
-            <button 
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-[10px] font-black tracking-widest active:scale-95 transition-all shadow-lg shadow-blue-500/20"
-              onClick={() => handleAuthClick('signin')}
-            >
-              SIGN IN
-            </button>
-          )}
-        </div>
-
-        {/* Desktop Standalone Floating Controls (Hidden on mobile) */}
-        <div className="hidden lg:flex fixed top-0 left-0 right-0 z-30 pointer-events-none items-center justify-between p-6">
-          <div className="flex items-center gap-3 pointer-events-auto">
-            <button 
+        {/* Unified slim top bar — DeepSeek / Claude style */}
+        <header className={`flex items-center justify-between h-14 px-3 sm:px-4 shrink-0 sticky top-0 z-20 border-b ${theme === 'dark' ? 'border-white/[0.06] bg-[#212121]/90 backdrop-blur-md' : 'border-black/[0.06] bg-white/90 backdrop-blur-md'}`}>
+          <div className="flex items-center gap-1">
+            <button
               onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-              className={`w-10 h-10 flex items-center justify-center rounded-xl shadow-xl transition-all active:scale-90 group
-                ${theme === 'dark' ? 'bg-slate-900/80 text-slate-400 hover:text-white border border-white/5 backdrop-blur-xl' : 'bg-white/90 text-slate-500 hover:text-slate-900 border border-slate-200 backdrop-blur-xl'}`}
-              title={isSidebarOpen ? "Close Sidebar" : "Open Sidebar"}
+              className={`w-9 h-9 flex items-center justify-center rounded-lg transition-colors ${theme === 'dark' ? 'text-neutral-400 hover:bg-white/[0.06] hover:text-white' : 'text-neutral-500 hover:bg-black/[0.05] hover:text-neutral-900'}`}
+              title={isSidebarOpen ? 'Close sidebar' : 'Open sidebar'}
             >
-              <i className={`fas ${isSidebarOpen ? 'fa-times' : 'fa-bars-staggered'} group-hover:scale-110 transition-transform text-sm`}></i>
+              <PanelLeft size={18} strokeWidth={1.8} />
             </button>
-            <button 
-              onClick={() => navigate('/')}
-              className={`w-10 h-10 flex items-center justify-center rounded-xl shadow-xl transition-all active:scale-90 group
-                ${theme === 'dark' ? 'bg-slate-900/80 text-slate-400 hover:text-white border border-white/5 backdrop-blur-xl' : 'bg-white/90 text-slate-500 hover:text-slate-900 border border-slate-200 backdrop-blur-xl'}`}
-              title="Home"
+            <button
+              onClick={() => handleNewChat()}
+              className={`w-9 h-9 flex items-center justify-center rounded-lg transition-colors ${theme === 'dark' ? 'text-neutral-400 hover:bg-white/[0.06] hover:text-white' : 'text-neutral-500 hover:bg-black/[0.05] hover:text-neutral-900'}`}
+              title="New chat (Ctrl+K)"
             >
-              <img src="/assets/logo.webp" alt="Home" className="w-5 h-5 rounded-lg object-cover" />
+              <SquarePen size={17} strokeWidth={1.8} />
             </button>
           </div>
 
-          <div className="flex items-center gap-3 pointer-events-auto">
+          {/* Center: model picker pill */}
+          <button
+            onClick={() => setIsModelMenuOpen(!isModelMenuOpen)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[14px] font-medium transition-colors ${theme === 'dark' ? 'text-neutral-200 hover:bg-white/[0.06]' : 'text-neutral-700 hover:bg-black/[0.05]'}`}
+          >
+            ChatADK {aiModel === 'gemini' ? 'Detail' : aiModel === 'groq' ? 'Flash' : aiModel === 'research' ? 'Reasoning' : aiModel === 'imagine' ? 'Imagine' : aiModel === 'motion' ? 'Motion' : 'Multi'}
+            <ChevronDown size={15} className={`opacity-50 transition-transform ${isModelMenuOpen ? 'rotate-180' : ''}`} />
+          </button>
+
+          <div className="flex items-center gap-1.5">
             {user ? (
-              <button 
+              <button
                 onClick={() => setIsProfileOpen({ open: true, showPricing: false })}
-                className={`w-10 h-10 rounded-xl border border-white/5 flex items-center justify-center transition-all overflow-hidden shadow-xl ${theme === 'dark' ? 'bg-slate-900/80 hover:bg-slate-800' : 'bg-white/90 hover:bg-slate-50'}`}
+                className={`w-8 h-8 rounded-full flex items-center justify-center overflow-hidden text-[13px] font-semibold transition-transform hover:scale-105 ${theme === 'dark' ? 'bg-white/10 text-neutral-200' : 'bg-neutral-200 text-neutral-700'}`}
                 title="Profile"
               >
                 {user.photoURL && !imageError ? (
-                  <img 
-                    src={user.photoURL} 
-                    alt="Avatar" 
-                    className="w-full h-full object-cover" 
-                    referrerPolicy="no-referrer"
-                    onError={() => setImageError(true)}
-                  />
-                ) : (
-                  <i className="fas fa-user-circle text-lg text-blue-500"></i>
-                )}
+                  <img src={user.photoURL} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" onError={() => setImageError(true)} />
+                ) : (user.displayName?.[0]?.toUpperCase() || user.email?.[0]?.toUpperCase() || 'U')}
               </button>
             ) : (
-              <button 
-                className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-[9px] font-black tracking-widest transition-all shadow-xl active:scale-95"
-                onClick={() => handleAuthClick('signin')}
-              >
-                <i className="fas fa-sign-in-alt"></i>
-                <span className="hidden sm:inline">SIGN IN</span>
-              </button>
+              <>
+                <button onClick={() => handleAuthClick('signin')} className={`hidden sm:block px-3 py-1.5 rounded-full text-[13px] font-medium transition-colors ${theme === 'dark' ? 'text-neutral-300 hover:bg-white/[0.06]' : 'text-neutral-600 hover:bg-black/[0.05]'}`}>
+                  Log in
+                </button>
+                <button onClick={() => handleAuthClick('signup')} className="px-3.5 py-1.5 rounded-full text-[13px] font-medium bg-black text-white hover:bg-neutral-800 dark:bg-white dark:text-black dark:hover:bg-neutral-200 transition-colors">
+                  Sign up
+                </button>
+              </>
             )}
           </div>
-        </div>
+        </header>
 
         {/* Main Chat Area */}
-        <main 
-          className="flex-1 overflow-hidden relative flex flex-col bg-transparent" 
+        <main
+          className="flex-1 overflow-hidden relative flex flex-col"
           ref={scrollRef}
         >
           {aiModel !== 'multi' ? (
-            <div className={`flex-1 overflow-y-auto px-3 sm:px-8 py-6 custom-scrollbar relative flex flex-col ${localizedMessages.length < 3 ? 'justify-center' : ''}`}>
-              <div className={`max-w-3xl mx-auto space-y-2 w-full ${localizedMessages.length < 3 ? 'flex-1 flex flex-col justify-center' : ''}`}>
+            <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-6 custom-scrollbar relative flex flex-col">
+              <div className="max-w-[768px] mx-auto w-full flex-1 flex flex-col">
                 {localizedMessages.length === 0 && !currentSession && (
-                  <div className="flex flex-col items-center justify-center min-h-[60vh] text-center space-y-6 py-10 opacity-50">
-                    <img src="/assets/logo.webp" alt="ChatADK" className="w-16 h-16 rounded-2xl object-cover opacity-40" />
-                    <p className={`text-[11px] font-black uppercase tracking-[0.3em] ${theme === 'dark' ? 'text-slate-500' : 'text-slate-400'}`}>Select a chat or start a new one</p>
+                  <div className="flex flex-col items-center justify-center flex-1 text-center py-10 min-h-[50vh]">
+                    <img src="/assets/logo.webp" alt="ChatADK" className="w-14 h-14 rounded-2xl object-cover mb-5 shadow-lg" />
+                    <h1 className={`text-[26px] sm:text-[32px] font-medium tracking-tight mb-2 ${theme === 'dark' ? 'text-neutral-100' : 'text-neutral-900'}`}>
+                      How can I help you today?
+                    </h1>
+                    <p className={`text-[14px] mb-8 ${theme === 'dark' ? 'text-neutral-500' : 'text-neutral-500'}`}>
+                      Ask anything — code, writing, research, or ideas.
+                    </p>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 w-full max-w-xl">
+                      {[
+                        { icon: PenLine, label: 'Write', hint: 'Draft an email', prompt: 'Help me draft a professional email' },
+                        { icon: Code2, label: 'Code', hint: 'Debug or build', prompt: 'Help me write clean, efficient code for ' },
+                        { icon: GraduationCap, label: 'Learn', hint: 'Explain simply', prompt: 'Explain like I am a beginner: ' },
+                        { icon: Lightbulb, label: 'Ideas', hint: 'Brainstorm', prompt: 'Brainstorm creative ideas for ' },
+                      ].map(s => (
+                        <button
+                          key={s.label}
+                          onClick={() => { setInputValue(s.prompt); inputRef.current?.focus(); }}
+                          className={`flex flex-col items-start gap-1 p-3.5 rounded-2xl border text-left transition-all hover-lift ${theme === 'dark' ? 'border-white/[0.07] bg-white/[0.02] hover:bg-white/[0.05]' : 'border-black/[0.07] bg-neutral-50 hover:bg-neutral-100'}`}
+                        >
+                          <s.icon size={17} strokeWidth={1.8} className={theme === 'dark' ? 'text-neutral-400' : 'text-neutral-500'} />
+                          <span className={`text-[13px] font-medium mt-1 ${theme === 'dark' ? 'text-neutral-200' : 'text-neutral-800'}`}>{s.label}</span>
+                          <span className={`text-[11.5px] ${theme === 'dark' ? 'text-neutral-600' : 'text-neutral-400'}`}>{s.hint}</span>
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 )}
 
                 {currentSessionId && !currentSession && !currentSessionId.startsWith('new_') && (
-                  <div className="flex flex-col items-center justify-center h-full py-20 animate-pulse">
-                    <div className="w-12 h-12 rounded-full border-4 border-blue-500/20 border-t-blue-500 animate-spin mb-4"></div>
-                    <p className="text-sm text-slate-500 font-medium uppercase tracking-widest">Loading Conversation...</p>
+                  <div className="flex flex-col items-center justify-center h-full py-20">
+                    <div className={`w-8 h-8 rounded-full border-2 animate-spin mb-4 ${theme === 'dark' ? 'border-white/10 border-t-white/60' : 'border-black/10 border-t-black/60'}`}></div>
+                    <p className={`text-[13px] ${theme === 'dark' ? 'text-neutral-500' : 'text-neutral-400'}`}>Loading conversation…</p>
                   </div>
                 )}
                 
@@ -1175,41 +1190,25 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
                 ))}
                 
                 {status.isTyping && (
-                  <div className="flex items-start gap-4 mb-8 animate-pulse">
-                    <div className="w-10 h-10 rounded-xl overflow-hidden shrink-0 shadow-lg shadow-blue-500/10">
-                      <img src="/assets/logo.webp" alt="Thinking" className="w-full h-full object-cover" />
-                    </div>
-                    <div className={`px-5 py-3 rounded-2xl text-[13px] font-bold tracking-tight shadow-sm border
-                      ${theme === 'dark' 
-                        ? 'bg-slate-800/40 border-white/5 text-blue-400' 
-                        : 'bg-white border-slate-200 text-blue-600'}`}>
-                      <span className="flex items-center gap-2">
-                        ChatAdk is thinking
-                        <span className="flex gap-1">
-                          <span className="w-1 h-1 rounded-full bg-current animate-bounce [animation-delay:-0.3s]"></span>
-                          <span className="w-1 h-1 rounded-full bg-current animate-bounce [animation-delay:-0.15s]"></span>
-                          <span className="w-1 h-1 rounded-full bg-current animate-bounce"></span>
-                        </span>
-                      </span>
+                  <div className="flex items-start gap-3 mb-6">
+                    <img src="/assets/logo.webp" alt="" className="w-7 h-7 rounded-full object-cover shrink-0 mt-0.5" />
+                    <div className={`flex items-center gap-1.5 py-2 ${theme === 'dark' ? 'text-neutral-500' : 'text-neutral-400'}`}>
+                      <span className="w-1.5 h-1.5 rounded-full bg-current thinking-dot" />
+                      <span className="w-1.5 h-1.5 rounded-full bg-current thinking-dot" />
+                      <span className="w-1.5 h-1.5 rounded-full bg-current thinking-dot" />
                     </div>
                   </div>
                 )}
 
                 {status.error && (
-                  <div className="max-w-xl mx-auto mb-8 animate-in slide-in-from-top-4 duration-500">
-                    <div className="bg-red-500/10 border border-red-500/20 rounded-2xl p-4 flex items-center gap-4">
-                      <div className="w-10 h-10 rounded-xl bg-red-500/20 flex items-center justify-center text-red-500 shrink-0">
-                        <i className="fas fa-exclamation-circle text-lg"></i>
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-[10px] uppercase font-black tracking-widest text-red-500 opacity-60 mb-0.5">Application Error</p>
-                        <p className={`text-xs font-bold leading-relaxed truncate ${theme === 'dark' ? 'text-red-200' : 'text-red-900'}`}>{status.error}</p>
-                      </div>
-                      <button 
+                  <div className="max-w-xl mx-auto mb-6 w-full animate-slide-up">
+                    <div className={`rounded-2xl px-4 py-3 flex items-center gap-3 border ${theme === 'dark' ? 'bg-red-500/[0.07] border-red-500/20 text-red-300' : 'bg-red-50 border-red-200 text-red-700'}`}>
+                      <span className="text-[13px] flex-1">{status.error}</span>
+                      <button
                         onClick={() => setStatus(prev => ({ ...prev, error: null }))}
-                        className="p-2 text-red-500/50 hover:text-red-500 transition-colors"
+                        className="p-1.5 rounded-lg opacity-60 hover:opacity-100 transition-opacity"
                       >
-                        <i className="fas fa-times"></i>
+                        <X size={14} />
                       </button>
                     </div>
                   </div>
@@ -1219,31 +1218,22 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
           ) : (
             <div className="flex-1 flex overflow-hidden relative group/multi">
               {/* Left Column */}
-              <div 
+              <div
                 ref={leftScrollRef}
-                className="h-full overflow-y-auto px-4 sm:px-6 py-6 custom-scrollbar border-r border-white/5" 
+                className={`h-full overflow-y-auto px-4 sm:px-6 py-6 custom-scrollbar border-r ${theme === 'dark' ? 'border-white/[0.06]' : 'border-black/[0.06]'}`}
                 style={{ width: `${multiChatConfig.dividerPosition}%` }}
               >
-                <div className="max-w-xl mx-auto space-y-4">
-                  <div className={`mb-6 p-3 rounded-2xl border flex items-center justify-between backdrop-blur-md transition-all group/choice
-                    ${theme === 'dark' 
-                      ? 'bg-slate-900/40 border-white/5 shadow-2xl shadow-blue-500/5 hover:bg-slate-900/60' 
-                      : 'bg-white/80 border-slate-100 shadow-lg hover:bg-white'}`}>
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-[10px] text-white font-black uppercase">
-                        {multiChatConfig.leftModel[0]}
-                      </div>
-                      <span className="text-[10px] font-black uppercase tracking-widest opacity-60">{multiChatConfig.leftModel}</span>
-                    </div>
-                    <select 
+                <div className="max-w-xl mx-auto">
+                  <div className={`mb-5 px-3 py-2.5 rounded-xl border flex items-center justify-between ${theme === 'dark' ? 'bg-white/[0.03] border-white/[0.07]' : 'bg-neutral-50 border-black/[0.07]'}`}>
+                    <span className={`text-[13px] font-medium ${theme === 'dark' ? 'text-neutral-200' : 'text-neutral-700'}`}>{multiChatConfig.leftModel}</span>
+                    <select
                       value={multiChatConfig.leftModel}
                       onChange={(e) => setMultiChatConfig(prev => ({ ...prev, leftModel: e.target.value as any }))}
-                      className={`bg-transparent text-[9px] font-black uppercase tracking-[0.2em] outline-none cursor-pointer border-none focus:ring-0
-                        ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}
+                      className={`bg-transparent text-[12px] outline-none cursor-pointer ${theme === 'dark' ? 'text-neutral-400' : 'text-neutral-500'}`}
                     >
-                      <option value="groq" className={theme === 'dark' ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}>Groq</option>
-                      <option value="gemini" className={theme === 'dark' ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}>Gemini</option>
-                      <option value="research" className={theme === 'dark' ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}>Research</option>
+                      <option value="groq">Groq</option>
+                      <option value="gemini">Gemini</option>
+                      <option value="research">Research</option>
                     </select>
                   </div>
                   {leftMessages.map((msg) => (
@@ -1259,41 +1249,30 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
               </div>
 
               {/* Enhanced Resizer */}
-              <div 
-                className={`absolute top-0 bottom-0 w-1.5 cursor-col-resize z-50 transition-all hover:bg-blue-500/50 flex items-center justify-center
-                  ${isResizing ? 'bg-blue-500 shadow-[0_0_20px_rgba(59,130,246,0.5)]' : ''}`}
-                style={{ left: `calc(${multiChatConfig.dividerPosition}% - 0.75px)` }}
+              <div
+                className={`absolute top-0 bottom-0 w-1 cursor-col-resize z-50 transition-colors ${isResizing ? (theme === 'dark' ? 'bg-white/30' : 'bg-black/30') : 'hover:bg-neutral-400/40'}`}
+                style={{ left: `calc(${multiChatConfig.dividerPosition}% - 0.5px)` }}
                 onMouseDown={startResizing}
               >
-                <div className={`w-[2px] h-12 rounded-full transition-all ${isResizing ? 'bg-white' : 'bg-slate-500 opacity-20'}`} />
               </div>
 
               {/* Right Column */}
-              <div 
+              <div
                 ref={rightScrollRef}
-                className="h-full overflow-y-auto px-4 sm:px-6 py-6 custom-scrollbar" 
+                className="h-full overflow-y-auto px-4 sm:px-6 py-6 custom-scrollbar"
                 style={{ width: `${100 - multiChatConfig.dividerPosition}%` }}
               >
-                <div className="max-w-xl mx-auto space-y-4">
-                  <div className={`mb-6 p-3 rounded-2xl border flex items-center justify-between backdrop-blur-md transition-all group/choice
-                    ${theme === 'dark' 
-                      ? 'bg-slate-900/40 border-white/5 shadow-2xl shadow-blue-500/5 hover:bg-slate-900/60' 
-                      : 'bg-white/80 border-slate-100 shadow-lg hover:bg-white'}`}>
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-[10px] text-white font-black uppercase">
-                        {multiChatConfig.rightModel[0]}
-                      </div>
-                      <span className="text-[10px] font-black uppercase tracking-widest opacity-60">{multiChatConfig.rightModel}</span>
-                    </div>
-                    <select 
+                <div className="max-w-xl mx-auto">
+                  <div className={`mb-5 px-3 py-2.5 rounded-xl border flex items-center justify-between ${theme === 'dark' ? 'bg-white/[0.03] border-white/[0.07]' : 'bg-neutral-50 border-black/[0.07]'}`}>
+                    <span className={`text-[13px] font-medium ${theme === 'dark' ? 'text-neutral-200' : 'text-neutral-700'}`}>{multiChatConfig.rightModel}</span>
+                    <select
                       value={multiChatConfig.rightModel}
                       onChange={(e) => setMultiChatConfig(prev => ({ ...prev, rightModel: e.target.value as any }))}
-                      className={`bg-transparent text-[9px] font-black uppercase tracking-[0.2em] outline-none cursor-pointer border-none focus:ring-0
-                        ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}
+                      className={`bg-transparent text-[12px] outline-none cursor-pointer ${theme === 'dark' ? 'text-neutral-400' : 'text-neutral-500'}`}
                     >
-                      <option value="groq" className={theme === 'dark' ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}>Groq</option>
-                      <option value="gemini" className={theme === 'dark' ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}>Gemini</option>
-                      <option value="research" className={theme === 'dark' ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}>Research</option>
+                      <option value="groq">Groq</option>
+                      <option value="gemini">Gemini</option>
+                      <option value="research">Research</option>
                     </select>
                   </div>
                   {rightMessages.map((msg) => (
@@ -1311,383 +1290,134 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
           )}
         </main>
 
-        {/* Input Section */}
-        <footer className={`p-4 sm:p-6 shrink-0 z-10 pb-safe ${theme === 'dark' ? 'bg-transparent' : 'bg-transparent'}`}>
-          <div className="max-w-3xl mx-auto">
-            <form onSubmit={handleSend} className="relative group transition-all duration-300">
-              {/* Outer Glow */}
-              <div className="absolute -inset-1 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-[22px] blur-sm opacity-10 group-focus-within:opacity-25 transition duration-500"></div>
-              
-              <div className={`relative flex flex-col p-2 rounded-[24px] shadow-2xl transition-all border
-                ${theme === 'dark' 
-                  ? 'bg-slate-900/80 border-white/5 backdrop-blur-xl' 
-                  : 'bg-white/90 border-slate-200 backdrop-blur-xl'}`}>
-                
-                
-
-                {/* Model Selector Dropdown (Floating above) */}
-                {isModelMenuOpen && (
-                  <div 
-                    ref={modelMenuRef}
-                    className={`absolute bottom-[calc(100%+16px)] left-0 w-72 rounded-[28px] shadow-[0_20px_50px_rgba(0,0,0,0.5)] border p-3 animate-slide-up z-50
-                    ${theme === 'dark' ? 'bg-slate-900 border-white/10' : 'bg-white border-slate-200 shadow-xl'}`}
-                    onClick={(e) => e.stopPropagation()}
+        {/* Input Section — Claude / DeepSeek style */}
+        <footer className="p-3 sm:p-4 shrink-0 z-10 pb-safe">
+          <div className="max-w-[768px] mx-auto w-full relative">
+            {/* Model menu */}
+            {isModelMenuOpen && (
+              <div
+                ref={modelMenuRef}
+                onClick={(e) => e.stopPropagation()}
+                className={`absolute bottom-[calc(100%+10px)] left-0 w-[320px] max-w-[calc(100vw-2rem)] rounded-2xl border p-1.5 animate-slide-up z-50 shadow-2xl ${theme === 'dark' ? 'bg-[#2f2f2f] border-white/10' : 'bg-white border-black/10'}`}
+              >
+                <p className={`px-3 pt-2 pb-1 text-[11px] font-medium ${theme === 'dark' ? 'text-neutral-500' : 'text-neutral-400'}`}>Choose a mode</p>
+                {[
+                  { id: 'groq', name: 'Flash', desc: 'Fast answers for everyday tasks', icon: Zap, lock: false },
+                  { id: 'research', name: 'Reasoning', desc: 'Deep analysis with DeepSeek R1', icon: Globe, lock: !user },
+                  { id: 'gemini', name: 'Detail', desc: 'Multimodal, technical breakdowns', icon: Sparkles, lock: !user },
+                  { id: 'imagine', name: 'Imagine', desc: 'Generate images from words', icon: ImageIcon, lock: !user },
+                  { id: 'motion', name: 'Motion', desc: 'Generate video — Pro', icon: RefreshCw, lock: !user || !isPro },
+                  { id: 'multi', name: 'Multi Chat', desc: 'Compare two models — Pro', icon: Code2, lock: !user || !isPro },
+                ].map(m => (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => {
+                      if (m.lock) {
+                        if (!user) handleAuthClick('signin');
+                        else navigate('/plans');
+                        setIsModelMenuOpen(false);
+                        return;
+                      }
+                      setAiModel(m.id as any);
+                      setIsModelMenuOpen(false);
+                    }}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-colors ${aiModel === m.id ? (theme === 'dark' ? 'bg-white/[0.07]' : 'bg-black/[0.05]') : (theme === 'dark' ? 'hover:bg-white/[0.04]' : 'hover:bg-black/[0.03]')}`}
                   >
-                    <div className="mb-2 px-3 py-2">
-                       <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Conversation Mode</p>
-                    </div>
+                    <m.icon size={16} strokeWidth={1.8} className={theme === 'dark' ? 'text-neutral-400 shrink-0' : 'text-neutral-500 shrink-0'} />
+                    <span className="flex-1 min-w-0">
+                      <span className={`block text-[13.5px] font-medium leading-tight ${theme === 'dark' ? 'text-neutral-100' : 'text-neutral-900'}`}>{m.name}</span>
+                      <span className={`block text-[11.5px] truncate ${theme === 'dark' ? 'text-neutral-500' : 'text-neutral-400'}`}>{m.desc}</span>
+                    </span>
+                    {m.lock && <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded-md ${theme === 'dark' ? 'bg-white/10 text-neutral-400' : 'bg-black/[0.06] text-neutral-500'}`}>{!user ? 'LOGIN' : 'PRO'}</span>}
+                    {aiModel === m.id && <Check size={15} className="text-[#4d6bfe] shrink-0" />}
+                  </button>
+                ))}
+                {(aiModel === 'multi') && (
+                  <button type="button" onClick={() => setIsPreviewVideoOpen(true)} className={`w-full text-left px-3 py-2 text-[11.5px] ${theme === 'dark' ? 'text-neutral-500 hover:text-neutral-300' : 'text-neutral-400 hover:text-neutral-600'}`}>
+                    ▶ Preview how Multi Chat works
+                  </button>
+                )}
+              </div>
+            )}
 
-                    <div className="space-y-1">
-                      <button 
-                        type="button"
-                        onClick={() => { 
-                          setAiModel('groq'); 
-                          setIsModelMenuOpen(false); 
-                        }}
-                        className={`w-full flex items-start gap-4 p-4 rounded-2xl transition-all text-left group
-                          ${aiModel === 'groq' ? (theme === 'dark' ? 'bg-blue-600/20' : 'bg-blue-50') : (theme === 'dark' ? 'hover:bg-white/5' : 'hover:bg-slate-50')}`}
-                      >
-                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-transform group-active:scale-90
-                          ${aiModel === 'groq' ? 'bg-blue-600 text-white shadow-lg' : (theme === 'dark' ? 'bg-slate-800 text-slate-400' : 'bg-slate-200 text-slate-500')}`}>
-                          <i className="fas fa-bolt"></i>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className={`text-[11px] font-black uppercase tracking-wider ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>Fast</p>
-                          <p className="text-[10px] text-slate-500 leading-tight mt-1">Blazing fast execution for simple tasks and quick answers.</p>
-                        </div>
+            <form onSubmit={handleSend} className="relative">
+              <div className={`relative rounded-[26px] border transition-all focus-within:border-neutral-400 ${theme === 'dark' ? 'bg-[#2f2f2f] border-transparent focus-within:border-white/20' : 'bg-[#f4f4f4] border-transparent focus-within:border-black/15 focus-within:bg-white focus-within:shadow-lg'}`}>
+                {selectedImage && !isPromptDisabled && (
+                  <div className="px-4 pt-3">
+                    <div className="relative inline-block group/img">
+                      <img src={`data:${selectedImage.mimeType};base64,${selectedImage.data}`} alt="Selected" className="h-16 w-auto rounded-xl object-cover" />
+                      <button type="button" onClick={removeSelectedImage} className="absolute -top-2 -right-2 w-5 h-5 rounded-full bg-black text-white flex items-center justify-center shadow">
+                        <X size={11} />
                       </button>
-
-                      <button 
-                        type="button"
-                        onClick={() => { 
-                          if (!user) {
-                            handleAuthClick('signin');
-                            setIsModelMenuOpen(false);
-                            return;
-                          }
-                          setAiModel('research'); 
-                          setIsModelMenuOpen(false); 
-                        }}
-                        className={`w-full flex items-start gap-4 p-4 rounded-2xl transition-all text-left group relative
-                          ${aiModel === 'research' ? (theme === 'dark' ? 'bg-emerald-600/20' : 'bg-emerald-50') : (theme === 'dark' ? 'hover:bg-white/5' : 'hover:bg-slate-50')}`}
-                      >
-                        {!user && (
-                          <div className="absolute top-4 right-4 flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-slate-500 text-white text-[8px] font-black tracking-widest uppercase">
-                            <i className="fas fa-lock text-[7px]"></i> LOGIN
-                          </div>
-                        )}
-                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-transform group-active:scale-90
-                          ${aiModel === 'research' ? 'bg-emerald-600 text-white shadow-lg' : (theme === 'dark' ? 'bg-slate-800 text-slate-400' : 'bg-slate-200 text-slate-500')}`}>
-                          <i className="fas fa-microscope text-sm"></i>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className={`text-[11px] font-black uppercase tracking-wider ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>Research</p>
-                          <p className="text-[10px] text-slate-500 leading-tight mt-1">Deep analysis and patterns using DeepSeek R1.</p>
-                        </div>
-                      </button>
-
-                      <button 
-                        type="button"
-                        onClick={() => { 
-                          if (!user) {
-                            handleAuthClick('signin');
-                            setIsModelMenuOpen(false);
-                            return;
-                          }
-                          setAiModel('imagine'); 
-                          setIsModelMenuOpen(false); 
-                        }}
-                        className={`w-full flex items-start gap-4 p-4 rounded-2xl transition-all text-left group relative
-                          ${aiModel === 'imagine' ? (theme === 'dark' ? 'bg-pink-600/20' : 'bg-pink-50') : (theme === 'dark' ? 'hover:bg-white/5' : 'hover:bg-slate-50')}`}
-                      >
-                        {!user && (
-                          <div className="absolute top-4 right-4 flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-slate-500 text-white text-[8px] font-black tracking-widest uppercase">
-                            <i className="fas fa-lock text-[7px]"></i> LOGIN
-                          </div>
-                        )}
-                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-transform group-active:scale-90
-                          ${aiModel === 'imagine' ? 'bg-pink-600 text-white shadow-lg' : (theme === 'dark' ? 'bg-slate-800 text-slate-400' : 'bg-slate-200 text-slate-500')}`}>
-                          <i className="fas fa-magic text-sm"></i>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className={`text-[11px] font-black uppercase tracking-wider ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>Imagine</p>
-                          <p className="text-[10px] text-slate-500 leading-tight mt-1">Creative visual generation. Describe any image.</p>
-                        </div>
-                      </button>
-
-                      <button 
-                        type="button"
-                        onClick={() => { 
-                          if (!user) {
-                            handleAuthClick('signin');
-                            setIsModelMenuOpen(false);
-                            return;
-                          }
-                          setAiModel('gemini'); 
-                          setIsModelMenuOpen(false); 
-                        }}
-                        className={`w-full flex items-start gap-4 p-4 rounded-2xl transition-all text-left group relative
-                          ${aiModel === 'gemini' ? (theme === 'dark' ? 'bg-indigo-600/20' : 'bg-indigo-50') : (theme === 'dark' ? 'hover:bg-white/5' : 'hover:bg-slate-50')}`}
-                      >
-                        {!user && (
-                          <div className="absolute top-4 right-4 flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-slate-500 text-white text-[8px] font-black tracking-widest uppercase">
-                            <i className="fas fa-lock text-[7px]"></i> LOGIN
-                          </div>
-                        )}
-                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-transform group-active:scale-90
-                          ${aiModel === 'gemini' ? 'bg-indigo-600 text-white shadow-lg' : (theme === 'dark' ? 'bg-slate-800 text-slate-400' : 'bg-slate-200 text-slate-500')}`}>
-                          <i className="fas fa-brain text-sm"></i>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className={`text-[11px] font-black uppercase tracking-wider ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>Detail</p>
-                          <p className="text-[10px] text-slate-500 leading-tight mt-1">Advanced multimodal analysis and technical breakdown.</p>
-                        </div>
-                      </button>
-
-                      <button 
-                        type="button"
-                        onClick={() => { 
-                          if (!user) {
-                            handleAuthClick('signin');
-                            setIsModelMenuOpen(false);
-                            return;
-                          }
-                          if (!isPro) { 
-                            navigate('/plans');
-                            setIsModelMenuOpen(false);
-                            return; 
-                          }
-                          setAiModel('motion'); setIsModelMenuOpen(false); 
-                        }}
-                        className={`w-full flex items-start gap-4 p-4 rounded-2xl transition-all text-left group relative
-                          ${aiModel === 'motion' ? (theme === 'dark' ? 'bg-orange-600/20' : 'bg-orange-50') : (theme === 'dark' ? 'hover:bg-white/5' : 'hover:bg-slate-50')}`}
-                        title={!user ? "Sign in to use Motion" : (!isPro ? "Upgrade to Pro to use Motion Mode" : "")}
-                      >
-                        {!user ? (
-                          <div className="absolute top-4 right-4 flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-slate-500 text-white text-[8px] font-black tracking-widest uppercase">
-                            <i className="fas fa-lock text-[7px]"></i> LOGIN
-                          </div>
-                        ) : !isPro && (
-                          <div className="absolute top-4 right-4 flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-orange-500 text-white text-[8px] font-black tracking-widest uppercase">
-                            <i className="fas fa-lock text-[7px]"></i> PRO
-                          </div>
-                        )}
-                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-transform group-active:scale-90
-                          ${aiModel === 'motion' ? 'bg-orange-600 text-white shadow-lg' : (theme === 'dark' ? 'bg-slate-800 text-slate-400' : 'bg-slate-200 text-slate-500')}`}>
-                          <i className="fas fa-video text-sm"></i>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className={`text-[11px] font-black uppercase tracking-wider ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>Motion</p>
-                          <p className="text-[10px] text-slate-500 leading-tight mt-1">Generate dynamic videos from prompts.</p>
-                        </div>
-                      </button>
-
-                      <div 
-                        onClick={() => { 
-                          if (!user) {
-                            handleAuthClick('signin');
-                            setIsModelMenuOpen(false);
-                            return;
-                          }
-                          if (!isPro) { 
-                            navigate('/plans');
-                            setIsModelMenuOpen(false);
-                            return; 
-                          }
-                          setAiModel('multi'); setIsModelMenuOpen(false); 
-                        }}
-                        className={`w-full flex items-start gap-4 p-4 rounded-2xl transition-all text-left group/multi-btn relative overflow-hidden cursor-pointer
-                          ${aiModel === 'multi' ? (theme === 'dark' ? 'bg-amber-600/20' : 'bg-amber-50') : (theme === 'dark' ? 'hover:bg-white/5' : 'hover:bg-slate-50')}`}
-                        role="button"
-                        tabIndex={0}
-                        title={!user ? "Sign in to use Multi Chat" : (!isPro ? "Upgrade to Pro to use Multi Chat" : "")}
-                      >
-                        {/* Video Preview on Hover with Fullscreen trigger */}
-                        <div className="absolute inset-0 opacity-0 group-hover/multi-btn:opacity-100 transition-opacity duration-500 pointer-events-none">
-                          <video 
-                            src="/pre.webm" 
-                            autoPlay 
-                            muted 
-                            loop 
-                            playsInline
-                            className="w-full h-full object-cover scale-110 group-hover/multi-btn:scale-100 transition-transform duration-700 brightness-[0.3]"
-                          />
-                        </div>
-
-                        {/* Fullscreen Expand Icon - Accessible to everyone */}
-                        <div 
-                          className="absolute bottom-2 right-2 w-8 h-8 rounded-xl bg-white/10 backdrop-blur-md flex items-center justify-center text-white opacity-0 group-hover/multi-btn:opacity-100 transition-all z-20 hover:bg-white/30 hover:scale-110 active:scale-90 border border-white/10"
-                          onClick={(e) => {
-                            e.stopPropagation(); // Stop selection logic from firing
-                            setIsPreviewVideoOpen(true);
-                          }}
-                        >
-                          <i className="fas fa-expand text-[12px]"></i>
-                        </div>
-
-                        <div className="relative z-10 flex items-start gap-4 w-full">
-                          {!user ? (
-                            <div className="absolute top-0 right-0 flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-slate-500 text-white text-[8px] font-black tracking-widest uppercase shadow-lg">
-                              <i className="fas fa-lock text-[7px]"></i> LOGIN
-                            </div>
-                          ) : !isPro && (
-                            <div className="absolute top-0 right-0 flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-amber-500 text-white text-[8px] font-black tracking-widest uppercase shadow-lg">
-                              <i className="fas fa-lock text-[7px]"></i> PRO
-                            </div>
-                          )}
-                          <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-transform group-active:scale-90
-                            ${aiModel === 'multi' ? 'bg-amber-600 text-white shadow-lg' : (theme === 'dark' ? 'bg-slate-800 text-slate-400' : 'bg-slate-200 text-slate-500')}`}>
-                            <i className="fas fa-columns text-sm"></i>
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2">
-                              <p className={`text-[11px] font-black uppercase tracking-wider ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>Multi Chat</p>
-                              <span className="px-1.5 py-0.5 rounded text-[7px] font-black bg-amber-500/10 text-amber-500 border border-amber-500/20">PRO</span>
-                            </div>
-                            <p className="text-[10px] text-slate-500 leading-tight mt-1 group-hover/multi-btn:text-slate-300">Dual-AI mode. Compare responses side-by-side in real-time.</p>
-                          </div>
-                        </div>
-                      </div>
                     </div>
                   </div>
                 )}
-                <div className="flex items-end gap-2">
-                  <div className="flex flex-col flex-1 pl-1">
-                    {selectedImage && !isPromptDisabled && (
-                      <div className="pb-2 flex items-center gap-2">
-                        <div className="relative group/img overflow-hidden rounded-lg">
-                          <img 
-                            src={`data:${selectedImage.mimeType};base64,${selectedImage.data}`} 
-                            alt="Selected" 
-                            className="h-20 w-auto object-cover border border-white/10"
-                          />
-                          <button 
-                            type="button"
-                            onClick={removeSelectedImage}
-                            className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/50 text-white flex items-center justify-center opacity-0 group-hover/img:opacity-100 transition-opacity"
-                          >
-                            <i className="fas fa-times text-[10px]"></i>
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                    
-                      <div className="flex items-center gap-1.5 px-2">
-                       {/* ChatADK Logo in Input Area */}
-                      <img 
-                        src="/assets/logo.webp" 
-                        alt="Logo" 
-                        className={`w-12 h-12 rounded-xl shadow-lg shrink-0 mr-1 object-cover cursor-pointer transition-all active:scale-95 hover:brightness-110 ${isPromptDisabled ? 'ring-2 ring-blue-500/50' : ''}`} 
-                        onClick={() => {
-                          setIsPromptDisabled(!isPromptDisabled);
-                          setIsModelMenuOpen(false);
-                        }}
-                        title={isPromptDisabled ? "Enable Prompt Box" : "Disable Prompt Box"}
-                      />
-
-                      {!isPromptDisabled && (
-                        <>
-                          <button 
-                            type="button"
-                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); setIsModelMenuOpen(!isModelMenuOpen); }}
-                            className={`flex items-center gap-2 px-2.5 py-1.5 rounded-xl border transition-all hover:scale-[1.02] active:scale-95
-                              ${theme === 'dark' ? 'bg-black/40 border-white/10 text-white hover:bg-black/60' : 'bg-slate-50 border-slate-200 text-slate-900 hover:bg-slate-100 shadow-sm'}`}
-                          >
-                            <div className={`w-4 h-4 rounded-lg flex items-center justify-center text-[8px] shadow-sm
-                              ${aiModel === 'groq' ? 'bg-blue-600 text-white' : 
-                                aiModel === 'research' ? 'bg-emerald-600 text-white' :
-                                aiModel === 'imagine' ? 'bg-pink-600 text-white' :
-                                aiModel === 'motion' ? 'bg-amber-600 text-white' :
-                                'bg-indigo-600 text-white'}`}>
-                              <i className={`fas ${
-                                aiModel === 'groq' ? 'fa-bolt' : 
-                                aiModel === 'research' ? 'fa-microscope' :
-                                aiModel === 'imagine' ? 'fa-magic' :
-                                aiModel === 'motion' ? 'fa-video' :
-                                'fa-brain'
-                              }`}></i>
-                            </div>
-                            <span className="text-[9px] font-black uppercase tracking-widest">{aiModel === 'gemini' ? 'Detail' : aiModel === 'groq' ? 'Fast' : aiModel}</span>
-                            <i className={`fas fa-chevron-up text-[7px] transition-transform ${isModelMenuOpen ? 'rotate-180' : ''}`}></i>
-                          </button>
-
-                          <div className={`w-px h-3 ${theme === 'dark' ? 'bg-white/5' : 'bg-slate-200'}`}></div>
-
-                          <input 
-                            type="file"
-                            ref={fileInputRef}
-                            onChange={handleImageSelect}
-                            accept="image/*"
-                            className="hidden"
-                          />
-                          <button 
-                            type="button"
-                            onClick={() => {
-                              if (!user) {
-                                handleAuthClick('signin');
-                                return;
-                              }
-                              fileInputRef.current?.click();
-                            }}
-                            className={`w-8 h-8 shrink-0 flex items-center justify-center transition-all hover:scale-110 active:scale-95 ${theme === 'dark' ? 'text-slate-500 hover:text-white' : 'text-slate-400 hover:text-slate-600'} relative`}
-                            title={user ? "Attach Image" : "Sign in to attach images"}
-                          >
-                            <i className="fas fa-image text-base"></i>
-                            {!user && (
-                              <div className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-blue-500 flex items-center justify-center border-2 border-slate-900">
-                                <i className="fas fa-lock text-[6px] text-white"></i>
-                              </div>
-                            )}
-                          </button>
-                        </>
-                      )}
-                    </div>
-
-                    {!isPromptDisabled && (
-                      <textarea 
-                        ref={inputRef}
-                        rows={1}
-                        value={inputValue}
-                        onChange={(e) => {
-                          setInputValue(e.target.value);
-                          e.target.style.height = 'auto';
-                          e.target.style.height = `${Math.min(e.target.scrollHeight, 200)}px`;
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' && !e.shiftKey) {
-                            e.preventDefault();
-                            handleSend();
-                          }
-                        }}
-                        placeholder="Type a message..."
-                        className={`flex-1 bg-transparent border-none outline-none px-4 py-3 text-[14.5px] leading-relaxed resize-none overflow-y-auto max-h-[200px] placeholder:text-slate-500/60
-                          ${theme === 'dark' ? 'text-slate-100' : 'text-slate-900'}`}
-                        disabled={status.isTyping}
-                      />
-                    )}
-                  </div>
-
+                {!isPromptDisabled && (
+                  <textarea
+                    ref={inputRef}
+                    rows={1}
+                    value={inputValue}
+                    onChange={(e) => {
+                      setInputValue(e.target.value);
+                      e.target.style.height = 'auto';
+                      e.target.style.height = `${Math.min(e.target.scrollHeight, 200)}px`;
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        handleSend();
+                      }
+                    }}
+                    placeholder={aiModel === 'imagine' ? 'Describe the image you want…' : aiModel === 'research' ? 'Ask a hard question…' : 'Message ChatADK…'}
+                    className={`w-full bg-transparent border-none outline-none px-4 sm:px-5 pt-3.5 pb-1 text-[15px] leading-relaxed resize-none overflow-y-auto max-h-[200px] custom-scrollbar ${theme === 'dark' ? 'text-neutral-100 placeholder:text-neutral-500' : 'text-neutral-900 placeholder:text-neutral-400'}`}
+                    disabled={status.isTyping}
+                  />
+                )}
+                <div className="flex items-center gap-1 px-2.5 pb-2.5 pt-1">
                   {!isPromptDisabled && (
-                    <button 
+                    <>
+                      <input type="file" ref={fileInputRef} onChange={handleImageSelect} accept="image/*" className="hidden" />
+                      <button
+                        type="button"
+                        onClick={() => { if (!user) handleAuthClick('signin'); else fileInputRef.current?.click(); }}
+                        className={`w-8 h-8 flex items-center justify-center rounded-full transition-colors ${theme === 'dark' ? 'text-neutral-400 hover:bg-white/10 hover:text-white' : 'text-neutral-500 hover:bg-black/[0.06] hover:text-neutral-900'}`}
+                        title="Attach image"
+                      >
+                        <Paperclip size={17} strokeWidth={1.8} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); setIsModelMenuOpen(!isModelMenuOpen); }}
+                        className={`flex items-center gap-1 pl-2 pr-2.5 py-1.5 rounded-full border text-[12px] font-medium transition-colors ${theme === 'dark' ? 'border-white/10 text-neutral-300 hover:bg-white/[0.06]' : 'border-black/10 text-neutral-600 hover:bg-black/[0.04]'}`}
+                      >
+                        <Zap size={12} />
+                        {aiModel === 'gemini' ? 'Detail' : aiModel === 'groq' ? 'Flash' : aiModel === 'research' ? 'Reasoning' : aiModel === 'imagine' ? 'Imagine' : aiModel === 'motion' ? 'Motion' : 'Multi'}
+                        <ChevronDown size={12} className="opacity-50" />
+                      </button>
+                    </>
+                  )}
+                  <span className="flex-1" />
+                  {!isPromptDisabled && (
+                    <button
                       type="submit"
                       disabled={!inputValue.trim() || status.isTyping}
-                      className="w-10 h-10 shrink-0 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800 disabled:opacity-30 text-white flex items-center justify-center transition-all hover:scale-105 active:scale-95 shadow-lg shadow-blue-500/20"
+                      className="w-8 h-8 rounded-full flex items-center justify-center transition-all active:scale-90 disabled:opacity-20 disabled:cursor-not-allowed bg-black text-white hover:bg-neutral-800 dark:bg-white dark:text-black dark:hover:bg-neutral-200"
+                      title="Send"
                     >
-                      <i className={`fas ${status.isTyping ? 'fa-spinner fa-spin' : 'fa-arrow-up'} text-xs`}></i>
+                      <ArrowUp size={16} strokeWidth={2.2} />
                     </button>
                   )}
                 </div>
               </div>
             </form>
-            
-            <div className={`mt-4 text-center select-none transition-opacity duration-500 ${status.isTyping ? 'opacity-40' : 'opacity-100'}`}>
-              <p className="text-[9px] font-black uppercase tracking-[0.3em] text-slate-500">
-                <i className="fas fa-shield-alt mr-2 text-blue-500/50"></i>
-                chatAdk may produce inaccurate data. verify critical info.
-              </p>
-            </div>
+
+            <p className={`mt-2.5 text-center text-[11px] ${theme === 'dark' ? 'text-neutral-600' : 'text-neutral-400'}`}>
+              ChatADK can make mistakes. Verify important information.
+            </p>
           </div>
         </footer>
+
       </div>
       <AuthModal 
         isOpen={authModal.open}
@@ -1724,19 +1454,19 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
 
       {/* Fullscreen Video Preview Modal */}
       {isPreviewVideoOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-2xl animate-in fade-in duration-300">
-          <div className="relative w-full max-w-5xl aspect-video mx-4 overflow-hidden rounded-[32px] border border-white/10 shadow-[0_0_100px_rgba(59,130,246,0.3)] group">
-            <video 
-              src="/pre.webm" 
-              autoPlay 
-              controls 
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-md animate-fadeIn">
+          <div className="relative w-full max-w-4xl aspect-video mx-4 overflow-hidden rounded-2xl border border-white/10 bg-black">
+            <video
+              src="/pre.webm"
+              autoPlay
+              controls
               className="w-full h-full object-contain"
             />
-            <button 
+            <button
               onClick={() => setIsPreviewVideoOpen(false)}
-              className="absolute top-6 right-6 w-12 h-12 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-all active:scale-90"
+              className="absolute top-4 right-4 w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-all"
             >
-              <i className="fas fa-times text-xl"></i>
+              <X size={16} />
             </button>
           </div>
         </div>
@@ -1744,13 +1474,13 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
 
       <AnimatePresence>
         {isCompilerOpen && (
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, scale: 0.98 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.98 }}
-            className="fixed inset-0 z-[200] bg-slate-950/40"
+            className={`fixed inset-0 z-[200] ${theme === 'dark' ? 'bg-black/60' : 'bg-black/30'}`}
           >
-            <VSCodeCompiler onClose={() => {
+            <VSCodeCompiler theme={theme} onClose={() => {
               const fallback = previousSessionId || currentSessionId;
               setPreviousSessionId(null);
               if (fallback && !['codeadk','photoadk','converteradk'].includes(fallback)) {
@@ -1786,13 +1516,13 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
         )}
 
         {isPhotoAdkOpen && (
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, scale: 0.98 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.98 }}
-            className="fixed inset-0 z-[200] bg-slate-950/40"
+            className={`fixed inset-0 z-[200] ${theme === 'dark' ? 'bg-black/60' : 'bg-black/30'}`}
           >
-            <PhotoAdk onClose={() => {
+            <PhotoAdk theme={theme} onClose={() => {
               const fallback = previousSessionId || currentSessionId;
               setPreviousSessionId(null);
               if (fallback && !['codeadk','photoadk','converteradk'].includes(fallback)) {
@@ -1806,11 +1536,12 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
       </AnimatePresence>
 
       {status.isSyncing && (
-        <div className="fixed bottom-24 right-6 z-50 animate-in fade-in slide-in-from-bottom-4 duration-500">
-          <div className={`px-4 py-2 rounded-full border shadow-2xl flex items-center gap-3 backdrop-blur-xl transition-all
-            ${theme === 'dark' ? 'bg-blue-600/10 border-blue-500/20 text-blue-400' : 'bg-white/90 border-blue-100 text-blue-600'}`}>
-            <i className="fas fa-cloud-upload-alt animate-pulse"></i>
-            <span className="text-[10px] font-black uppercase tracking-widest">Cloud Syncing...</span>
+        <div className="fixed bottom-24 right-6 z-50 animate-fadeIn">
+          <div className={`px-3.5 py-2 rounded-full border shadow-lg flex items-center gap-2 text-[12px] ${theme === 'dark' ? 'bg-[#2f2f2f] border-white/10 text-neutral-300' : 'bg-white border-black/10 text-neutral-600'}`}>
+            <span className="w-1.5 h-1.5 rounded-full bg-current thinking-dot" />
+            <span className="w-1.5 h-1.5 rounded-full bg-current thinking-dot" />
+            <span className="w-1.5 h-1.5 rounded-full bg-current thinking-dot" />
+            Syncing…
           </div>
         </div>
       )}

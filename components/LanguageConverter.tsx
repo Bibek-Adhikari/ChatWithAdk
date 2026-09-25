@@ -578,10 +578,10 @@ export default function LanguageConverter({ onClose, theme = 'vs-dark', showHist
   const smartConvert = async (code: string, from: SourceLanguage, to: TargetLanguage): Promise<ConversionResult> => {
     try {
       setConversionProgress(10);
-      const apiKey = import.meta.env.VITE_EXPLAINER_API_KEY;
-      
+      const apiKey = import.meta.env.VITE_EXPLAINER_API_KEY || import.meta.env.VITE_GROQ_API_KEY;
+
       if (!apiKey) {
-        throw new Error('Explainer API Key not found. Please check your .env.local file.');
+        throw new Error('Groq API Key not found. Please check VITE_GROQ_API_KEY in your .env file.');
       }
 
       setConversionProgress(30);
@@ -611,7 +611,7 @@ Note: Your explanation must prove this is a custom conversion for THIS specific 
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          model: 'llama-3.3-70b-versatile',
+          model: 'openai/gpt-oss-120b',
           messages: [
             { role: 'system', content: systemPrompt },
             { role: 'user', content: `Convert this ${from} code to ${to}:\n\n${code}` }

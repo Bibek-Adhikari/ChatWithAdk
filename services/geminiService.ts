@@ -1,4 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
+import { proxyPost } from './serverProxy';
 
 // Enhanced environment retrieval
 const getEnv = (key: string): string => {
@@ -53,10 +54,27 @@ const FALLBACK_MODELS = [
 ];
 
 export async function generateTextResponse(
-  prompt: string, 
+  prompt: string,
   history: ChatHistoryEntry[],
   image?: { data: string; mimeType: string }
 ): Promise<string> {
+  // Prefer the metered server proxy (per-user daily quota, key stays server-side)
+  try {
+    const proxied = await proxyPost<{ text: string }>('/chat', {
+      engine: 'gemini', history, prompt, image,
+    }).catch(() => null);
+    if (proxied) {
+      if (proxied.status === 200 && typeof proxied.json?.text === 'string' && proxied.json.text) {
+        return proxied.json.text;
+      }
+      if (proxied.status === 429) throw new Error(proxied.json?.error || 'Daily chat limit reached. Upgrade to Pro.');
+      // other server errors → fall through to direct key below
+    }
+  } catch (e: any) {
+    if (e?.message?.includes('Daily chat limit')) throw e;
+    // unreachable server → direct fallback below
+  }
+
   const ai = getAiInstance();
   let lastError: any = null;
 

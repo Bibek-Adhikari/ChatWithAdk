@@ -1,12 +1,7 @@
 import React, { useEffect, useCallback, memo, useState, useMemo } from 'react';
+import { X, Sun, Moon, Check } from 'lucide-react';
 import { fetchEdgeVoiceIds } from '../services/edgeVoiceService';
 import { VOICE_LIBRARY } from '../services/voiceLibrary';
-
-interface ShortcutItem {
-  key: string;
-  task: string;
-  icon?: string;
-}
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -17,111 +12,22 @@ interface SettingsModalProps {
   onSelectVoice: (voiceId: string) => void;
 }
 
-const SHORTCUTS: ShortcutItem[] = [
-  { key: '⌘K', task: 'New Chat', icon: 'fa-plus' },
-  { key: 'Enter', task: 'Send Message', icon: 'fa-paper-plane' },
-  { key: 'Shift + Enter', task: 'New Line', icon: 'fa-level-down-alt' },
-  { key: 'Esc', task: 'Close Modals', icon: 'fa-times' },
-  { key: '/', task: 'Focus Input', icon: 'fa-comment-dots' },
+const SHORTCUTS = [
+  { key: '⌘K', task: 'New chat' },
+  { key: 'Enter', task: 'Send message' },
+  { key: 'Shift + Enter', task: 'New line' },
+  { key: 'Esc', task: 'Close dialogs' },
 ];
 
-// Memoized section component
-interface SettingsSectionProps {
-  title: string;
-  theme: 'light' | 'dark';
-  children: React.ReactNode;
-  icon?: string;
-}
-
-const SettingsSection = memo(({ title, theme, children, icon }: SettingsSectionProps) => (
-  <section className="space-y-4">
-    <div className="flex items-center gap-2 mb-4">
-      {icon && (
-        <i className={`fas ${icon} text-xs ${theme === 'dark' ? 'text-slate-500' : 'text-slate-400'}`} />
-      )}
-      <h3 className={`text-[10px] font-black uppercase tracking-[0.2em] ${
-        theme === 'dark' ? 'text-slate-500' : 'text-slate-400'
-      }`}>
-        {title}
-      </h3>
-    </div>
-    {children}
-  </section>
-));
-
-// Memoized toggle switch
-interface ThemeToggleProps {
-  theme: 'light' | 'dark';
-  onToggle: () => void;
-}
-
-const ThemeToggle = memo(({ theme, onToggle }: ThemeToggleProps) => (
-  <button
-    onClick={onToggle}
-    className={`relative w-14 h-8 rounded-full transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 ${
-      theme === 'dark' 
-        ? 'bg-blue-600 focus:ring-blue-500' 
-        : 'bg-slate-300 focus:ring-slate-400'
-    } ${theme === 'dark' ? 'focus:ring-offset-slate-900' : 'focus:ring-offset-white'}`}
-    aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
-    aria-pressed={theme === 'dark'}
-  >
-    <div 
-      className={`absolute top-1 left-1 w-6 h-6 bg-white rounded-full shadow-lg transition-transform duration-300 flex items-center justify-center ${
-        theme === 'dark' ? 'translate-x-6' : 'translate-x-0'
-      }`}
-    >
-      <i className={`fas ${theme === 'dark' ? 'fa-moon text-blue-600' : 'fa-sun text-amber-500'} text-xs`} />
-    </div>
-  </button>
-));
-
-// Memoized shortcut card
-interface ShortcutCardProps {
-  shortcut: ShortcutItem;
-  theme: 'light' | 'dark';
-  index: number;
-}
-
-const ShortcutCard = memo(({ shortcut, theme, index }: ShortcutCardProps) => (
-  <div 
-    className={`group flex items-center justify-between p-4 rounded-xl border transition-all duration-200 hover:scale-[1.02] ${
-      theme === 'dark' 
-        ? 'bg-slate-800/10 border-white/5 hover:border-white/20' 
-        : 'bg-slate-50 border-slate-200 hover:border-slate-300 hover:shadow-sm'
-    }`}
-    style={{ animationDelay: `${index * 50}ms` }}
-  >
-    <div className="flex items-center gap-3">
-      {shortcut.icon && (
-        <i className={`fas ${shortcut.icon} text-xs w-4 text-center opacity-50 group-hover:opacity-100 transition-opacity ${
-          theme === 'dark' ? 'text-slate-500' : 'text-slate-400'
-        }`} />
-      )}
-      <span className={`text-xs font-bold ${
-        theme === 'dark' ? 'text-slate-400 group-hover:text-slate-300' : 'text-slate-500 group-hover:text-slate-700'
-      }`}>
-        {shortcut.task}
-      </span>
-    </div>
-    <kbd className={`px-2 py-1.5 rounded-lg text-[10px] font-black tracking-tight border shadow-sm transition-all ${
-      theme === 'dark' 
-        ? 'bg-slate-900 border-white/10 text-blue-400 group-hover:text-blue-300' 
-        : 'bg-white border-slate-200 text-blue-600 group-hover:border-blue-200'
-    }`}>
-      {shortcut.key}
-    </kbd>
-  </div>
-));
-
-const SettingsModal: React.FC<SettingsModalProps> = memo(({ 
-  isOpen, 
-  onClose, 
-  theme, 
+const SettingsModal: React.FC<SettingsModalProps> = memo(({
+  isOpen,
+  onClose,
+  theme,
   onToggleTheme,
   selectedVoiceId,
   onSelectVoice
 }) => {
+  const isDark = theme === 'dark';
   const [voiceGender, setVoiceGender] = useState<'all' | 'male' | 'female'>('all');
   const [serverVoiceIds, setServerVoiceIds] = useState<Set<string> | null>(null);
   const [isLoadingVoices, setIsLoadingVoices] = useState(false);
@@ -133,254 +39,146 @@ const SettingsModal: React.FC<SettingsModalProps> = memo(({
     setIsLoadingVoices(true);
     setVoiceError(null);
     fetchEdgeVoiceIds()
-      .then(ids => {
-        if (!isMounted) return;
-        setServerVoiceIds(new Set(ids));
-      })
-      .catch(() => {
-        if (!isMounted) return;
-        setVoiceError('Voice server offline (showing local list)');
-        setServerVoiceIds(null);
-      })
-      .finally(() => {
-        if (!isMounted) return;
-        setIsLoadingVoices(false);
-      });
-    return () => {
-      isMounted = false;
-    };
+      .then(ids => { if (isMounted) setServerVoiceIds(new Set(ids)); })
+      .catch(() => { if (isMounted) { setVoiceError('Voice server offline — showing local list'); setServerVoiceIds(null); } })
+      .finally(() => { if (isMounted) setIsLoadingVoices(false); });
+    return () => { isMounted = false; };
   }, [isOpen]);
 
   useEffect(() => {
     if (!serverVoiceIds || serverVoiceIds.size === 0) return;
-    if (selectedVoiceId && !serverVoiceIds.has(selectedVoiceId)) {
-      onSelectVoice('');
-    }
+    if (selectedVoiceId && !serverVoiceIds.has(selectedVoiceId)) onSelectVoice('');
   }, [serverVoiceIds, selectedVoiceId, onSelectVoice]);
-  // Handle escape key and body scroll lock
+
   useEffect(() => {
     if (!isOpen) return;
-
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-
+    const handleEscape = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     document.addEventListener('keydown', handleEscape);
     document.body.style.overflow = 'hidden';
-
-    return () => {
-      document.removeEventListener('keydown', handleEscape);
-      document.body.style.overflow = '';
-    };
+    return () => { document.removeEventListener('keydown', handleEscape); document.body.style.overflow = ''; };
   }, [isOpen, onClose]);
 
-  // Handle voice selection with feedback
   const handleVoiceSelect = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
-    const voiceId = e.target.value;
-    onSelectVoice(voiceId);
+    onSelectVoice(e.target.value);
   }, [onSelectVoice]);
 
   const filteredVoices = useMemo(() => {
     if (voiceGender === 'all') return VOICE_LIBRARY;
-    return VOICE_LIBRARY.filter(voice => voice.gender === voiceGender);
+    return VOICE_LIBRARY.filter(v => v.gender === voiceGender);
   }, [voiceGender]);
 
   const availableVoices = useMemo(() => {
     if (!serverVoiceIds || serverVoiceIds.size === 0) return filteredVoices;
-    return filteredVoices.filter(voice => serverVoiceIds.has(voice.id));
+    return filteredVoices.filter(v => serverVoiceIds.has(v.id));
   }, [filteredVoices, serverVoiceIds]);
 
   if (!isOpen) return null;
 
-  const getThemeStyles = () => ({
-    backdrop: 'bg-slate-950/60 backdrop-blur-md',
-    modal: theme === 'dark' 
-      ? 'bg-slate-900 border-white/10' 
-      : 'bg-white border-slate-200 shadow-slate-200/50',
-    header: theme === 'dark' ? 'border-white/5' : 'border-slate-100',
-    footer: theme === 'dark' ? 'bg-white/5 border-white/5' : 'bg-slate-50 border-slate-100'
-  });
-
-  const styles = getThemeStyles();
+  const muted = isDark ? 'text-neutral-500' : 'text-neutral-400';
+  const fg = isDark ? 'text-neutral-100' : 'text-neutral-900';
+  const card = isDark ? 'bg-white/[0.03] border-white/[0.07]' : 'bg-neutral-50 border-black/[0.07]';
 
   return (
-    <div 
-      className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="settings-title"
-    >
-      {/* Backdrop with animation */}
-      <div 
-        className={`absolute inset-0 ${styles.backdrop} transition-opacity duration-300 animate-in fade-in`}
-        onClick={onClose}
-        aria-hidden="true"
-      />
-      
-      <div 
-        className={`relative w-full max-w-lg max-h-[85vh] overflow-hidden rounded-[28px] shadow-2xl border transition-all duration-200 animate-in zoom-in-95 ${styles.modal}`}
-      >
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Settings">
+      <div className="absolute inset-0 bg-black/50 animate-fadeIn" onClick={onClose} />
+
+      <div className={`relative w-full max-w-md max-h-[85vh] flex flex-col rounded-2xl border shadow-2xl animate-slide-up overflow-hidden ${isDark ? 'bg-[#2f2f2f] border-white/10' : 'bg-white border-black/10'}`}>
         {/* Header */}
-        <header className={`flex items-center justify-between p-6 border-b ${styles.header}`}>
-          <div className="flex items-center gap-3">
-            <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
-              theme === 'dark' ? 'bg-blue-600/10 text-blue-400' : 'bg-blue-50 text-blue-600'
-            }`}>
-              <i className="fas fa-sliders-h text-lg" />
-            </div>
-            <div>
-              <h2 
-                id="settings-title"
-                className={`font-black text-sm uppercase tracking-widest ${
-                  theme === 'dark' ? 'text-white' : 'text-slate-900'
-                }`}
-              >
-                Preferences
-              </h2>
-              <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-0.5">
-                System Settings
-              </p>
-            </div>
-          </div>
-          <button 
+        <div className={`flex items-center justify-between px-5 h-14 shrink-0 border-b ${isDark ? 'border-white/[0.07]' : 'border-black/[0.06]'}`}>
+          <h2 className={`text-[15px] font-medium ${fg}`}>Settings</h2>
+          <button
             onClick={onClose}
-            className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all focus:outline-none focus:ring-2 focus:ring-blue-500/50 ${
-              theme === 'dark' ? 'hover:bg-white/5 text-slate-500' : 'hover:bg-slate-100 text-slate-400'
-            }`}
             aria-label="Close settings"
+            className={`w-8 h-8 flex items-center justify-center rounded-lg transition-colors ${isDark ? 'text-neutral-500 hover:bg-white/10 hover:text-neutral-200' : 'text-neutral-400 hover:bg-black/5 hover:text-neutral-700'}`}
           >
-            <i className="fas fa-times text-lg" />
+            <X size={16} />
           </button>
-        </header>
+        </div>
 
-        {/* Scrollable Content */}
-        <div className="p-6 sm:p-8 space-y-8 overflow-y-auto custom-scrollbar max-h-[calc(85vh-140px)]">
-          
-          {/* Voice Section */}
-          <SettingsSection title="Text-to-Speech Voice" theme={theme} icon="fa-volume-up">
-            <div className={`p-5 rounded-2xl border ${
-              theme === 'dark' ? 'bg-slate-800/20 border-white/5' : 'bg-slate-50 border-slate-200'
-            }`}>
-              <div className="flex items-center gap-4 mb-4">
-                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-xl ${
-                  theme === 'dark' ? 'bg-emerald-400/10 text-emerald-400' : 'bg-emerald-600/10 text-emerald-600'
-                }`}>
-                  <i className="fas fa-microphone-alt" />
-                </div>
-                <div>
-                  <p className={`text-sm font-bold ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>
-                    Voice Selection
-                  </p>
-                  <p className="text-xs text-slate-500 font-medium">
-                    {isLoadingVoices
-                      ? 'Loading voice server...'
-                      : voiceError
-                        ? voiceError
-                        : `${availableVoices.length} cloud voices available`}
-                  </p>
-                </div>
-              </div>
-
-              <div className="relative">
-                <div className="flex items-center gap-2 mb-3">
-                  <span className={`text-[10px] font-black uppercase tracking-[0.2em] ${
-                    theme === 'dark' ? 'text-slate-500' : 'text-slate-400'
-                  }`}>
-                    Gender Filter
-                  </span>
-                  <div className="flex gap-2">
-                    {(['all', 'male', 'female'] as const).map(option => (
-                      <button
-                        key={option}
-                        type="button"
-                        onClick={() => setVoiceGender(option)}
-                        className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${
-                          voiceGender === option
-                            ? theme === 'dark'
-                              ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
-                              : 'bg-blue-50 text-blue-700 border border-blue-200'
-                            : theme === 'dark'
-                              ? 'bg-slate-900/40 text-slate-500 border border-white/5 hover:text-slate-300'
-                              : 'bg-white text-slate-400 border border-slate-200 hover:text-slate-600'
-                        }`}
-                      >
-                        {option}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <select 
-                  value={selectedVoiceId}
-                  onChange={handleVoiceSelect}
-                  disabled={isLoadingVoices}
-                  className={`w-full p-3 pr-10 rounded-xl border text-sm font-bold appearance-none outline-none focus:ring-2 focus:ring-blue-500/50 transition-all cursor-pointer ${
-                    theme === 'dark' 
-                      ? 'bg-slate-900 border-white/10 text-white' 
-                      : 'bg-white border-slate-200 text-slate-900'
-                  }`}
-                >
-                  <option value="">Auto (Language Default)</option>
-                  {availableVoices.map(voice => (
-                    <option key={voice.id} value={voice.id}>
-                      {voice.name} - {voice.lang}
-                    </option>
-                  ))}
-                </select>
-                <i className={`fas fa-chevron-down absolute right-3 top-1/2 -translate-y-1/2 text-xs pointer-events-none ${
-                  theme === 'dark' ? 'text-slate-500' : 'text-slate-400'
-                }`} />
-              </div>
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto custom-scrollbar px-5 py-5 space-y-7">
+          {/* Appearance */}
+          <section>
+            <p className={`text-[12px] font-medium mb-2.5 ${muted}`}>Appearance</p>
+            <div className={`grid grid-cols-2 gap-2 p-1 rounded-2xl border ${card}`}>
+              {([
+                { id: 'light', label: 'Light', icon: Sun },
+                { id: 'dark', label: 'Dark', icon: Moon },
+              ] as const).map(opt => {
+                const active = theme === opt.id;
+                return (
+                  <button
+                    key={opt.id}
+                    onClick={() => { if (theme !== opt.id) onToggleTheme(); }}
+                    className={`flex items-center justify-center gap-2 py-2.5 rounded-xl text-[13.5px] font-medium transition-all ${active
+                      ? (isDark ? 'bg-white/[0.09] text-white shadow-sm' : 'bg-white text-neutral-900 shadow-sm border border-black/[0.06]')
+                      : (isDark ? 'text-neutral-500 hover:text-neutral-300' : 'text-neutral-500 hover:text-neutral-700')}`}
+                  >
+                    <opt.icon size={15} strokeWidth={1.8} />
+                    {opt.label}
+                    {active && <Check size={14} className="opacity-60" />}
+                  </button>
+                );
+              })}
             </div>
-          </SettingsSection>
-          {/* Appearance Section */}
-          <SettingsSection title="Interface Theme" theme={theme} icon="fa-palette">
-            <div className={`flex items-center justify-between p-5 rounded-2xl border ${
-              theme === 'dark' ? 'bg-slate-800/20 border-white/5' : 'bg-slate-50 border-slate-200'
-            }`}>
-              <div className="flex items-center gap-4">
-                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-xl ${
-                  theme === 'dark' ? 'bg-yellow-400/10 text-yellow-400' : 'bg-blue-600/10 text-blue-600'
-                }`}>
-                  <i className={`fas ${theme === 'dark' ? 'fa-moon' : 'fa-sun'}`} />
-                </div>
-                <div>
-                  <p className={`text-sm font-bold ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>
-                    {theme === 'dark' ? 'Dark Mode' : 'Light Mode'}
-                  </p>
-                  <p className="text-xs text-slate-500 font-medium">
-                    {theme === 'dark' ? 'Easier on the eyes' : 'Classic bright theme'}
-                  </p>
-                </div>
-              </div>
-              
-              <ThemeToggle theme={theme} onToggle={onToggleTheme} />
-            </div>
-          </SettingsSection>
+          </section>
 
-          {/* Keyboard Shortcuts */}
-          <SettingsSection title="Keyboard Shortcuts" theme={theme} icon="fa-keyboard">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {SHORTCUTS.map((shortcut, i) => (
-                <ShortcutCard 
-                  key={shortcut.key} 
-                  shortcut={shortcut} 
-                  theme={theme} 
-                  index={i}
-                />
+          {/* Voice */}
+          <section>
+            <p className={`text-[12px] font-medium mb-2.5 ${muted}`}>Voice</p>
+            <div className={`rounded-2xl border p-4 ${card}`}>
+              <div className="flex items-center gap-1 mb-3">
+                {(['all', 'male', 'female'] as const).map(option => (
+                  <button
+                    key={option}
+                    onClick={() => setVoiceGender(option)}
+                    className={`px-3 py-1.5 rounded-full text-[12px] font-medium capitalize transition-colors ${voiceGender === option
+                      ? (isDark ? 'bg-white/[0.1] text-white' : 'bg-neutral-900 text-white')
+                      : (isDark ? 'text-neutral-500 hover:text-neutral-300' : 'text-neutral-500 hover:text-neutral-800')}`}
+                  >
+                    {option}
+                  </button>
+                ))}
+                <span className={`ml-auto text-[11.5px] ${muted}`}>
+                  {isLoadingVoices ? 'Loading…' : voiceError ?? `${availableVoices.length} voices`}
+                </span>
+              </div>
+              <select
+                value={selectedVoiceId}
+                onChange={handleVoiceSelect}
+                disabled={isLoadingVoices}
+                className={`w-full px-3 py-2.5 rounded-xl border text-[13.5px] outline-none cursor-pointer appearance-none transition-colors ${isDark ? 'bg-[#212121] border-white/10 text-neutral-200' : 'bg-white border-black/10 text-neutral-800'}`}
+              >
+                <option value="">Auto (language default)</option>
+                {availableVoices.map(voice => (
+                  <option key={voice.id} value={voice.id}>
+                    {voice.name} — {voice.lang}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </section>
+
+          {/* Shortcuts */}
+          <section>
+            <p className={`text-[12px] font-medium mb-1 ${muted}`}>Keyboard shortcuts</p>
+            <div>
+              {SHORTCUTS.map(s => (
+                <div key={s.key} className={`flex items-center justify-between py-2.5 border-b last:border-0 ${isDark ? 'border-white/[0.05]' : 'border-black/[0.05]'}`}>
+                  <span className={`text-[13.5px] ${isDark ? 'text-neutral-300' : 'text-neutral-600'}`}>{s.task}</span>
+                  <kbd className={`px-2 py-1 rounded-md text-[11.5px] font-medium border ${isDark ? 'bg-white/[0.05] border-white/10 text-neutral-400' : 'bg-neutral-100 border-black/[0.07] text-neutral-500'}`}>
+                    {s.key}
+                  </kbd>
+                </div>
               ))}
             </div>
-          </SettingsSection>
+          </section>
         </div>
 
         {/* Footer */}
-        <footer className={`px-6 py-4 text-center border-t ${styles.footer}`}>
-          <div className="flex items-center justify-center gap-2">
-            <i className="fas fa-code text-[9px] text-slate-500" />
-            <p className="text-[9px] font-black uppercase tracking-[0.3em] text-slate-500">
-              ChatAdk v2.0.0
-            </p>
-          </div>
-        </footer>
+        <div className={`px-5 py-3 text-center border-t shrink-0 ${isDark ? 'border-white/[0.07]' : 'border-black/[0.06]'}`}>
+          <p className={`text-[11px] ${muted}`}>ChatADK v2.0.0</p>
+        </div>
       </div>
     </div>
   );

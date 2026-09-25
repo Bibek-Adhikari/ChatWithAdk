@@ -1,7 +1,9 @@
 // services/stripeService.ts
 import { loadStripe } from '@stripe/stripe-js';
+import { auth } from './firebase';
 
 const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLIC_KEY);
+const API_BASE = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/, '');
 
 interface PaymentResult {
   success: boolean;
@@ -11,20 +13,24 @@ interface PaymentResult {
 }
 
 export const createPaymentIntent = async (
-  amount: number, 
-  currency: string = 'usd',
-  metadata: { planId: string; userEmail: string }
+  planId: string,
+  billingCycle: 'monthly' | 'yearly' = 'monthly',
+  currency: string = 'usd'
 ): Promise<PaymentResult> => {
   try {
-    // Call your backend to create PaymentIntent
-    const response = await fetch('/api/stripe/create-payment-intent', {
+    // Backend requires a Firebase ID token (see server/routes/payments.ts requireFirebaseAuth)
+    const token = await auth.currentUser?.getIdToken().catch(() => null);
+    if (!token) {
+      return { success: false, error: 'Please sign in before paying.' };
+    }
+    // Backend mounts at /api/payments (see server/index.js), route /create-payment-intent
+    const response = await fetch(`${API_BASE}/api/payments/create-payment-intent`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        amount: Math.round(amount * 100), // Convert to cents
-        currency,
-        metadata 
-      }),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify({ planId, billingCycle, currency }),
     });
 
     const data = await response.json();

@@ -1,4 +1,4 @@
-import { supabase } from "../supabaseClient";
+import { authedGet, authedPost } from "./serverApi";
 
 export interface CodeExplanation {
   id?: string;
@@ -9,44 +9,27 @@ export interface CodeExplanation {
   timestamp: string;
 }
 
+/**
+ * Code explanations in Supabase — server-mediated (was direct anon writes).
+ * user_id is taken from the verified Firebase token on the server, so the
+ * userId argument is kept only for caller compatibility.
+ */
 export const codeExplanationService = {
   /**
    * Saves a code explanation to Supabase
    */
   async saveExplanation(explanation: CodeExplanation): Promise<void> {
-    try {
-      const { error } = await supabase
-        .from('code_explanations')
-        .insert({
-          user_id: explanation.user_id,
-          language: explanation.language,
-          code: explanation.code,
-          explanation: explanation.explanation,
-          timestamp: explanation.timestamp || new Date().toISOString()
-        });
-
-      if (error) throw error;
-    } catch (error) {
-      console.error("Error saving code explanation to Supabase:", error);
-    }
+    await authedPost('/api/supabase/explanations', {
+      language: explanation.language,
+      code: explanation.code,
+      explanation: explanation.explanation,
+    });
   },
 
   /**
-   * Fetches latest explanations for admin
+   * Fetches latest explanations for admin (server enforces admin emails)
    */
   async getLatestExplanations(limitCount: number = 20): Promise<CodeExplanation[]> {
-    try {
-      const { data, error } = await supabase
-        .from('code_explanations')
-        .select('*')
-        .order('timestamp', { ascending: false })
-        .limit(limitCount);
-
-      if (error) throw error;
-      return data || [];
-    } catch (error) {
-      console.error("Error fetching code explanations:", error);
-      return [];
-    }
-  }
+    return authedGet<CodeExplanation>(`/api/supabase/admin/explanations?limit=${limitCount}`);
+  },
 };

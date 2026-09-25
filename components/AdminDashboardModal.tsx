@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useCallback, memo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { X, RefreshCw, Check, ChevronRight, ChevronLeft, ExternalLink, ShieldCheck } from 'lucide-react';
 import { adminService } from '../services/adminService';
 import { supabaseStorageService } from '../services/supabaseStorageService';
 import { codeExplanationService, CodeExplanation } from '../services/codeExplanationService';
+import { API_DEFS, checkApi, maskedKey, isConfigured, ApiDef, ApiStatus, HealthResult } from '../services/apiHealthService';
 
 // Proper TypeScript interfaces
 interface User {
@@ -24,47 +26,35 @@ interface AdminDashboardModalProps {
   theme: 'light' | 'dark';
 }
 
-// Memoized stat card for better performance
+// Minimal stat card
 interface StatCardProps {
   label: string;
   value: string | number;
   subtext: string;
-  color: 'blue' | 'indigo' | 'pink' | 'emerald';
   theme: 'light' | 'dark';
 }
 
-const colorMap = {
-  blue: 'text-blue-500 bg-blue-500/20 border-blue-500/30',
-  indigo: 'text-indigo-500 bg-indigo-500/20 border-indigo-500/30',
-  pink: 'text-pink-500 bg-pink-500/20 border-pink-500/30',
-  emerald: 'text-emerald-500 bg-emerald-500/20 border-emerald-500/30',
-};
-
-const bgMap = {
-  blue: 'bg-blue-500',
-  indigo: 'bg-indigo-500',
-  pink: 'bg-pink-500',
-  emerald: 'bg-emerald-500',
-};
-
-const StatCard = memo(({ label, value, subtext, color, theme }: StatCardProps) => (
-  <div className={`
-    p-6 rounded-3xl border transition-all duration-300 hover:scale-[1.02]
-    ${theme === 'dark' 
-      ? 'bg-slate-800/40 border-white/5 hover:border-white/10' 
-      : 'bg-slate-50 border-slate-100 hover:border-slate-200 shadow-sm'}
-  `}>
-    <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">
-      {label}
-    </p>
-    <h3 className={`text-4xl font-black ${colorMap[color].split(' ')[0]}`}>
-      {value}
-    </h3>
-    <p className={`text-[10px] font-bold mt-2 ${colorMap[color].split(' ')[0].replace('text-', 'text-')}`}>
-      {subtext}
-    </p>
+const StatCard = memo(({ label, value, subtext, theme }: StatCardProps) => (
+  <div className={`p-5 rounded-2xl border ${theme === 'dark' ? 'bg-white/[0.02] border-white/[0.07]' : 'bg-neutral-50 border-black/[0.07]'}`}>
+    <p className={`text-[12px] font-medium ${theme === 'dark' ? 'text-neutral-500' : 'text-neutral-400'}`}>{label}</p>
+    <h3 className={`text-[28px] font-semibold tracking-tight mt-1 ${theme === 'dark' ? 'text-white' : 'text-neutral-900'}`}>{value}</h3>
+    <p className={`text-[11.5px] mt-0.5 ${theme === 'dark' ? 'text-neutral-500' : 'text-neutral-400'}`}>{subtext}</p>
   </div>
 ));
+
+const apiDot: Record<ApiStatus, string> = {
+  online: 'bg-emerald-500',
+  offline: 'bg-red-500',
+  unknown: 'bg-amber-500',
+  unconfigured: 'bg-neutral-400',
+};
+
+const apiStatusLabel: Record<ApiStatus, string> = {
+  online: 'Online',
+  offline: 'Offline',
+  unknown: 'Unknown',
+  unconfigured: 'No key',
+};
 
 // Memoized user list item
 interface UserListItemProps {
@@ -75,78 +65,137 @@ interface UserListItemProps {
 }
 
 const UserListItem = memo(({ user, theme, isAdmin, onSelect }: UserListItemProps) => {
-  const initials = user.displayName 
+  const isDark = theme === 'dark';
+  const initials = user.displayName
     ? user.displayName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
     : user.email?.[0].toUpperCase() || '?';
 
   return (
-    <div 
+    <div
       onClick={() => onSelect(user.id)}
-      className="p-4 flex items-center justify-between hover:bg-white/5 transition-colors group cursor-pointer"
+      className={`px-4 py-3 flex items-center justify-between transition-colors group cursor-pointer ${isDark ? 'hover:bg-white/[0.03]' : 'hover:bg-black/[0.02]'}`}
     >
-      <div className="flex items-center gap-4 min-w-0">
-        <div className={`
-          w-10 h-10 rounded-xl border overflow-hidden flex items-center justify-center shrink-0
-          ${theme === 'dark' ? 'bg-slate-800 border-white/10' : 'bg-white border-slate-200'}
-        `}>
+      <div className="flex items-center gap-3 min-w-0">
+        <span className={`w-8 h-8 rounded-full overflow-hidden flex items-center justify-center shrink-0 text-[12px] font-semibold ${isDark ? 'bg-white/10 text-neutral-300' : 'bg-neutral-200 text-neutral-600'}`}>
           {user.photoURL ? (
-            <img 
-              src={user.photoURL} 
-              alt={user.displayName || 'User'} 
+            <img
+              src={user.photoURL}
+              alt=""
               className="w-full h-full object-cover"
               loading="lazy"
-              onError={(e) => {
-                e.currentTarget.style.display = 'none';
-              }}
+              onError={(e) => { e.currentTarget.style.display = 'none'; }}
             />
-          ) : (
-            <span className={`
-              text-xs font-bold
-              ${theme === 'dark' ? 'text-indigo-400' : 'text-indigo-600'}
-            `}>
-              {initials}
-            </span>
-          )}
-        </div>
+          ) : initials}
+        </span>
         <div className="min-w-0">
-          <p className={`
-            text-[13px] font-bold truncate flex items-center gap-2
-            ${theme === 'dark' ? 'text-slate-200' : 'text-slate-700'}
-          `}>
-            {user.displayName || 'Anonymous User'}
-            <span className={`
-              text-[10px] font-normal opacity-50 hidden sm:inline truncate
-              ${theme === 'dark' ? 'text-slate-400' : 'text-slate-500'}
-            `}>
-              {user.email}
-            </span>
+          <p className={`text-[13.5px] font-medium truncate ${isDark ? 'text-neutral-100' : 'text-neutral-800'}`}>
+            {user.displayName || 'Anonymous'}
+            {user.email && <span className={`font-normal ml-2 hidden sm:inline ${isDark ? 'text-neutral-500' : 'text-neutral-400'}`}>{user.email}</span>}
           </p>
-          <p className="text-[10px] text-slate-500">
-            {user.lastLogin 
-              ? new Date(user.lastLogin).toLocaleString(undefined, {
-                  month: 'short',
-                  day: 'numeric',
-                  hour: '2-digit',
-                  minute: '2-digit'
-                })
-              : 'Never logged in'
-            }
+          <p className={`text-[11.5px] ${isDark ? 'text-neutral-500' : 'text-neutral-400'}`}>
+            {user.lastLogin
+              ? new Date(user.lastLogin).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+              : 'Never logged in'}
           </p>
         </div>
       </div>
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2 shrink-0">
         {isAdmin && (
-          <span className={`
-            px-2 py-0.5 rounded-lg text-[8px] font-black tracking-widest uppercase
-            ${theme === 'dark' 
-              ? 'bg-indigo-500/20 text-indigo-400' 
-              : 'bg-indigo-100 text-indigo-700'}
-          `}>
-            Admin
-          </span>
+          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${isDark ? 'bg-white/10 text-neutral-300' : 'bg-neutral-900 text-white'}`}>Admin</span>
         )}
-        <i className="fas fa-chevron-right text-[10px] text-slate-600 opacity-0 group-hover:opacity-100 transition-opacity" />
+        <ChevronRight size={15} className={`opacity-0 group-hover:opacity-100 transition-opacity ${isDark ? 'text-neutral-500' : 'text-neutral-400'}`} />
       </div>
+    </div>
+  );
+});
+
+// API detail panel — shown only after clicking a name in the list
+interface ApiDetailProps {
+  def: ApiDef;
+  result?: HealthResult;
+  checking: boolean;
+  theme: 'light' | 'dark';
+  onCheck: (id: string) => void;
+  onBack?: () => void;
+}
+
+const ApiDetail = memo(({ def, result, checking, theme, onCheck, onBack }: ApiDetailProps) => {
+  const isDark = theme === 'dark';
+  const muted = isDark ? 'text-neutral-500' : 'text-neutral-400';
+  const fg = isDark ? 'text-neutral-100' : 'text-neutral-900';
+  const status: ApiStatus = result?.status || (isConfigured(def) ? 'unknown' : 'unconfigured');
+  const pct = result?.usedPct ?? null;
+
+  return (
+    <div className="animate-fadeIn">
+      {onBack && (
+        <button onClick={onBack} className={`flex items-center gap-1 text-[12.5px] font-medium mb-3 md:hidden ${isDark ? 'text-neutral-400' : 'text-neutral-500'}`}>
+          <ChevronLeft size={15} /> All APIs
+        </button>
+      )}
+      <div className="flex items-center gap-2.5 mb-1">
+        <span className={`w-2 h-2 rounded-full ${apiDot[status]}`} />
+        <h4 className={`text-[15px] font-semibold ${fg}`}>{def.name}</h4>
+        <span className={`text-[11px] px-2 py-0.5 rounded-full border ${isDark ? 'border-white/10 text-neutral-400' : 'border-black/10 text-neutral-500'}`}>
+          {checking ? 'Checking…' : apiStatusLabel[status]}
+        </span>
+        <span className={`text-[11px] capitalize ${muted}`}>{def.cost}</span>
+      </div>
+      <p className={`text-[12px] font-mono mb-3 ${muted}`}>{maskedKey(...def.envKeys)}</p>
+
+      <p className={`text-[13px] leading-relaxed mb-3 ${isDark ? 'text-neutral-300' : 'text-neutral-600'}`}>
+        {checking ? 'Probing provider…' : (result?.detail || (isConfigured(def) ? 'Not checked yet.' : 'Key missing in .env.'))}
+      </p>
+
+      {result?.credits && (
+        <p className={`text-[13px] font-medium mb-3 ${isDark ? 'text-emerald-400' : 'text-emerald-600'}`}>{result.credits}</p>
+      )}
+
+      {pct !== null && pct !== undefined ? (
+        <div className="mb-4">
+          <div className="flex items-center justify-between mb-1.5">
+            <span className={`text-[12px] ${muted}`}>Usage</span>
+            <span className={`text-[12px] font-semibold ${pct > 80 ? 'text-red-500' : pct > 50 ? 'text-amber-500' : 'text-emerald-500'}`}>{pct.toFixed(1)}%</span>
+          </div>
+          <div className={`h-1.5 rounded-full overflow-hidden ${isDark ? 'bg-white/10' : 'bg-black/[0.07]'}`}>
+            <div
+              className={`h-full rounded-full transition-all ${pct > 80 ? 'bg-red-500' : pct > 50 ? 'bg-amber-500' : 'bg-emerald-500'}`}
+              style={{ width: `${Math.min(100, Math.max(0, pct))}%` }}
+            />
+          </div>
+        </div>
+      ) : (
+        <p className={`text-[12px] mb-4 ${muted}`}>Usage % is not exposed by this provider.</p>
+      )}
+
+      <p className={`text-[12px] font-medium mb-1.5 ${muted}`}>Capabilities</p>
+      <ul className="space-y-1 mb-4">
+        {def.powers.map(p => (
+          <li key={p} className={`text-[13px] flex items-start gap-2 ${isDark ? 'text-neutral-300' : 'text-neutral-600'}`}>
+            <Check size={14} className="text-emerald-500 mt-0.5 shrink-0" />{p}
+          </li>
+        ))}
+      </ul>
+
+      <div className="flex items-center gap-2 mb-3">
+        <a
+          href={def.dashboard}
+          target="_blank"
+          rel="noreferrer"
+          onClick={(e) => e.stopPropagation()}
+          className={`flex items-center gap-1.5 px-3.5 py-2 rounded-full text-[12.5px] font-medium border transition-colors ${isDark ? 'border-white/15 text-neutral-200 hover:bg-white/[0.06]' : 'border-black/15 text-neutral-700 hover:bg-black/[0.04]'}`}
+        >
+          Provider console <ExternalLink size={13} />
+        </a>
+        <button
+          onClick={() => onCheck(def.id)}
+          disabled={checking}
+          className="px-3.5 py-2 rounded-full text-[12.5px] font-medium transition-all active:scale-[0.98] disabled:opacity-40 bg-black text-white hover:bg-neutral-800 dark:bg-white dark:text-black dark:hover:bg-neutral-200"
+        >
+          {checking ? 'Checking…' : def.cost === 'paid' ? 'Test (uses credit)' : def.cost === 'none' ? 'Refresh' : 'Test'}
+        </button>
+      </div>
+      <p className={`text-[11.5px] leading-relaxed ${muted}`}>{def.quotaNote}</p>
     </div>
   );
 });
@@ -154,14 +203,27 @@ const UserListItem = memo(({ user, theme, isAdmin, onSelect }: UserListItemProps
 // Admin emails - move to config or env in production
 const ADMIN_EMAILS = ['crazybibek4444@gmail.com', 'geniusbibek4444@gmail.com'];
 
-const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({ 
-  isOpen, 
-  onClose, 
-  theme 
+const TABS = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'models', label: 'System' },
+  { id: 'apis', label: 'APIs' },
+  { id: 'history', label: 'History' },
+] as const;
+
+const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
+  isOpen,
+  onClose,
+  theme
 }) => {
+  const isDark = theme === 'dark';
+  const muted = isDark ? 'text-neutral-500' : 'text-neutral-400';
+  const fg = isDark ? 'text-neutral-100' : 'text-neutral-900';
+  const card = isDark ? 'bg-white/[0.02] border-white/[0.07]' : 'bg-neutral-50 border-black/[0.07]';
+  const divider = isDark ? 'border-white/[0.06]' : 'border-black/[0.06]';
+
   const navigate = useNavigate();
   const [stats, setStats] = useState<SystemStats>({ totalUsers: 0, totalSessions: 0 });
-  
+
   const handleUserSelect = (userId: string) => {
     onClose();
     navigate(`/admin/usersData/${userId}`);
@@ -170,7 +232,30 @@ const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
-  const [activeTab, setActiveTab] = useState<'overview' | 'models' | 'history'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'models' | 'apis' | 'history'>('overview');
+  const [apiResults, setApiResults] = useState<Record<string, HealthResult>>({});
+  const [apiChecking, setApiChecking] = useState<Record<string, boolean>>({});
+  const [apisAutoChecked, setApisAutoChecked] = useState(false);
+  const [selectedApiId, setSelectedApiId] = useState<string | null>(null);
+
+  const runApiCheck = useCallback(async (id: string) => {
+    setApiChecking(prev => ({ ...prev, [id]: true }));
+    try {
+      const res = await checkApi(id);
+      setApiResults(prev => ({ ...prev, [id]: res }));
+    } finally {
+      setApiChecking(prev => ({ ...prev, [id]: false }));
+    }
+  }, []);
+
+  // Auto-probe the free checks the first time the APIS tab opens.
+  // Paid checks only run on manual tap to save credits.
+  useEffect(() => {
+    if (activeTab === 'apis' && !apisAutoChecked) {
+      setApisAutoChecked(true);
+      API_DEFS.filter(d => d.cost === 'free').forEach(d => runApiCheck(d.id));
+    }
+  }, [activeTab, apisAutoChecked, runApiCheck]);
   const [sessionHistory, setSessionHistory] = useState<any[]>([]);
   const [explanationHistory, setExplanationHistory] = useState<CodeExplanation[]>([]);
   const [modelConfig, setModelConfig] = useState<any>(null);
@@ -179,10 +264,10 @@ const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
 
   const loadAdminData = useCallback(async () => {
     if (!isOpen) return;
-    
+
     setLoading(true);
     setError(null);
-    
+
     try {
       const [systemStats, users, config, supabaseSessions, supabaseExplanations] = await Promise.all([
         adminService.getSystemStats(),
@@ -191,7 +276,7 @@ const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
         supabaseStorageService.getAllSessionsForAdmin(),
         codeExplanationService.getLatestExplanations(20)
       ]);
-      
+
       setStats(systemStats);
       setLatestUsers(users);
       setModelConfig(config);
@@ -218,12 +303,12 @@ const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
     };
-    
+
     if (isOpen) {
       document.addEventListener('keydown', handleEscape);
       document.body.style.overflow = 'hidden';
     }
-    
+
     return () => {
       document.removeEventListener('keydown', handleEscape);
       document.body.style.overflow = 'unset';
@@ -232,282 +317,155 @@ const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
 
   if (!isOpen) return null;
 
-  const isUserAdmin = (email: string | null) => 
+  const isUserAdmin = (email: string | null) =>
     email ? ADMIN_EMAILS.includes(email) : false;
+
+  const selectedApi = API_DEFS.find(d => d.id === selectedApiId) || null;
+  const onlineCount = Object.values(apiResults).filter(r => r.status === 'online').length;
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-      {/* Backdrop with improved animation */}
-      <div 
-        className="absolute inset-0 bg-slate-950/80 backdrop-blur-md transition-opacity duration-300 animate-in fade-in"
+      <div
+        className="absolute inset-0 bg-black/50 animate-fadeIn"
         onClick={onClose}
         aria-hidden="true"
       />
-      
-      {/* Modal Content with improved accessibility */}
-      <div 
+
+      <div
         role="dialog"
         aria-modal="true"
         aria-labelledby="admin-dashboard-title"
-        className={`
-          relative w-full max-w-4xl max-h-[85vh] overflow-hidden rounded-[32px] 
-          shadow-2xl border flex flex-col animate-in zoom-in-95 duration-300
-          ${theme === 'dark' 
-            ? 'bg-slate-900 border-white/10' 
-            : 'bg-white border-slate-200'}
-        `}
+        className={`relative w-full max-w-4xl max-h-[85vh] overflow-hidden rounded-2xl shadow-2xl border flex flex-col animate-slide-up ${isDark ? 'bg-[#2f2f2f] border-white/10' : 'bg-white border-black/10'}`}
       >
         {/* Header */}
-        <div className="p-6 sm:p-8 border-b border-white/5 flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-4">
-            <div className={`
-              w-12 h-12 rounded-2xl border flex items-center justify-center
-              ${theme === 'dark' 
-                ? 'bg-indigo-600/20 border-indigo-500/30' 
-                : 'bg-indigo-100 border-indigo-200'}
-            `}>
-              <i className={`
-                fas fa-shield-alt text-xl
-                ${theme === 'dark' ? 'text-indigo-400' : 'text-indigo-600'}
-              `} />
-            </div>
-            <div>
-              <h2 
-                id="admin-dashboard-title"
-                className={`
-                  text-lg sm:text-xl font-black uppercase tracking-wider
-                  ${theme === 'dark' ? 'text-white' : 'text-slate-900'}
-                `}
-              >
-                Admin Dashboard
+        <div className={`px-5 py-4 border-b shrink-0 ${divider}`}>
+          <div className="flex items-center gap-3">
+            <span className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${isDark ? 'bg-white/10 text-neutral-200' : 'bg-neutral-900 text-white'}`}>
+              <ShieldCheck size={16} />
+            </span>
+            <div className="flex-1 min-w-0">
+              <h2 id="admin-dashboard-title" className={`text-[15px] font-semibold ${isDark ? 'text-white' : 'text-neutral-900'}`}>
+                Admin dashboard
               </h2>
-              <div className="flex items-center gap-2 mt-0.5">
-                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">
-                  Real-time System Management
-                </p>
-                {lastUpdated && (
-                  <span className="text-[9px] text-slate-400">
-                    • Updated {lastUpdated.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </span>
-                )}
-              </div>
+              <p className={`text-[11.5px] ${muted}`}>
+                Real-time system management{lastUpdated && ` · Updated ${lastUpdated.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}
+              </p>
             </div>
-          </div>
-          
-          <div className="flex  items-center gap-2 sm:gap-3">
-            <div className={`flex p-1 rounded-xl border ${theme === 'dark' ? 'bg-slate-800/50 border-white/5' : 'bg-slate-100 border-slate-200'}`}>
-              <button 
-                onClick={() => setActiveTab('overview')}
-                className={`px-3 py-1.5 rounded-lg text-[9px] font-black tracking-widest uppercase transition-all
-                  ${activeTab === 'overview' 
-                    ? (theme === 'dark' ? 'bg-indigo-600 text-white shadow-lg' : 'bg-white text-indigo-600 shadow-sm')
-                    : (theme === 'dark' ? 'text-slate-500 hover:text-slate-300' : 'text-slate-500 hover:text-slate-700')}`}
-              >
-                OVERVIEW
-              </button>
-              <button 
-                onClick={() => setActiveTab('models')}
-                className={`px-3 py-1.5 rounded-lg text-[9px] font-black tracking-widest uppercase transition-all
-                  ${activeTab === 'models' 
-                    ? (theme === 'dark' ? 'bg-indigo-600 text-white shadow-lg' : 'bg-white text-indigo-600 shadow-sm')
-                    : (theme === 'dark' ? 'text-slate-500 hover:text-slate-300' : 'text-slate-500 hover:text-slate-700')}`}
-              >
-                SYSTEM
-              </button>
-              <button 
-                onClick={() => setActiveTab('history')}
-                className={`px-3 py-1.5 rounded-lg text-[9px] font-black tracking-widest uppercase transition-all
-                  ${activeTab === 'history' 
-                    ? (theme === 'dark' ? 'bg-indigo-600 text-white shadow-lg' : 'bg-white text-indigo-600 shadow-sm')
-                    : (theme === 'dark' ? 'text-slate-500 hover:text-slate-300' : 'text-slate-500 hover:text-slate-700')}`}
-              >
-                HISTORY
-              </button>
-            </div>
-            <button 
+            <button
               onClick={loadAdminData}
               disabled={loading}
-              className={`
-                w-10 h-10 rounded-xl flex items-center justify-center transition-all
-                ${theme === 'dark' 
-                  ? 'hover:bg-white/5 text-slate-400' 
-                  : 'hover:bg-slate-100 text-slate-600'}
-                ${loading ? 'animate-spin' : ''}
-                disabled:opacity-50
-              `}
-              aria-label="Refresh data"
+              className={`w-8 h-8 flex items-center justify-center rounded-lg transition-colors ${isDark ? 'text-neutral-500 hover:bg-white/10 hover:text-neutral-200' : 'text-neutral-400 hover:bg-black/5 hover:text-neutral-700'} disabled:opacity-50`}
+              title="Refresh"
             >
-              <i className="fas fa-sync-alt" />
+              <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
             </button>
-            <button 
+            <button
               onClick={onClose}
-              className={`
-                w-10 h-10 rounded-xl flex items-center justify-center transition-all
-                ${theme === 'dark' 
-                  ? 'hover:bg-white/5 text-slate-400 hover:text-white' 
-                  : 'hover:bg-slate-100 text-slate-600 hover:text-slate-900'}
-              `}
-              aria-label="Close modal"
+              className={`w-8 h-8 flex items-center justify-center rounded-lg transition-colors ${isDark ? 'text-neutral-500 hover:bg-white/10 hover:text-neutral-200' : 'text-neutral-400 hover:bg-black/5 hover:text-neutral-700'}`}
+              title="Close"
             >
-              <i className="fas fa-times" />
+              <X size={16} />
             </button>
+          </div>
+          {/* Tabs */}
+          <div className="flex gap-1 mt-3 overflow-x-auto scrollbar-hide">
+            {TABS.map(t => (
+              <button
+                key={t.id}
+                onClick={() => setActiveTab(t.id)}
+                className={`px-3.5 py-1.5 rounded-full text-[12.5px] font-medium whitespace-nowrap transition-colors ${activeTab === t.id
+                  ? (isDark ? 'bg-white/[0.09] text-white' : 'bg-neutral-900 text-white')
+                  : (isDark ? 'text-neutral-500 hover:text-neutral-300 hover:bg-white/[0.04]' : 'text-neutral-500 hover:text-neutral-800 hover:bg-black/[0.04]')}`}
+              >
+                {t.label}
+                {t.id === 'apis' && <span className={`ml-1.5 text-[11px] ${activeTab === 'apis' ? 'opacity-70' : muted}`}>{onlineCount}/{API_DEFS.length}</span>}
+              </button>
+            ))}
           </div>
         </div>
 
         {/* Content */}
-        <div className="p-6 sm:p-8 overflow-y-auto custom-scrollbar flex-1">
+        <div className="px-5 py-5 overflow-y-auto custom-scrollbar flex-1">
           {error ? (
-            <div className="flex flex-col items-center justify-center py-16 gap-4">
-              <div className="w-16 h-16 rounded-full bg-red-500/10 flex items-center justify-center">
-                <i className="fas fa-exclamation-triangle text-red-500 text-2xl" />
-              </div>
-              <div className="text-center">
-                <p className={`
-                  text-sm font-bold uppercase tracking-widest mb-1
-                  ${theme === 'dark' ? 'text-red-400' : 'text-red-600'}
-                `}>
-                  Connection Error
-                </p>
-                <p className="text-xs text-slate-500 max-w-xs mx-auto">
-                  {error}
-                </p>
-              </div>
-              <button 
+            <div className="flex flex-col items-center justify-center py-14 gap-3 text-center">
+              <p className="text-[14px] font-medium text-red-500">Couldn't load admin data</p>
+              <p className={`text-[12.5px] max-w-xs ${muted}`}>{error}</p>
+              <button
                 onClick={loadAdminData}
-                className={`
-                  px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-widest
-                  ${theme === 'dark' 
-                    ? 'bg-slate-800 hover:bg-slate-700 text-white' 
-                    : 'bg-slate-200 hover:bg-slate-300 text-slate-800'}
-                  transition-all active:scale-95
-                `}
+                className="px-4 py-2 rounded-full text-[12.5px] font-medium bg-black text-white hover:bg-neutral-800 dark:bg-white dark:text-black dark:hover:bg-neutral-200 transition-all active:scale-[0.98]"
               >
-                Try Again
+                Try again
               </button>
             </div>
           ) : loading && latestUsers.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-20 gap-4 opacity-50">
-              <div className="relative">
-                <i className="fas fa-circle-notch fa-spin text-4xl text-indigo-500" />
-                <div className="absolute inset-0 blur-xl bg-indigo-500/30 rounded-full" />
-              </div>
-              <p className="text-[10px] font-black uppercase tracking-widest animate-pulse">
-                Fetching Secure Data...
-              </p>
+            <div className="flex flex-col items-center justify-center py-16 gap-3">
+              <RefreshCw size={22} className={`animate-spin ${muted}`} />
+              <p className={`text-[12.5px] ${muted}`}>Loading…</p>
             </div>
           ) : (
             <>
-              {activeTab === 'overview' ? (
-                <>
-                  {/* Stats Grid */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 mb-8">
-                    <StatCard 
-                      label="Total Managed Users"
-                      value={stats.totalUsers.toLocaleString()}
-                      subtext="Active Profiles in Firestore"
-                      color="blue"
-                      theme={theme}
-                    />
-                    <StatCard 
-                      label="Cloud Chat Sessions"
-                      value={stats.totalSessions.toLocaleString()}
-                      subtext="Syncing across devices"
-                      color="indigo"
-                      theme={theme}
-                    />
-                    <StatCard 
-                      label="System Status"
-                      value="Active"
-                      subtext="Privileged access granted"
-                      color="pink"
-                      theme={theme}
-                    />
+              {activeTab === 'overview' && (
+                <div className="animate-fadeIn">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 mb-6">
+                    <StatCard label="Users" value={stats.totalUsers.toLocaleString()} subtext="Profiles in Firestore" theme={theme} />
+                    <StatCard label="Chat sessions" value={stats.totalSessions.toLocaleString()} subtext="Synced across devices" theme={theme} />
+                    <StatCard label="System" value="Active" subtext="Privileged access granted" theme={theme} />
                   </div>
 
-                  <div className="space-y-8">
-                    {(() => {
-                      const now = new Date();
-                      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-                      const lastWeek = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
-                      const lastMonth = new Date(today.getFullYear(), today.getMonth() - 1, today.getDate());
+                  {(() => {
+                    const now = new Date();
+                    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                    const lastWeek = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+                    const lastMonth = new Date(today.getFullYear(), today.getMonth() - 1, today.getDate());
 
-                      const groups = [
-                        { label: 'Active Today', users: latestUsers.filter(u => u.lastLogin && new Date(u.lastLogin) >= today), color: 'text-emerald-500 bg-emerald-500/10' },
-                        { label: 'Past 7 Days', users: latestUsers.filter(u => u.lastLogin && new Date(u.lastLogin) < today && new Date(u.lastLogin) >= lastWeek), color: 'text-blue-500 bg-blue-500/10' },
-                        { label: 'This Month', users: latestUsers.filter(u => u.lastLogin && new Date(u.lastLogin) < lastWeek && new Date(u.lastLogin) >= lastMonth), color: 'text-indigo-500 bg-indigo-500/10' },
-                        { label: 'Earlier Activity', users: latestUsers.filter(u => !u.lastLogin || new Date(u.lastLogin) < lastMonth), color: 'text-slate-500 bg-slate-500/10' }
-                      ].filter(g => g.users.length > 0);
+                    const groups = [
+                      { label: 'Active today', users: latestUsers.filter(u => u.lastLogin && new Date(u.lastLogin) >= today) },
+                      { label: 'Past 7 days', users: latestUsers.filter(u => u.lastLogin && new Date(u.lastLogin) < today && new Date(u.lastLogin) >= lastWeek) },
+                      { label: 'This month', users: latestUsers.filter(u => u.lastLogin && new Date(u.lastLogin) < lastWeek && new Date(u.lastLogin) >= lastMonth) },
+                      { label: 'Earlier', users: latestUsers.filter(u => !u.lastLogin || new Date(u.lastLogin) < lastMonth) }
+                    ].filter(g => g.users.length > 0);
 
-                      if (groups.length === 0) return (
-                        <div className="p-12 text-center">
-                          <i className="fas fa-users text-4xl text-slate-600 mb-4 opacity-50" />
-                          <p className="text-slate-500 text-[11px] uppercase tracking-widest font-bold">
-                            No users tracked in Firestore yet
-                          </p>
+                    if (groups.length === 0) return (
+                      <p className={`text-center text-[13px] py-10 ${muted}`}>No users tracked yet.</p>
+                    );
+
+                    return groups.map(group => (
+                      <div key={group.label} className="mb-5 last:mb-0">
+                        <p className={`px-1 mb-1.5 text-[12px] font-medium ${muted}`}>{group.label} · {group.users.length}</p>
+                        <div className={`rounded-2xl border overflow-hidden divide-y ${card} ${isDark ? 'divide-white/[0.05]' : 'divide-black/[0.05]'}`}>
+                          {group.users.map(user => (
+                            <UserListItem
+                              key={user.id}
+                              user={user}
+                              theme={theme}
+                              isAdmin={isUserAdmin(user.email)}
+                              onSelect={handleUserSelect}
+                            />
+                          ))}
                         </div>
-                      );
-
-                      return groups.map(group => (
-                        <div key={group.label}>
-                          <div className="px-4 mb-4 flex items-center gap-3">
-                            <span className={`px-2 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-widest ${group.color}`}>
-                              {group.label}
-                            </span>
-                            <div className="h-[1px] flex-1 bg-white/5" />
-                            <span className="text-[9px] font-bold opacity-30 uppercase">{group.users.length} Users</span>
-                          </div>
-                          <div className={`
-                            rounded-3xl border overflow-hidden divide-y divide-white/5
-                            ${theme === 'dark' ? 'bg-slate-800/40 border-white/5' : 'bg-slate-50 border-slate-100'}
-                          `}>
-                            {group.users.map(user => (
-                              <UserListItem 
-                                key={user.id} 
-                                user={user} 
-                                theme={theme}
-                                isAdmin={isUserAdmin(user.email)}
-                                onSelect={handleUserSelect}
-                              />
-                            ))}
-                          </div>
-                        </div>
-                      ));
-                    })()}
-                  </div>
-                </>
-              ) : activeTab === 'models' ? (
-                <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
-                  <div className={`p-6 rounded-[32px] border ${theme === 'dark' ? 'bg-slate-800/40 border-white/5' : 'bg-slate-50 border-slate-100'}`}>
-                    <div className="flex items-center gap-4 mb-8">
-                      <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center text-white shrink-0">
-                        <i className="fas fa-microchip" />
                       </div>
-                      <div>
-                        <h3 className={`text-sm font-black uppercase tracking-widest ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>Model Configuration</h3>
-                        <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-0.5">Map UI modes to AI engines</p>
-                      </div>
-                    </div>
+                    ));
+                  })()}
+                </div>
+              )}
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {activeTab === 'models' && (
+                <div className="animate-fadeIn space-y-4">
+                  <div className={`p-5 rounded-2xl border ${card}`}>
+                    <h3 className={`text-[14px] font-semibold ${fg}`}>Model configuration</h3>
+                    <p className={`text-[12px] mb-5 ${muted}`}>Map UI modes to AI engines.</p>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       {[
-                        { id: 'fast', label: 'Fast Mode', icon: 'fa-bolt', color: 'text-blue-400' },
-                        { id: 'research', label: 'Research Mode', icon: 'fa-microscope', color: 'text-emerald-400' },
-                        { id: 'detail', label: 'Detail Mode', icon: 'fa-brain', color: 'text-indigo-400' }
+                        { id: 'fast', label: 'Fast mode' },
+                        { id: 'research', label: 'Research mode' },
+                        { id: 'detail', label: 'Detail mode' }
                       ].map(item => (
-                        <div key={item.id} className="space-y-3">
-                          <div className="flex items-center gap-2">
-                            <i className={`fas ${item.icon} text-[10px] ${item.color}`} />
-                            <label className={`text-[10px] font-black uppercase tracking-widest ${theme === 'dark' ? 'text-slate-400' : 'text-slate-500'}`}>
-                              {item.label}
-                            </label>
-                          </div>
-                          <select 
+                        <div key={item.id}>
+                          <label className={`block text-[12px] font-medium mb-1.5 ${muted}`}>{item.label}</label>
+                          <select
                             value={modelConfig?.[item.id] || 'groq'}
                             onChange={(e) => setModelConfig((prev: any) => ({ ...prev, [item.id]: e.target.value }))}
-                            className={`w-full px-4 py-3 rounded-2xl border outline-none text-xs font-bold transition-all
-                              ${theme === 'dark' 
-                                ? 'bg-slate-900 border-white/10 text-white focus:border-blue-500' 
-                                : 'bg-white border-slate-200 text-slate-900 focus:border-blue-500 shadow-sm'}`}
+                            className={`w-full px-3 py-2.5 rounded-xl border text-[13px] outline-none cursor-pointer appearance-none ${isDark ? 'bg-[#212121] border-white/10 text-neutral-200' : 'bg-white border-black/10 text-neutral-800'}`}
                           >
                             <option value="groq">Groq (Llama 3 70B)</option>
                             <option value="gemini">Gemini (2.0 Flash)</option>
@@ -517,16 +475,9 @@ const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
                         </div>
                       ))}
                     </div>
-
-                    <div className="mt-10 flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        {saveSuccess && (
-                          <span className="flex items-center gap-2 text-emerald-500 text-[10px] font-black uppercase tracking-widest animate-in fade-in zoom-in">
-                            <i className="fas fa-check-circle" /> Settings Saved
-                          </span>
-                        )}
-                      </div>
-                      <button 
+                    <div className="mt-5 flex items-center justify-end gap-3">
+                      {saveSuccess && <span className="text-[12px] text-emerald-500">Saved</span>}
+                      <button
                         onClick={async () => {
                           setIsSaving(true);
                           try {
@@ -534,143 +485,136 @@ const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
                             setSaveSuccess(true);
                             setTimeout(() => setSaveSuccess(false), 3000);
                           } catch (e) {
-                            setError("Failed to save configuration");
+                            setError('Failed to save configuration');
                           } finally {
                             setIsSaving(false);
                           }
                         }}
                         disabled={isSaving}
-                        className={`px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] transition-all active:scale-95 flex items-center gap-3
-                          ${theme === 'dark' 
-                            ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-500/20' 
-                            : 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-500/20'}
-                          ${isSaving ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        className="px-5 py-2 rounded-full text-[12.5px] font-medium transition-all active:scale-[0.98] disabled:opacity-40 bg-black text-white hover:bg-neutral-800 dark:bg-white dark:text-black dark:hover:bg-neutral-200"
                       >
-                        {isSaving ? <i className="fas fa-circle-notch fa-spin" /> : <i className="fas fa-save" />}
-                        Apply Changes
+                        {isSaving ? 'Saving…' : 'Apply changes'}
                       </button>
                     </div>
                   </div>
+                  <p className={`text-[11.5px] leading-relaxed px-1 ${muted}`}>
+                    Changes apply to all users immediately. Active sessions may need a refresh to pick them up.
+                  </p>
+                </div>
+              )}
 
-                  <div className={`p-6 rounded-[32px] border ${theme === 'dark' ? 'bg-amber-500/5 border-amber-500/10' : 'bg-amber-50 border-amber-100'}`}>
-                    <div className="flex items-start gap-4">
-                      <div className="w-8 h-8 rounded-lg bg-amber-500/20 flex items-center justify-center text-amber-500 shrink-0">
-                        <i className="fas fa-exclamation-triangle text-xs" />
-                      </div>
-                      <div>
-                        <p className={`text-[11px] font-black uppercase tracking-widest ${theme === 'dark' ? 'text-amber-500' : 'text-amber-600'} mb-1`}>Critical Update Info</p>
-                        <p className={`text-[10px] leading-relaxed ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}`}>
-                          Changing these mappings will affect all users immediately. New chat sessions will use the updated engine, while active sessions may require a page refresh for complete synchronization.
-                        </p>
-                      </div>
+              {activeTab === 'apis' && (
+                <div className="animate-fadeIn">
+                  <div className="flex items-center justify-between mb-3">
+                    <p className={`text-[12px] ${muted}`}>
+                      {onlineCount}/{API_DEFS.length} online · free checks auto-run · paid need a tap
+                    </p>
+                    <button
+                      onClick={() => API_DEFS.filter(d => d.cost === 'free').forEach(d => runApiCheck(d.id))}
+                      className={`text-[12px] font-medium ${isDark ? 'text-neutral-300 hover:text-white' : 'text-neutral-600 hover:text-neutral-900'}`}
+                    >
+                      Recheck free
+                    </button>
+                  </div>
+
+                  <div className="grid md:grid-cols-[220px_1fr] gap-3 items-start">
+                    {/* Name list — detail opens only on click */}
+                    <div className={`${selectedApi ? 'hidden md:block' : 'block'} rounded-2xl border overflow-hidden ${card} ${isDark ? 'divide-white/[0.05]' : 'divide-black/[0.05]'} divide-y`}>
+                      {API_DEFS.map(def => {
+                        const st: ApiStatus = apiResults[def.id]?.status || (isConfigured(def) ? 'unknown' : 'unconfigured');
+                        const active = selectedApiId === def.id;
+                        return (
+                          <button
+                            key={def.id}
+                            onClick={() => setSelectedApiId(def.id)}
+                            className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 text-left text-[13px] transition-colors ${active
+                              ? (isDark ? 'bg-white/[0.06] text-white' : 'bg-black/[0.05] text-neutral-900')
+                              : (isDark ? 'text-neutral-400 hover:bg-white/[0.03] hover:text-neutral-200' : 'text-neutral-600 hover:bg-black/[0.02] hover:text-neutral-900')}`}
+                          >
+                            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${apiDot[st]}`} />
+                            <span className="flex-1 truncate font-medium">{def.name}</span>
+                            <ChevronRight size={14} className={muted} />
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {/* Detail — only after selection */}
+                    <div className={`${selectedApi ? 'block' : 'hidden md:block'} rounded-2xl border p-4 sm:p-5 min-h-[200px] ${card}`}>
+                      {selectedApi ? (
+                        <ApiDetail
+                          def={selectedApi}
+                          result={apiResults[selectedApi.id]}
+                          checking={!!apiChecking[selectedApi.id]}
+                          theme={theme}
+                          onCheck={runApiCheck}
+                          onBack={() => setSelectedApiId(null)}
+                        />
+                      ) : (
+                        <p className={`text-[13px] text-center py-14 ${muted}`}>Select an API to see its status and details.</p>
+                      )}
                     </div>
                   </div>
                 </div>
-              ) : (
-                <div className="space-y-8 animate-in slide-in-from-right-4 duration-300">
-                  {/* Chat History Section */}
+              )}
+
+              {activeTab === 'history' && (
+                <div className="animate-fadeIn space-y-6">
                   <div>
-                    <div className="flex items-center gap-3 px-2 mb-4">
-                      <div className="w-8 h-8 rounded-lg bg-blue-500/20 flex items-center justify-center text-blue-500">
-                        <i className="fas fa-comments text-xs" />
-                      </div>
-                      <div>
-                        <h3 className={`text-[11px] font-black uppercase tracking-widest ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>Session History (Backup)</h3>
-                        <p className="text-[9px] text-slate-500 font-bold uppercase tracking-widest leading-none mt-1">Mirrored data from Supabase storage</p>
-                      </div>
-                    </div>
-                    
-                    <div className={`rounded-3xl border overflow-hidden ${theme === 'dark' ? 'bg-slate-800/20 border-white/5' : 'bg-slate-50 border-slate-100'}`}>
-                      <table className="w-full text-left border-collapse">
-                        <thead>
-                          <tr className={`text-[9px] font-black uppercase tracking-[0.15em] ${theme === 'dark' ? 'bg-white/5 text-slate-400' : 'bg-slate-100/50 text-slate-500'}`}>
-                            <th className="px-6 py-4">Title</th>
-                            <th className="px-6 py-4">User ID</th>
-                            <th className="px-6 py-4">Messages</th>
-                            <th className="px-6 py-4">Last Activity</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-white/5">
-                          {sessionHistory.length === 0 ? (
-                            <tr>
-                              <td colSpan={4} className="px-6 py-12 text-center text-[10px] font-bold text-slate-500 uppercase tracking-widest opacity-50">
-                                No history found in backup storage
-                              </td>
+                    <p className={`px-1 mb-1.5 text-[12px] font-medium ${muted}`}>Sessions · Supabase backup</p>
+                    <div className={`rounded-2xl border overflow-hidden ${card}`}>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left border-collapse min-w-[520px]">
+                          <thead>
+                            <tr className={`text-[11px] ${muted}`}>
+                              <th className="px-4 py-2.5 font-medium">Title</th>
+                              <th className="px-4 py-2.5 font-medium">User</th>
+                              <th className="px-4 py-2.5 font-medium">Msgs</th>
+                              <th className="px-4 py-2.5 font-medium">Active</th>
                             </tr>
-                          ) : (
-                            sessionHistory.map((sess) => (
-                              <tr key={sess.id} className="hover:bg-white/5 transition-colors group cursor-default">
-                                <td className="px-6 py-4">
-                                  <div className="flex items-center gap-3">
-                                    <div className="w-8 h-8 rounded-lg bg-indigo-500/10 flex items-center justify-center text-indigo-400 group-hover:scale-110 transition-transform">
-                                      <i className="fas fa-paragraph text-[10px]" />
-                                    </div>
-                                    <span className={`text-[12px] font-bold truncate max-w-[180px] ${theme === 'dark' ? 'text-slate-200' : 'text-slate-700'}`}>
-                                      {sess.title || "Untitled Session"}
-                                    </span>
-                                  </div>
-                                </td>
-                                <td className="px-6 py-4">
-                                  <span className="text-[10px] font-mono opacity-50 font-bold">{sess.user_id.slice(0, 8)}...</span>
-                                </td>
-                                <td className="px-6 py-4">
-                                  <span className={`px-2 py-0.5 rounded-lg text-[9px] font-black ${theme === 'dark' ? 'bg-blue-500/10 text-blue-400' : 'bg-blue-50 text-blue-600'}`}>
-                                    {sess.messages?.[0]?.count || 0} MSGS
-                                  </span>
-                                </td>
-                                <td className="px-6 py-4">
-                                  <span className="text-[10px] font-bold text-slate-500">
+                          </thead>
+                          <tbody className={isDark ? 'divide-white/[0.05]' : 'divide-black/[0.05]'}>
+                            {sessionHistory.length === 0 ? (
+                              <tr><td colSpan={4} className={`px-4 py-8 text-center text-[12.5px] ${muted}`}>No history in backup storage.</td></tr>
+                            ) : (
+                              sessionHistory.map((sess) => (
+                                <tr key={sess.id} className={isDark ? 'hover:bg-white/[0.02]' : 'hover:bg-black/[0.02]'}>
+                                  <td className={`px-4 py-2.5 text-[13px] font-medium truncate max-w-[180px] ${fg}`}>{sess.title || 'Untitled'}</td>
+                                  <td className={`px-4 py-2.5 text-[11.5px] font-mono ${muted}`}>{sess.user_id.slice(0, 8)}…</td>
+                                  <td className="px-4 py-2.5"><span className={`text-[11px] font-medium ${isDark ? 'text-neutral-300' : 'text-neutral-600'}`}>{sess.messages?.[0]?.count || 0}</span></td>
+                                  <td className={`px-4 py-2.5 text-[11.5px] whitespace-nowrap ${muted}`}>
                                     {new Date(sess.updated_at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                                  </span>
-                                </td>
-                              </tr>
-                            ))
-                          )}
-                        </tbody>
-                      </table>
+                                  </td>
+                                </tr>
+                              ))
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
                     </div>
                   </div>
 
-                  {/* Code Explanations Section */}
                   <div>
-                    <div className="flex items-center gap-3 px-2 mb-4">
-                      <div className="w-8 h-8 rounded-lg bg-emerald-500/20 flex items-center justify-center text-emerald-500">
-                        <i className="fas fa-code text-xs" />
-                      </div>
-                      <div>
-                        <h3 className={`text-[11px] font-black uppercase tracking-widest ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>Code Analysis History</h3>
-                        <p className="text-[9px] text-slate-500 font-bold uppercase tracking-widest leading-none mt-1">Tracked AI code explanations</p>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 gap-4">
+                    <p className={`px-1 mb-1.5 text-[12px] font-medium ${muted}`}>Code analyses</p>
+                    <div className="space-y-2.5">
                       {explanationHistory.length === 0 ? (
-                        <div className={`p-12 text-center rounded-3xl border ${theme === 'dark' ? 'bg-slate-800/20 border-white/5 text-slate-500' : 'bg-slate-50 border-slate-100 text-slate-500'}`}>
-                          <p className="text-[10px] font-bold uppercase tracking-widest opacity-50">No code analysis history tracked yet</p>
-                        </div>
+                        <p className={`rounded-2xl border p-8 text-center text-[12.5px] ${card} ${muted}`}>No code analysis history yet.</p>
                       ) : (
                         explanationHistory.map((exp, idx) => (
-                          <div 
-                            key={idx}
-                            className={`p-5 rounded-3xl border transition-all hover:scale-[1.01] ${theme === 'dark' ? 'bg-slate-800/40 border-white/5 hover:border-white/10' : 'bg-white border-slate-200 hover:border-slate-300 shadow-sm'}`}
-                          >
-                            <div className="flex items-center justify-between mb-4">
-                              <div className="flex items-center gap-3">
-                                <span className={`px-2 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-widest ${theme === 'dark' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-emerald-100 text-emerald-700'}`}>
-                                  {exp.language}
-                                </span>
-                                <span className="text-[10px] font-mono opacity-30 font-bold">USER: {exp.user_id.slice(0, 8)}...</span>
+                          <div key={idx} className={`p-4 rounded-2xl border ${card}`}>
+                            <div className="flex items-center justify-between mb-2 gap-2">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${isDark ? 'bg-white/10 text-neutral-300' : 'bg-neutral-900 text-white'}`}>{exp.language}</span>
+                                <span className={`text-[11px] font-mono truncate ${muted}`}>{exp.user_id.slice(0, 8)}…</span>
                               </div>
-                              <span className="text-[9px] font-bold text-slate-500">
+                              <span className={`text-[11px] whitespace-nowrap ${muted}`}>
                                 {new Date(exp.timestamp).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                               </span>
                             </div>
-                            <div className={`p-4 rounded-2xl mb-4 text-[11px] font-mono truncate whitespace-pre overflow-hidden ${theme === 'dark' ? 'bg-black/20 text-blue-300/80 border border-white/5' : 'bg-slate-50 text-blue-700/80 border border-slate-200'}`}>
-                              {exp.code.trim().slice(0, 150)}...
-                            </div>
-                            <div className={`text-[11px] leading-relaxed line-clamp-2 ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}`}>
-                              {exp.explanation}
-                            </div>
+                            <p className={`text-[11.5px] font-mono truncate p-2.5 rounded-xl mb-2 ${isDark ? 'bg-black/30 text-neutral-400' : 'bg-black/[0.03] text-neutral-500'}`}>
+                              {exp.code.trim().slice(0, 150)}…
+                            </p>
+                            <p className={`text-[12.5px] leading-relaxed line-clamp-2 ${isDark ? 'text-neutral-400' : 'text-neutral-500'}`}>{exp.explanation}</p>
                           </div>
                         ))
                       )}
@@ -683,40 +627,18 @@ const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className={`
-          p-4 sm:p-6 border-t border-white/5 flex items-center justify-between shrink-0
-          ${theme === 'dark' ? 'bg-black/20' : 'bg-slate-50/50'}
-        `}>
-          <button 
-            onClick={() => {
-              onClose();
-              // This is a bit tricky since setIsPlansOpen is in App.tsx
-              // We can use a custom event or a prop
-              window.dispatchEvent(new CustomEvent('open-admin-plans'));
-            }}
-            className={`
-              px-6 py-2.5 rounded-xl text-[10px] font-black tracking-widest
-              transition-all active:scale-95 flex items-center gap-2
-              ${theme === 'dark' 
-                ? 'bg-blue-600/10 hover:bg-blue-600/20 text-blue-400 border border-blue-500/20' 
-                : 'bg-blue-50 hover:bg-blue-100 text-blue-600 border border-blue-100'}
-            `}
+        <div className={`px-5 py-3.5 border-t flex items-center justify-between shrink-0 ${divider}`}>
+          <button
+            onClick={() => { onClose(); window.dispatchEvent(new CustomEvent('open-admin-plans')); }}
+            className={`px-4 py-2 rounded-full text-[12.5px] font-medium transition-colors ${isDark ? 'text-neutral-300 hover:bg-white/[0.06]' : 'text-neutral-600 hover:bg-black/[0.04]'}`}
           >
-            <i className="fas fa-gem"></i>
-            MANAGE PLANS
+            Manage plans
           </button>
-          
-          <button 
+          <button
             onClick={onClose}
-            className={`
-              px-6 py-2.5 rounded-xl text-[10px] font-black tracking-widest
-              transition-all active:scale-95
-              ${theme === 'dark' 
-                ? 'bg-slate-800 hover:bg-slate-700 text-white' 
-                : 'bg-slate-800 hover:bg-slate-700 text-white'}
-            `}
+            className="px-5 py-2 rounded-full text-[12.5px] font-medium bg-black text-white hover:bg-neutral-800 dark:bg-white dark:text-black dark:hover:bg-neutral-200 transition-all active:scale-[0.98]"
           >
-            DISMISS
+            Done
           </button>
         </div>
       </div>

@@ -16,6 +16,8 @@
  *   node scripts/authorize-firebase-domain.js chatadk.vercel.app www.chatadk.vercel.app
  *   GOOGLE_APPLICATION_CREDENTIALS=./key.json \
  *     node scripts/authorize-firebase-domain.js chatadk.vercel.app
+ *   # Target a different project than the service account's own:
+ *   node scripts/authorize-firebase-domain.js 127.0.0.1 --project chatadk-593a5 --from-env
  */
 import fs from 'fs';
 import crypto from 'crypto';
@@ -173,6 +175,10 @@ function normalizeDomain(d) {
   const args = process.argv.slice(2);
   const domains = args.filter((a) => !a.startsWith('--'));
   const useEnv = args.includes('--from-env');
+  // Override the target project: --project chatadk-593a5
+  // (defaults to the service account's project, which may differ from the web app's)
+  const projectFlagIdx = args.indexOf('--project');
+  const projectOverride = projectFlagIdx >= 0 ? args[projectFlagIdx + 1] : null;
 
   if (!domains.length) {
     console.error('No domains provided.');
@@ -190,7 +196,10 @@ function normalizeDomain(d) {
     process.exit(2);
   }
 
-  const projectId = sa.project_id || 'chatwithadk';
+  const projectId = projectOverride || sa.project_id || 'chatadk-593a5';
+  if (sa.project_id && sa.project_id !== projectId) {
+    console.log(`note: service account belongs to '${sa.project_id}', targeting '${projectId}' instead (--project).`);
+  }
 
   let token;
   try {

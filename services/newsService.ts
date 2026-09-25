@@ -1,7 +1,14 @@
 
+import { proxyPost } from './serverProxy';
+
 const WORLD_NEWS_KEY = import.meta.env.VITE_WORLD_NEWS_API_KEY || "";
 const NEWSDATA_KEY = import.meta.env.VITE_NEWSDATA_API_KEY || "";
 const TAVILY_KEY = import.meta.env.VITE_TAVILY_API_KEY || "";
+
+// Client-side news cache + cascade threshold (credit savers: repeats cost zero)
+const CLIENT_NEWS_TTL_MS = 15 * 60 * 1000;
+const clientNewsCache = new Map<string, { at: number; articles: NewsArticle[] }>();
+const MIN_DIRECT_ARTICLES = 3;
 
 // Warn if Tavily API key is not configured
 if (!TAVILY_KEY) {
@@ -56,42 +63,30 @@ export async function fetchLatestNews(input: string): Promise<NewsArticle[]> {
 
   try {
     const isPolitical = lowerInput.includes('prime minister') || lowerInput.includes('president') || lowerInput.includes('leader') || lowerInput.includes('pm') || lowerInput.includes('nepal');
+
+    // Client cache: identical questions within 15 min cost zero, even in direct-key mode
+    const clientCacheKey = subjectQueries[0].toLowerCase().replace(/\s+/g, ' ').trim().slice(0, 200);
+    const clientHit = clientNewsCache.get(clientCacheKey);
+    if (clientHit && Date.now() - clientHit.at < CLIENT_NEWS_TTL_MS) {
+      console.log('[NewsService] client cache hit');
+      return clientHit.articles;
+    }
     
-    // Helper to limit concurrent API calls to avoid rate limiting
-    const limitedFetch = async <T,>(tasks: (() => Promise<T>)[], concurrency: number = 3): Promise<T[]> => {
-      const results: T[] = [];
-      const executing: Promise<void>[] = [];
-      
-      for (const task of tasks) {
-        const promise = task().then(result => {
-          results.push(result);
-        });
-        
-        executing.push(promise);
-        
-        if (executing.length >= concurrency) {
-          await Promise.race(executing);
-          executing.splice(executing.findIndex(p => p === promise), 1);
-        }
-      }
-      
-      await Promise.all(executing);
-      return results;
-    };
-    
-    // Fetch in parallel across all generated queries - WITH RATE LIMITING
-    // Build task array - conditionally include Tavily based on API key
-    const getTavilyTask = (q: string): (() => Promise<any[]>) => {
-      if (!TAVILY_KEY) return () => Promise.resolve([]);
-      
-      return () => fetch('https://api.tavily.com/search', {
+    // Direct-provider cascade (credit saver): Tavily → WorldNews → NewsData on a
+    // SINGLE query, stopping at the first provider with >= 3 articles.
+    // Typical cost: 1 paid call per question instead of ~9.
+    const singleQuery = subjectQueries[0];
+    const fetchTavilyDirect = async (): Promise<any[]> => {
+      if (!TAVILY_KEY) return [];
+
+      return fetch('https://api.tavily.com/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           api_key: TAVILY_KEY,
-          query: q,
+          query: singleQuery,
           search_depth: 'basic',
-          max_results: 10,
+          max_results: 5,
           include_answer: false,
           include_raw_content: false
         })
@@ -99,7 +94,7 @@ export async function fetchLatestNews(input: string): Promise<NewsArticle[]> {
         .then(r => r.ok ? r.json() : { results: [] })
         .then(data => {
           // eslint-disable-next-line no-console
-          console.log(`[NewsService] Tavily response for "${q}":`, data.results?.length || 0, 'results');
+          console.log(`[NewsService] Tavily response for "${singleQuery}":`, data.results?.length || 0, 'results');
           return (data.results || []).map((r: any) => ({
             title: r.title || '',
             text: r.content || r.snippet || '',
@@ -109,34 +104,40 @@ export async function fetchLatestNews(input: string): Promise<NewsArticle[]> {
         })
         .catch(() => []);
     };
-    
-    const getWorldNewsTask = (q: string): (() => Promise<any[]>) => {
-      if (!WORLD_NEWS_KEY) return () => Promise.resolve([]);
-      return () =>
-        fetch(`https://api.worldnewsapi.com/search-news?api-key=${WORLD_NEWS_KEY}&text=${encodeURIComponent(q)}&number=10&language=en&sort=publish-time&sort-direction=DESC`)
-          .then(r => r.ok ? r.json() : { news: [] })
-          .then(data => data.news || [])
-          .catch(() => []);
-    };
-    
-    const getNewsDataTask = (q: string): (() => Promise<any[]>) => {
-      if (!NEWSDATA_KEY) return () => Promise.resolve([]);
-      return () =>
-        fetch(`https://newsdata.io/api/1/latest?apikey=${NEWSDATA_KEY}&q=${encodeURIComponent(q)}&language=en&size=10${isPolitical ? '&category=politics' : ''}`)
-          .then(r => r.ok ? r.json() : { results: [] })
-          .then(data => data.results || [])
-          .catch(() => []);
-    };
-    
-    const allTasks: (() => Promise<any[]>)[] = subjectQueries.flatMap(q => [
-      getTavilyTask(q),
-      getWorldNewsTask(q),
-      getNewsDataTask(q)
-    ]);
 
-    // Use limited concurrency to avoid rate limiting
-    const results = await limitedFetch(allTasks, 3);
-    const combined = results.flat();
+    const fetchWorldNewsDirect = async (): Promise<any[]> => {
+      if (!WORLD_NEWS_KEY) return [];
+      return fetch(`https://api.worldnewsapi.com/search-news?api-key=${WORLD_NEWS_KEY}&text=${encodeURIComponent(singleQuery)}&number=5&language=en&sort=publish-time&sort-direction=DESC`)
+        .then(r => r.ok ? r.json() : { news: [] })
+        .then(data => data.news || [])
+        .catch(() => []);
+    };
+
+    const fetchNewsDataDirect = async (): Promise<any[]> => {
+      if (!NEWSDATA_KEY) return [];
+      return fetch(`https://newsdata.io/api/1/latest?apikey=${NEWSDATA_KEY}&q=${encodeURIComponent(singleQuery)}&language=en&size=5${isPolitical ? '&category=politics' : ''}`)
+        .then(r => r.ok ? r.json() : { results: [] })
+        .then(data => data.results || [])
+        .catch(() => []);
+    };
+
+    // Prefer the metered server proxy (per-user daily quota, keys stay
+    // server-side, cascade + cache). Falls back to the direct cascade below.
+    let combined: any[] | null = null;
+    const proxyRes = await proxyPost<{ articles: any[] }>('/news', { q: singleQuery, political: isPolitical }).catch(() => null);
+    if (proxyRes && proxyRes.status === 429) {
+      console.warn('[NewsService] Server news quota reached for today.');
+      return [];
+    }
+    if (proxyRes && proxyRes.status === 200 && Array.isArray(proxyRes.json?.articles)) {
+      combined = proxyRes.json.articles;
+    }
+    if (!combined) {
+      // Direct-provider cascade: stop at the first provider with enough articles
+      combined = await fetchTavilyDirect();
+      if (combined.length < MIN_DIRECT_ARTICLES) combined = combined.concat(await fetchWorldNewsDirect());
+      if (combined.length < MIN_DIRECT_ARTICLES) combined = combined.concat(await fetchNewsDataDirect());
+    }
 
     const normalized = combined.map((n: any) => ({
       title: n.title || '',
@@ -190,11 +191,14 @@ export async function fetchLatestNews(input: string): Promise<NewsArticle[]> {
       return true;
     });
 
-    return unique.sort((a, b) => {
+    const finalArticles = unique.sort((a, b) => {
       const dateA = new Date(a.publish_date).getTime();
       const dateB = new Date(b.publish_date).getTime();
       return dateB - dateA;
     }).slice(0, 8);
+    if (clientNewsCache.size > 200) clientNewsCache.clear();
+    clientNewsCache.set(clientCacheKey, { at: Date.now(), articles: finalArticles });
+    return finalArticles;
   } catch (err) {
     console.error("News Fetch Failed:", err);
     return [];
@@ -204,10 +208,10 @@ export async function fetchLatestNews(input: string): Promise<NewsArticle[]> {
 export function shouldFetchNews(input: string): boolean {
   const lowerInput = input.toLowerCase();
   const triggers = [
-    "who is", "latest", "new", "update", "current", 
+    "who is", "latest", "current",
     "news", "happening", "prime minister", "president",
     "today", "yesterday", "recently", "what happened",
-    "leader of", "pm of", "who's the", "tell me about"
+    "leader of", "pm of", "who's the"
   ];
   return triggers.some(trigger => lowerInput.includes(trigger));
 }

@@ -1,4 +1,6 @@
 
+import { proxyPost } from './serverProxy';
+
 export interface OpenRouterMessage {
   role: 'user' | 'assistant' | 'system';
   content: string;
@@ -27,6 +29,21 @@ export async function generateResearchResponse(
     })),
     { role: 'user', content: prompt }
   ];
+
+  // Prefer the metered server proxy (per-user daily quota, key stays server-side)
+  try {
+    const proxied = await proxyPost<{ text: string }>('/chat', {
+      engine: 'research', model: 'deepseek/deepseek-r1', messages, temperature: 0.6, max_tokens: 4096,
+    }).catch(() => null);
+    if (proxied) {
+      if (proxied.status === 200 && typeof proxied.json?.text === 'string') return proxied.json.text;
+      if (proxied.status === 429) throw new Error(proxied.json?.error || 'Daily chat limit reached. Upgrade to Pro.');
+      // other server errors → fall through to direct key below
+    }
+  } catch (e: any) {
+    if (e?.message?.includes('Daily chat limit')) throw e;
+    // unreachable server → direct fallback below
+  }
 
   try {
     const response = await fetch(OPENROUTER_API_URL, {
