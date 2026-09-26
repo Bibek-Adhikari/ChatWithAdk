@@ -18,7 +18,7 @@ import { readBoolean, readJson, readString, writeString } from '../services/stor
 
 const ADMIN_EMAILS = [
   "crazybibek4444@gmail.com",
-  "geniusbibek4444@gmail.com"
+  "bibekadhikari0763@gmail.com"
 ];
 
 const STORAGE_KEY = 'chat_with_adk_history';
@@ -219,7 +219,7 @@ const LandingPage: React.FC = () => {
   const muted = isDark ? 'text-neutral-500' : 'text-neutral-500';
 
   return (
-    <div className={`flex h-screen overflow-hidden transition-colors duration-500 relative ${bg} ${text}`}>
+    <div className={`flex h-screen overflow-hidden transition-colors duration-500 relative ${bg} ${text}`} style={{ height: '100dvh' }}>
       
       <Sidebar 
         sessions={sessions}
@@ -263,11 +263,11 @@ const LandingPage: React.FC = () => {
           >
             <img
               src="/assets/logo.webp"
-              alt="ChatADK"
+              alt="Tufan"
               className="w-7 h-7 rounded-lg object-cover"
             />
             <span className="text-[14px] font-semibold tracking-tight">
-              ChatADK
+              Tufan
             </span>
           </button>
         </div>
@@ -328,7 +328,7 @@ const LandingPage: React.FC = () => {
         >
           <img
             src="/assets/logo.webp"
-            alt="ChatADK"
+            alt="Tufan"
             className="w-14 h-14 rounded-2xl object-cover shadow-lg"
           />
 
@@ -363,7 +363,7 @@ const LandingPage: React.FC = () => {
       </main>
 
       {/* Input Section — matches chat */}
-      <footer className="p-3 sm:p-4 shrink-0 z-10 pb-safe">
+      <footer className={`p-3 sm:p-4 shrink-0 z-10 pb-safe sticky bottom-0 ${isDark ? 'bg-[#212121]' : 'bg-white'}`}>
         <div className="max-w-[768px] mx-auto w-full">
           <form onSubmit={handleSubmit} className="relative">
             <div className={`rounded-[26px] border transition-all focus-within:shadow-lg ${isDark ? 'bg-[#2f2f2f] border-transparent focus-within:border-white/20' : 'bg-[#f4f4f4] border-transparent focus-within:border-black/15 focus-within:bg-white'}`}>
@@ -372,7 +372,7 @@ const LandingPage: React.FC = () => {
                 value={prompt}
                 onChange={handlePromptChange}
                 onKeyDown={handleKeyDown}
-                placeholder="Message ChatADK…"
+                placeholder="Message Tufan…"
                 rows={1}
                 className={`w-full bg-transparent border-none outline-none px-4 sm:px-5 pt-3.5 pb-1 text-[15px] leading-relaxed resize-none overflow-y-auto max-h-[200px] custom-scrollbar ${isDark ? 'text-neutral-100 placeholder:text-neutral-500' : 'text-neutral-900 placeholder:text-neutral-400'}`}
               />
@@ -390,7 +390,7 @@ const LandingPage: React.FC = () => {
           </form>
 
           <p className={`mt-2.5 text-center text-[11px] ${isDark ? 'text-neutral-600' : 'text-neutral-400'}`}>
-            ChatADK can make mistakes. Verify important information.
+                        Tufan can make mistakes. Verify important information.
           </p>
         </div>
       </footer>

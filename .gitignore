@@ -13,6 +13,9 @@ dist-ssr
 .venv
 *.local
 
+# Agent skills (vendor docs — reinstall anytime via: npx skills add firebase/agent-skills)
+.agents/
+
 # Editor directories and files
 .vscode/*
 .env.local

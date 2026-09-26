@@ -116,6 +116,14 @@ export const API_DEFS: ApiDef[] = [
     cost: 'free',
   },
   {
+    id: 'codecraft', name: 'CodeCraft (33 models)', icon: 'fa-robot',
+    envKeys: ['VITE_CODECRAFT_API_KEY'],
+    powers: ['Craft chat mode (default: DeepSeek Flash)', 'All 33 models verified live', 'Cheap + fast inference'],
+    dashboard: 'https://codecraftapi.com/',
+    quotaNote: '1M tokens/month free — /models check is free, usage % via provider dashboard',
+    cost: 'free',
+  },
+  {
     id: 'stripe', name: 'Stripe (Payments)', icon: 'fa-credit-card',
     envKeys: ['VITE_STRIPE_PUBLIC_KEY', 'STRIPE_SECRET_KEY'],
     powers: ['Plans checkout', 'Pro / Enterprise subscriptions', 'Pro-claim activation via webhook'],
@@ -274,6 +282,18 @@ export async function checkApi(id: string): Promise<HealthResult> {
         if (t.includes('API key not valid') || t.includes('API_KEY_INVALID')) {
           return { status: 'offline', detail: 'API key rejected by Google', checkedAt: now() };
         }
+        // Key is valid — now check the server's service account matches the web project.
+        // Mismatch = every /api route 401s and clients silently use direct keys.
+        try {
+          const h = await fetch('/api/health').then((r) => (r.ok ? r.json() : null)).catch(() => null);
+          const fa = h?.firebaseAdmin;
+          if (fa && fa.projectMatch === false) {
+            return { status: 'offline', detail: `Key OK, but server SA is '${fa.adminProject}' ≠ web '${fa.webProject}' — /api auth 401s`, checkedAt: now() };
+          }
+          if (fa && fa.ready === false) {
+            return { status: 'unknown', detail: `Key OK, but server Firebase Admin is down — /api auth 401s`, checkedAt: now() };
+          }
+        } catch { /* static hosting has no server; ignore */ }
         return { status: 'online', detail: `Key accepted (${env('VITE_FIREBASE_PROJECT_ID') || 'project?'})`, checkedAt: now() };
       } catch (e: any) {
         done();
@@ -379,6 +399,26 @@ export async function checkApi(id: string): Promise<HealthResult> {
         return { status: 'unconfigured', detail: 'Placeholder keys — add real test keys', checkedAt: now() };
       }
       return { status: 'unknown', detail: 'Keys present — verify live in Stripe dashboard (server-side)', checkedAt: now() };
+    }
+    case 'codecraft': {
+      const base = (env('VITE_CODECRAFT_BASE_URL') || 'https://codecraftapi.com/v1').replace(/\/+$/, '');
+      const { signal, done } = await withTimeout();
+      try {
+        const r = await fetch(`${base}/models`, {
+          headers: { Authorization: `Bearer ${env('VITE_CODECRAFT_API_KEY')}` }, signal,
+        });
+        const t = await r.text();
+        done();
+        if (r.ok) {
+          let n = '?';
+          try { n = String(JSON.parse(t).data?.length ?? '?'); } catch { /* keep ? */ }
+          return { status: 'online', detail: `${n} models visible (free check)`, checkedAt: now() };
+        }
+        return { status: r.status === 401 ? 'offline' : 'unknown', detail: t.slice(0, 120) || `HTTP ${r.status}`, checkedAt: now() };
+      } catch (e: any) {
+        done();
+        return { status: 'unknown', detail: e?.name === 'AbortError' ? 'Timed out' : 'Network error', checkedAt: now() };
+      }
     }
     case 'edgeTts': {
       const base = (env('VITE_EDGE_TTS_URL') || 'https://bibekadk-chatadk.hf.space').replace(/\/+$/, '');

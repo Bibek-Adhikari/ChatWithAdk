@@ -18,7 +18,7 @@ const router = express.Router();
 // --- Quotas (per user, per day) ---
 const FREE_LIMITS = { news: 20, picsart: 10, image: 10, chat: 20 };
 const PRO_LIMITS = { news: 200, picsart: 100, image: 100, chat: 1000 };
-const ADMIN_EMAILS = ['crazybibek4444@gmail.com', 'geniusbibek4444@gmail.com'];
+const ADMIN_EMAILS = ['crazybibek4444@gmail.com', 'bibekadhikari0763@gmail.com'];
 
 // --- Upstream hosts ---
 const TOOLS_BASE = 'https://api.picsart.io/tools/1.0';
@@ -110,6 +110,29 @@ const metered = (kind) => async (req, res, next) => {
 };
 
 const clean = (s, max = 4000) => String(s || '').replace(/\s+/g, ' ').trim().slice(0, max);
+
+// Reasoning-trace extractor (mirrors services/modelThinking.ts).
+// Groq gpt-oss → message.reasoning_content; OpenRouter R1 → message.reasoning
+// (string or array) / message.reasoning_details. Absent → undefined.
+const extractThinking = (msg) => {
+  if (!msg || typeof msg !== 'object') return undefined;
+  if (typeof msg.reasoning_content === 'string' && msg.reasoning_content.trim()) {
+    return msg.reasoning_content.trim().slice(0, 6000);
+  }
+  const out = [];
+  const push = (v) => {
+    if (typeof v === 'string' && v.trim()) out.push(v.trim());
+    else if (v && typeof v === 'object') {
+      if (typeof v.text === 'string' && v.text.trim()) out.push(v.text.trim());
+      else if (typeof v.summary === 'string' && v.summary.trim()) out.push(v.summary.trim());
+    }
+  };
+  if (typeof msg.reasoning === 'string') push(msg.reasoning);
+  else if (Array.isArray(msg.reasoning)) msg.reasoning.forEach(push);
+  if (Array.isArray(msg.reasoning_details)) msg.reasoning_details.forEach(push);
+  if (!out.length) return undefined;
+  return out.join('\n\n').slice(0, 6000);
+};
 const normArticle = (n) => ({
   title: n.title || '',
   text: clean(`${n.title || ''}. ${n.text || n.summary || n.content || n.description || ''}`),
@@ -288,7 +311,18 @@ router.post('/image', requireFirebaseAuth, metered('image'), async (req, res) =>
 
 // --- Chat proxy config ---
 // Model allowlist: clients may only spend server quota on these exact models.
-const ALLOWED_CHAT_MODELS = new Set(['openai/gpt-oss-120b', 'llama-3.3-70b-versatile', 'deepseek/deepseek-r1']);
+const ALLOWED_CHAT_MODELS = new Set(['openai/gpt-oss-120b', 'openai/gpt-oss-20b', 'deepseek/deepseek-r1']);
+// All 33 CodeCraft models verified live (each answered a probe completion).
+const CODECRAFT_MODELS = new Set([
+  'muse-spark-1.1', 'gemma-2-2b', 'gpt-5.6-sol', 'claude-opus-5', 'claude-fable-5',
+  'claude-mythos-preview', 'kimi-k3', 'glm-5.3', 'deepseek-v4-pro-0813', 'qwen3.8-max',
+  'gpt-5.6-terra', 'claude-opus-4.8', 'gemini-3.7-flash', 'claude-sonnet-5', 'gpt-5.5',
+  'grok-4.5', 'deepseek-v4-flash-0731', 'grok-4.6', 'seed-2.1-pro', 'glm-5.2',
+  'qwen3.8-27b', 'gpt-5.6-luna', 'qwen3.7-max', 'claude-opus-4.6', 'gpt-5.5-pro',
+  'claude-opus-4.7', 'gemini-3.6-flash', 'kimi-k2.6', 'seed-2.1-turbo', 'gemini-3.1-pro',
+  'deepseek-v4-pro-max', 'claude-fable-5.1', 'claude-opus-5.5',
+]);
+const CODECRAFT_BASE_URL = process.env.VITE_CODECRAFT_BASE_URL || 'https://codecraftapi.com/v1';
 const GEMINI_FALLBACK_MODELS = ['gemini-2.0-flash', 'gemini-flash-latest', 'gemini-pro-latest', 'gemini-flash-lite-latest'];
 const CHAT_MAX_TOKENS = 4096;
 
@@ -328,8 +362,32 @@ router.post('/chat', requireFirebaseAuth, metered('chat'), async (req, res) => {
       });
       const data = await r.json().catch(() => ({}));
       if (!r.ok) return res.status(r.status).json({ error: data.error?.message || `Chat provider error (${r.status})` });
-      const text = data.choices?.[0]?.message?.content || '';
-      return res.json({ text, remaining });
+      const msg = data.choices?.[0]?.message || {};
+      const text = msg.content || '';
+      const thinking = extractThinking(msg);
+      return res.json({ text, thinking, remaining });
+    }
+
+    if (engine === 'codecraft') {
+      const chatModel = String(model || '');
+      if (!CODECRAFT_MODELS.has(chatModel)) return res.status(400).json({ error: 'Model not allowed.' });
+      if (!Array.isArray(messages) || !messages.length) return res.status(400).json({ error: 'Missing messages.' });
+      const key = process.env.VITE_CODECRAFT_API_KEY;
+      if (!key) return res.status(500).json({ error: 'CodeCraft key not configured on server.' });
+      const r = await fetch(`${CODECRAFT_BASE_URL}/chat/completions`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: chatModel,
+          messages,
+          temperature: typeof temperature === 'number' ? temperature : 0.7,
+          max_tokens: Math.min(Number(max_tokens) || CHAT_MAX_TOKENS, CHAT_MAX_TOKENS),
+        }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) return res.status(r.status).json({ error: data.error?.message || `CodeCraft error (${r.status})` });
+      const msg = data.choices?.[0]?.message || {};
+      return res.json({ text: msg.content || '', thinking: extractThinking(msg), remaining });
     }
 
     // Gemini (default): history in {role, parts[]} shape + prompt + optional image

@@ -1,28 +1,30 @@
 
 import { proxyPost } from './serverProxy';
 import { extractThinking, ModelResponse } from './modelThinking';
+import { DEFAULT_CRAFT_MODEL as DEFAULT_CODECRAFT_MODEL } from './codecraftModels';
 
-export interface OpenRouterMessage {
+export { DEFAULT_CODECRAFT_MODEL };
+
+export interface CodecraftMessage {
   role: 'user' | 'assistant' | 'system';
   content: string;
 }
 
-const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
+const CODECRAFT_BASE_URL =
+  (import.meta as any).env?.VITE_CODECRAFT_BASE_URL || 'https://codecraftapi.com/v1';
 
-export async function generateResearchResponse(
+
+
+export async function generateCodecraftResponse(
   prompt: string,
-  history: { role: 'user' | 'model'; parts: { text: string }[] }[]
+  history: { role: 'user' | 'model'; parts: { text: string }[] }[],
+  model: string = DEFAULT_CODECRAFT_MODEL
 ): Promise<ModelResponse> {
-  const apiKey = import.meta.env.VITE_OPENROUTER_API_KEY;
-
-  if (!apiKey) {
-    throw new Error('OpenRouter API Key not found. Please add VITE_OPENROUTER_API_KEY to your .env.local file.');
-  }
-
-  const messages: OpenRouterMessage[] = [
+  // Format history for CodeCraft (OpenAI format — provider is OpenAI-compatible)
+  const messages: CodecraftMessage[] = [
     {
       role: 'system',
-      content: "You are Tufan (Research Mode). Today is February 2026. \n\n1. Evaluate 'LATEST NEWS DATA' analytically. It is provided because your training is pre-2024. \n2. If 2026 news articles are present, they override your internal database completely for current events. \n3. If no name is found in the news for a 2026 position, acknowledge the 2024 holder as 'likely outdated' and explain that 2026 news mentions the office but not the name."
+      content: "You are Tufan (Craft Mode). Be helpful, direct, and concise. If the user pastes 'LATEST NEWS DATA', treat it as the source of truth for 2025-2026 facts, overriding training data."
     },
     ...history.map(h => ({
       role: (h.role === 'model' ? 'assistant' : 'user') as 'user' | 'assistant',
@@ -34,7 +36,7 @@ export async function generateResearchResponse(
   // Prefer the metered server proxy (per-user daily quota, key stays server-side)
   try {
     const proxied = await proxyPost<{ text: string; thinking?: string }>('/chat', {
-      engine: 'research', model: 'deepseek/deepseek-r1', messages, temperature: 0.6, max_tokens: 4096,
+      engine: 'codecraft', model, messages, temperature: 0.7, max_tokens: 4096,
     }).catch(() => null);
     if (proxied) {
       if (proxied.status === 200 && typeof proxied.json?.text === 'string') {
@@ -51,25 +53,24 @@ export async function generateResearchResponse(
     // unreachable server → direct fallback below
   }
 
+  const apiKey = (import.meta as any).env?.VITE_CODECRAFT_API_KEY;
+  if (!apiKey) {
+    throw new Error('CodeCraft API Key not found. Please add VITE_CODECRAFT_API_KEY to your .env file.');
+  }
+
   try {
-    const response = await fetch(OPENROUTER_API_URL, {
+    const response = await fetch(`${CODECRAFT_BASE_URL}/chat/completions`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
-        'HTTP-Referer': 'https://chatwithadk.com', // Optional
-        'X-Title': 'ChatWithAdk', // Optional
       },
-      body: JSON.stringify({
-        model: 'deepseek/deepseek-r1', // Reasoning model perfect for research
-        messages: messages,
-        temperature: 0.6,
-      }),
+      body: JSON.stringify({ model, messages, temperature: 0.7, max_tokens: 4096 }),
     });
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.error?.message || `OpenRouter API error: ${response.statusText}`);
+      throw new Error(errorData.error?.message || `CodeCraft API error: ${response.statusText}`);
     }
 
     const data = await response.json();
@@ -79,7 +80,7 @@ export async function generateResearchResponse(
       thinking: extractThinking(message),
     };
   } catch (error: any) {
-    console.error('OpenRouter API Error:', error);
+    console.error('CodeCraft API Error:', error);
     throw error;
   }
 }

@@ -162,18 +162,20 @@ const Sidebar: React.FC<SidebarProps> = ({
         />
       )}
 
+      {/* Desktop: in normal flow so the chat shifts. Mobile: fixed overlay. */}
       <aside
-        className={`fixed inset-y-0 left-0 z-40 sidebar-transition flex flex-col shrink-0 overflow-hidden
+        className={`z-40 sidebar-transition flex flex-col shrink-0 overflow-hidden
+          fixed inset-y-0 left-0 lg:static lg:h-auto
           ${isOpen ? 'w-[260px] translate-x-0 opacity-100' : 'w-0 -translate-x-full opacity-0'}
           ${isDark ? 'bg-[#171717]' : 'bg-[#f9f9f9]'}
-          border-r ${isDark ? 'border-white/[0.06]' : 'border-black/[0.06]'}`}
+          ${isOpen ? `border-r ${isDark ? 'border-white/[0.06]' : 'border-black/[0.06]'}` : 'border-r-0'}`}
       >
         <div className="w-[260px] h-full flex flex-col">
           {/* Header */}
           <div className="flex items-center justify-between px-3 pt-3 pb-2">
             <button onClick={() => navigate('/')} className="flex items-center gap-2 rounded-lg px-1.5 py-1 transition-opacity hover:opacity-80">
-              <img src="/assets/logo.webp" alt="ChatADK" className="w-7 h-7 rounded-lg object-cover" />
-              <span className={`text-[14px] font-semibold tracking-tight ${isDark ? 'text-white' : 'text-neutral-900'}`}>ChatADK</span>
+              <img src="/assets/logo.webp" alt="Tufan" className="w-7 h-7 rounded-lg object-cover" />
+              <span className={`text-[14px] font-semibold tracking-tight ${isDark ? 'text-white' : 'text-neutral-900'}`}>Tufan</span>
             </button>
             <div className="flex items-center gap-0.5">
               <button

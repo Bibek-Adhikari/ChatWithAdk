@@ -1,19 +1,4 @@
-
-import { 
-  collection, 
-  doc, 
-  setDoc, 
-  getDocs, 
-  query, 
-  orderBy, 
-  limit,
-  Timestamp,
-  serverTimestamp,
-  getCountFromServer,
-  getDoc
-} from "firebase/firestore";
-import { db } from "./firebase";
-import { User } from "firebase/auth";
+import { authedFetch, authedGet, authedPost } from "./serverApi";
 
 export interface ModelConfig {
   fast: 'groq' | 'gemini' | 'research' | 'openrouter';
@@ -23,9 +8,6 @@ export interface ModelConfig {
   motion: 'motion';
 }
 
-const SYSTEM_COLLECTION = "system";
-const CONFIG_DOC = "config";
-
 const DEFAULT_CONFIG: ModelConfig = {
   fast: 'groq',
   research: 'research',
@@ -34,62 +16,41 @@ const DEFAULT_CONFIG: ModelConfig = {
   motion: 'motion'
 };
 
-const USERS_COLLECTION = "users";
-const SESSIONS_COLLECTION = "sessions";
-
+/**
+ * Admin data access — fully server-mediated via the Firebase Admin SDK.
+ *
+ * Why: firestore.rules denies ALL client writes to users/{uid} and
+ * system/*, and denies cross-user reads, so the old direct setDoc/getDocs
+ * calls silently failed on every login. These methods now hit Express
+ * endpoints that verify the Firebase ID token and use the Admin SDK
+ * (which bypasses rules). Callers are unchanged.
+ */
 export const adminService = {
   /**
-   * Syncs user profile to Firestore for admin tracking
+   * Syncs user profile to Firestore for admin tracking (Admin SDK write).
    */
-  async syncUser(user: User): Promise<void> {
-    try {
-      const userRef = doc(db, USERS_COLLECTION, user.uid);
-      await setDoc(userRef, {
-        uid: user.uid,
-        email: user.email,
-        displayName: user.displayName,
-        photoURL: user.photoURL,
-        lastLogin: serverTimestamp(),
-        createdAt: user.metadata.creationTime ? Timestamp.fromDate(new Date(user.metadata.creationTime)) : serverTimestamp()
-      }, { merge: true });
-    } catch (error) {
-      console.error("Error syncing user:", error);
-    }
+  async syncUser(user: { uid: string }): Promise<void> {
+    await authedPost('/api/admin/sync-user', {});
   },
 
   /**
-   * Fetches latest registered users (Admin only)
+   * Fetches latest registered users (Admin only, enforced server-side).
    */
   async getLatestUsers(limitCount: number = 10): Promise<any[]> {
-    try {
-      const q = query(
-        collection(db, USERS_COLLECTION),
-        orderBy("lastLogin", "desc"),
-        limit(limitCount)
-      );
-      const snapshot = await getDocs(q);
-      return snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-        lastLogin: doc.data().lastLogin?.toMillis() || Date.now()
-      }));
-    } catch (error) {
-      console.error("Error fetching users:", error);
-      return [];
-    }
+    return authedGet<any>(`/api/admin/users?limit=${limitCount}`);
   },
 
   /**
-   * Fetches system-wide stats (Admin only)
+   * Fetches system-wide stats (Admin only, enforced server-side).
    */
   async getSystemStats(): Promise<{ totalUsers: number; totalSessions: number }> {
     try {
-      const usersCount = await getCountFromServer(collection(db, USERS_COLLECTION));
-      const sessionsCount = await getCountFromServer(collection(db, SESSIONS_COLLECTION));
-      
+      const res = await authedFetch('/api/admin/stats');
+      if (!res || !res.ok) return { totalUsers: 0, totalSessions: 0 };
+      const payload = await res.json().catch(() => null);
       return {
-        totalUsers: usersCount.data().count,
-        totalSessions: sessionsCount.data().count
+        totalUsers: Number(payload?.data?.totalUsers) || 0,
+        totalSessions: Number(payload?.data?.totalSessions) || 0,
       };
     } catch (error) {
       console.error("Error fetching stats:", error);
@@ -98,18 +59,14 @@ export const adminService = {
   },
 
   /**
-   * Fetches the system model configuration
+   * Fetches the system model configuration (any signed-in user).
    */
   async getModelConfig(): Promise<ModelConfig> {
     try {
-      const configRef = doc(db, SYSTEM_COLLECTION, CONFIG_DOC);
-      const configSnap = await getDoc(configRef);
-      
-      if (configSnap.exists()) {
-        return { ...DEFAULT_CONFIG, ...configSnap.data() } as ModelConfig;
-      }
-      
-      return DEFAULT_CONFIG;
+      const res = await authedFetch('/api/admin/model-config');
+      if (!res || !res.ok) return DEFAULT_CONFIG;
+      const payload = await res.json().catch(() => null);
+      return { ...DEFAULT_CONFIG, ...(payload?.data || {}) } as ModelConfig;
     } catch (error) {
       console.error("Error fetching model config:", error);
       return DEFAULT_CONFIG;
@@ -117,15 +74,16 @@ export const adminService = {
   },
 
   /**
-   * Updates the system model configuration
+   * Updates the system model configuration (Admin only, enforced server-side).
    */
   async updateModelConfig(config: Partial<ModelConfig>): Promise<void> {
-    try {
-      const configRef = doc(db, SYSTEM_COLLECTION, CONFIG_DOC);
-      await setDoc(configRef, config, { merge: true });
-    } catch (error) {
-      console.error("Error updating model config:", error);
-      throw error;
+    const res = await authedFetch('/api/admin/model-config', {
+      method: 'POST',
+      body: JSON.stringify(config),
+    });
+    if (!res || !res.ok) {
+      const raw = res ? await res.text().catch(() => '') : 'Not signed in';
+      throw new Error(raw || 'Failed to save configuration');
     }
-  }
+  },
 };

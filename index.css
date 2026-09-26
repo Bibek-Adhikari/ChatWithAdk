@@ -133,9 +133,16 @@
   color: var(--text-secondary);
 }
 .markdown-content pre {
-  border-radius: 12px;
+  border-radius: 16px;
   overflow: hidden;
   margin: 0.9em 0;
+  border: none;
+}
+/* Token spans must never paint their own backgrounds (causes the stray
+   "selected line" bars) — the block container owns the background. */
+.markdown-content pre code span {
+  background-color: transparent !important;
+  text-shadow: none !important;
 }
 .markdown-content code { font-size: 0.86em; }
 

@@ -45,7 +45,7 @@ const PRICING_TIERS: PricingTier[] = [
     priceMonthly: 0,
     priceYearly: 0,
     period: 'forever',
-    description: 'Perfect for trying out ChatADK capabilities.',
+    description: 'Perfect for trying out Tufan capabilities.',
     features: [
       'Access to Basic Models',
       '20 Messages per Day',
@@ -175,7 +175,7 @@ const PaymentModal = ({
                 <Check className="w-10 h-10 text-green-500" />
               </div>
               <h3 className="text-2xl font-bold text-white">Payment Successful!</h3>
-              <p className="text-slate-400 max-w-xs mx-auto">Welcome to ChatADK {tier.name}. Your account has been upgraded instantly.</p>
+              <p className="text-slate-400 max-w-xs mx-auto">Welcome to Tufan {tier.name}. Your account has been upgraded instantly.</p>
               <button 
                 onClick={onClose}
                 className="mt-4 px-8 py-3 bg-white text-slate-900 rounded-xl font-bold hover:bg-slate-200 transition-colors"
@@ -384,7 +384,7 @@ const PricingPage: React.FC = () => {
           <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-xl font-bold shadow-lg transition-transform group-hover:scale-105 ${theme === 'dark' ? 'bg-gradient-to-br from-blue-500 to-indigo-600 text-white' : 'bg-slate-900 text-white'}`}>
             A
           </div>
-          <span className="text-lg font-black tracking-tight">ChatADK</span>
+          <span className="text-lg font-black tracking-tight">Tufan</span>
         </div>
         
         <div className="flex items-center gap-4">
@@ -422,7 +422,7 @@ const PricingPage: React.FC = () => {
             </span>
           </h1>
           <p className={`text-lg leading-relaxed max-w-2xl mx-auto mb-10 ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}`}>
-            Unlock the full potential of ChatADK with our professional plans. Higher limits, faster speeds, and advanced AI models.
+            Unlock the full potential of Tufan with our professional plans. Higher limits, faster speeds, and advanced AI models.
           </p>
 
           {/* Billing Toggle */}

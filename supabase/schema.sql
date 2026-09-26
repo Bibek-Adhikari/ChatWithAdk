@@ -1,5 +1,5 @@
 -- ============================================================================
--- ChatADK — fresh Supabase schema
+-- Tufan — fresh Supabase schema
 -- Run this once in the NEW Supabase project: SQL Editor → paste → Run.
 --
 -- Security model (important — read this):

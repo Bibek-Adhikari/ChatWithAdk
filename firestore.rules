@@ -1,47 +1,152 @@
 rules_version = '2';
 
+// ===============================================================
+// Assumed Data Model (chatadk-593a5)
+// ===============================================================
+//
+// Collection: sessions — one doc per chat, id = client session id
+//   - id: string, required, immutable, <= 100 chars
+//   - userId: string, required, immutable, MUST == request.auth.uid
+//   - title: string, required, <= 200 chars
+//   - messages: list, required, <= 500 entries
+//       (each entry is a map {role, parts, timestamp, modelId?};
+//        nested part sizes are NOT enforceable in rules language —
+//        the client strips oversized inline base64 before save, see
+//        chatStorageService.saveSession. 1MB/doc Firestore cap applies.)
+//   - updatedAt: timestamp (client writes Timestamp), required
+//
+// Collection: users — one doc per user, id = Firebase uid. Contains PII
+// (email), so reads are owner-or-admin ONLY (no mixed-content leak).
+//   - uid: string, required, immutable, MUST == doc id
+//   - email: string|null, optional, valid email format when present
+//   - displayName: string|null, optional, <= 100 chars
+//   - photoURL: string|null, optional, <= 2000 chars, http(s) when present
+//   - lastLogin: timestamp, optional
+//   - createdAt: timestamp, optional, immutable after create
+//   - NO role/privilege fields may ever exist here (RBAC: privilege
+//     escalation via self-written isAdmin/role flags is blocked by
+//     hasOnly + the absence of such fields; real privilege lives in
+//     Auth custom claims, set server-side only).
+//
+// Collection: system — app config (model mappings). Non-sensitive.
+//   Writes are admin-only. Admin = verified token email in ADMIN_EMAILS.
+//   NOTE: email_verified is required because unverified email/password
+//   addresses are spoofable; admins must use Google sign-in (auto-verified)
+//   or a verified email.
+// ===============================================================
+
+// ===============================================================
+// Helper Functions
+// ===============================================================
+
+function isAuthenticated() {
+  return request.auth != null;
+}
+
+function isOwner(userId) {
+  return isAuthenticated() && request.auth.uid == userId;
+}
+
+function isAdmin() {
+  return isAuthenticated()
+    && request.auth.token.email_verified == true
+    && request.auth.token.email in [
+      'crazybibek4444@gmail.com',
+      'bibekadhikari0763@gmail.com'
+    ];
+}
+
+function hasOnlyAllowedFields(fields) {
+  return request.resource.data.keys().hasOnly(fields);
+}
+
+function isValidEmail(email) {
+  return email is string
+    && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+}
+
+function isValidOptionalString(field, maxLen) {
+  return !(field in request.resource.data)
+    || request.resource.data[field] == null
+    || (request.resource.data[field] is string
+      && request.resource.data[field].size() <= maxLen);
+}
+
+// ===============================================================
+// Domain Validators (used in BOTH create and update)
+// ===============================================================
+
+function isValidSessionDoc(userId) {
+  return hasOnlyAllowedFields(['id', 'userId', 'title', 'messages', 'updatedAt'])
+    && request.resource.data.id is string
+    && request.resource.data.id.size() <= 100
+    && request.resource.data.userId == userId
+    && request.resource.data.title is string
+    && request.resource.data.title.size() <= 200
+    && request.resource.data.messages is list
+    && request.resource.data.messages.size() <= 500;
+}
+
+function isValidUserProfile(userId) {
+  return hasOnlyAllowedFields(['uid', 'email', 'displayName', 'photoURL', 'lastLogin', 'createdAt'])
+    && request.resource.data.uid == userId
+    && (!('email' in request.resource.data)
+      || request.resource.data.email == null
+      || isValidEmail(request.resource.data.email))
+    && isValidOptionalString('displayName', 100)
+    && isValidOptionalString('photoURL', 2000)
+    && (!(request.resource.data.keys().hasAny(['photoURL']))
+      || request.resource.data.photoURL == null
+      || request.resource.data.photoURL.matches("^https?://.*"));
+}
+
+// ===============================================================
+// Collections
+// ===============================================================
+
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // Helper function to check if user is authenticated
-    function isAuthenticated() {
-      return request.auth != null;
-    }
 
-    // Helper function to check if the document belongs to the requesting user
-    function isOwner(userId) {
-      return request.auth.uid == userId;
-    }
-
-    // Sessions collection rules
+    // Sessions: owner CRUD + admin read (dashboard stats/history).
+    // App queries: where("userId", "==", uid) — single-field filter,
+    // no composite index needed; per-doc read rule mirrors the filter.
     match /sessions/{sessionId} {
-      // Allow creation if logged in and setting own userId
-      allow create: if isAuthenticated() && 
-                    request.resource.data.userId == request.auth.uid;
-      
-      // Allow read/update/delete only if user owns the document
-      // We check the 'userId' field stored inside the session document
-      allow read, update, delete: if isAuthenticated() && 
-                                  resource.data.userId == request.auth.uid;
-      
-      // Recursive rules for subcollections (if you add them later)
+      allow create: if isOwner(request.resource.data.userId)
+        && isValidSessionDoc(request.auth.uid);
+      allow read: if isAuthenticated()
+        && (resource.data.userId == request.auth.uid || isAdmin());
+      allow update: if isOwner(resource.data.userId)
+        && isValidSessionDoc(resource.data.userId)
+        && request.resource.data.userId == resource.data.userId;
+      allow delete: if isOwner(resource.data.userId);
+
       match /{allPaths=**} {
-        allow read, write: if isAuthenticated() && 
-                           get(/databases/$(database)/documents/sessions/$(sessionId)).data.userId == request.auth.uid;
+        allow read, write: if isAuthenticated()
+          && (get(/databases/$(database)/documents/sessions/$(sessionId)).data.userId == request.auth.uid
+            || isAdmin());
       }
     }
 
-    // Users (Admin synced) rules
+    // Users: owner (+admin) read, owner create/update, never delete,
+    // never any privilege fields. Client sync (adminService.syncUser)
+    // writes exactly the 6 allowlisted keys.
     match /users/{userId} {
-      allow read: if isAuthenticated() && isOwner(userId);
-      allow write: if false; // Only programmable via Admin SDK or specifically synced
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId) && isValidUserProfile(userId);
+      allow update: if isOwner(userId)
+        && isValidUserProfile(userId)
+        && request.resource.data.uid == resource.data.uid
+        && (!('createdAt' in resource.data)
+          || !('createdAt' in request.resource.data)
+          || request.resource.data.createdAt == resource.data.createdAt);
+      allow delete: if false;
     }
 
-    // System configuration - readable by authenticated users
-    // WARNING: Ensure /system collection only contains non-sensitive public config
+    // System config (model mappings — non-sensitive). Read: any
+    // signed-in user. Write: admins only.
     match /system/{document=**} {
-      allow read: if isAuthenticated() && resource.data.isPublic == true;
-      allow write: if false; // Only programmable via Admin SDK
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
     }
   }
 }

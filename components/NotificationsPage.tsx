@@ -45,7 +45,7 @@ const updates: UpdateItem[] = [
 {
   id: '2',
   title: 'Mobile App Beta',
-  description: 'ChatADK is coming to iOS and Android! Early access will be available for Pro and Enterprise users.',
+  description: 'Tufan is coming to iOS and Android! Early access will be available for Pro and Enterprise users.',
   date: 'Expected Mar 2026',
   tag: 'upcoming',
   price: '$15/mo',

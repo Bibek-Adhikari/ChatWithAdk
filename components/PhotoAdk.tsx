@@ -451,7 +451,7 @@ export default function PhotoEditorPro({ onClose, theme = 'dark' }: PhotoAdkProp
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `chatadk-${activeToolId}-${Date.now()}.png`;
+      a.download = `tufan-${activeToolId}-${Date.now()}.png`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);

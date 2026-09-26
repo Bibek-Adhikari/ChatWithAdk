@@ -843,7 +843,7 @@ Note: Your explanation must prove this is a custom conversion for THIS specific 
               className="flex items-center gap-2 px-3 py-1.5 bg-blue-600/10 text-blue-400 hover:bg-blue-600/20 rounded-lg text-xs font-bold transition-all border border-blue-500/20"
             >
               <ArrowLeftRight size={16} className="rotate-180" />
-              Back to ChatAdk
+              Back to Tufan
             </button>
             </div>
         <div className="flex items-center gap-2">

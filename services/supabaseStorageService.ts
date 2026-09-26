@@ -50,4 +50,15 @@ export const supabaseStorageService = {
   async getAllSessionsForAdmin(): Promise<any[]> {
     return authedGet<any>('/api/supabase/admin/sessions?limit=100');
   },
+
+  /**
+   * Fetches one session's user prompts for the prompt tree
+   * (verified gateway — scoped to the signed-in user).
+   */
+  async getSessionPrompts(sessionId: string): Promise<{ id: string; text: string; timestamp?: string }[]> {
+    if (!sessionId) return [];
+    return authedGet<{ id: string; text: string; timestamp?: string }>(
+      `/api/supabase/chat/sessions/${encodeURIComponent(sessionId)}/prompts`
+    );
+  },
 };

@@ -11,7 +11,7 @@ import {
 } from 'firebase/auth';
 import { auth, googleProvider } from '../services/firebase';
 import { adminService } from '../services/adminService';
-import { X, Mail, Lock, User, Loader2, Chrome, AlertCircle } from 'lucide-react';
+import { X, Mail, Lock, User, Loader2 } from 'lucide-react';
 import { readString, removeKey, writeString } from '../services/storage';
 
 interface AuthModalProps {
@@ -158,70 +158,63 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode, the
   };
 
   const isDark = theme === 'dark';
-  const bgClass = isDark ? 'bg-slate-900/95' : 'bg-white';
-  const textClass = isDark ? 'text-white' : 'text-slate-900';
-  const subtextClass = isDark ? 'text-slate-400' : 'text-slate-500';
-  const inputBgClass = isDark ? 'bg-slate-800/50 border-white/10' : 'bg-slate-50 border-slate-200';
-  const dividerClass = isDark ? 'border-white/10' : 'border-slate-200';
+  const fg = isDark ? 'text-neutral-100' : 'text-neutral-900';
+  const muted = isDark ? 'text-neutral-500' : 'text-neutral-400';
+  const cardCls = isDark ? 'bg-[#2f2f2f] border-white/10' : 'bg-white border-black/10';
+  const inputCls = isDark
+    ? 'bg-white/[0.04] border-white/10 text-neutral-100 placeholder:text-neutral-600 focus:border-white/25'
+    : 'bg-neutral-50 border-black/10 text-neutral-900 placeholder:text-neutral-400 focus:border-black/25';
 
   // Show full-screen loading overlay during redirect
   if (isRedirecting) {
     return (
-      <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm">
-        <div className={`${bgClass} rounded-3xl p-8 flex flex-col items-center gap-4 shadow-2xl border ${dividerClass}`}>
-          <div className="relative">
-            <div className="w-12 h-12 rounded-full border-4 border-blue-500/30 border-t-blue-500 animate-spin" />
-            <Chrome className="absolute inset-0 m-auto text-blue-500" size={20} />
-          </div>
-          <div className="text-center">
-            <h3 className={`text-lg font-bold ${textClass}`}>Completing Sign In...</h3>
-            <p className={`text-sm ${subtextClass} mt-1`}>Please wait while we redirect you back</p>
-          </div>
+      <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 animate-fadeIn p-4">
+        <div className={`rounded-2xl px-8 py-7 flex flex-col items-center gap-3 shadow-2xl border ${cardCls}`}>
+          <Loader2 size={26} className="animate-spin opacity-60" />
+          <h3 className={`text-[14px] font-medium ${fg}`}>Completing sign in…</h3>
+          <p className={`text-[12.5px] ${muted}`}>Please wait while we redirect you back</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div 
-      className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/40 backdrop-blur-[4px] animate-fadeIn overflow-y-auto"
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 animate-fadeIn overflow-y-auto"
       onClick={onClose}
     >
-      <div 
-        className={`w-full max-w-md my-auto rounded-3xl overflow-hidden shadow-2xl border ${dividerClass} ${bgClass} animate-slideUp`}
+      <div
+        className={`w-full max-w-sm my-auto rounded-2xl shadow-2xl border ${cardCls} animate-slide-up`}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="p-6 sm:p-8">
+        <div className="p-6 sm:p-7 relative">
+          <button
+            onClick={onClose}
+            disabled={loading}
+            className={`absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-lg transition-colors ${isDark ? 'text-neutral-500 hover:bg-white/10 hover:text-neutral-200' : 'text-neutral-400 hover:bg-black/5 hover:text-neutral-700'}`}
+            title="Close"
+          >
+            <X size={16} />
+          </button>
+
           {/* Header */}
-          <div className="flex justify-between items-center mb-6">
-            <div>
-              <h2 className={`text-2xl font-bold tracking-tight ${textClass}`}>
-                {mode === 'signin' ? 'Welcome Back' : 'Create Account'}
-              </h2>
-              <p className={`text-xs ${subtextClass} mt-1`}>
-                {mode === 'signin' ? 'Sign in to continue your session' : 'Start your journey with us'}
-              </p>
-            </div>
-            <button 
-              onClick={onClose}
-              disabled={loading}
-              className={`w-10 h-10 flex items-center justify-center rounded-xl transition-all active:scale-90
-                ${isDark ? 'bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white' : 'bg-slate-100 hover:bg-slate-200 text-slate-500'}`}
-            >
-              <X size={18} />
-            </button>
+          <div className="flex flex-col items-center text-center mb-6">
+            <img src="/assets/logo.webp" alt="Tufan" className="w-11 h-11 rounded-2xl object-cover mb-3 shadow-lg" />
+            <h2 className={`text-[17px] font-semibold tracking-tight ${fg}`}>
+              {mode === 'signin' ? 'Welcome back' : 'Create an account'}
+            </h2>
+            <p className={`text-[13px] mt-1 ${muted}`}>
+              {mode === 'signin' ? 'Log in to sync your chats everywhere' : 'Sign up to save chats and unlock more'}
+            </p>
           </div>
 
-          {/* Google Sign In First (Best for Mobile) */}
-          <button 
+          {/* Google Sign In */}
+          <button
             onClick={handleGoogleSignIn}
             disabled={loading}
-            className={`w-full border font-bold py-3.5 rounded-xl transition-all flex items-center justify-center gap-3 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed mb-6 shadow-sm
-              ${isDark 
-                ? 'bg-white/5 hover:bg-white/10 border-white/10 text-white' 
-                : 'bg-white hover:bg-slate-50 border-slate-200 text-slate-700'}`}
+            className={`w-full border font-medium py-2.5 rounded-xl transition-all text-[13.5px] flex items-center justify-center gap-2.5 active:scale-[0.98] disabled:opacity-50 mb-4 ${isDark ? 'border-white/15 text-neutral-100 hover:bg-white/[0.06]' : 'border-black/15 text-neutral-800 hover:bg-black/[0.03]'}`}
           >
-            <svg className="w-5 h-5" viewBox="0 0 24 24">
+            <svg className="w-[18px] h-[18px]" viewBox="0 0 24 24">
               <path
                 fill="#4285F4"
                 d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
@@ -239,127 +232,85 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode, the
                 d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
               />
             </svg>
-            <span className="text-sm font-bold tracking-tight">Continue with Google</span>
+            Continue with Google
           </button>
 
           {/* Divider */}
-          <div className="relative mb-6">
-            <div className={`absolute inset-0 flex items-center`}>
-              <div className={`w-full border-t ${isDark ? 'border-white/10' : 'border-slate-200'}`}></div>
-            </div>
-            <div className="relative flex justify-center text-[10px]">
-              <span className={`px-3 uppercase font-bold tracking-widest ${subtextClass} ${bgClass}`}>
-                Or use email
-              </span>
-            </div>
+          <div className="flex items-center gap-3 mb-4">
+            <div className={`h-px flex-1 ${isDark ? 'bg-white/10' : 'bg-black/10'}`} />
+            <span className={`text-[11.5px] ${muted}`}>or with email</span>
+            <div className={`h-px flex-1 ${isDark ? 'bg-white/10' : 'bg-black/10'}`} />
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Full Name - Sign Up Only */}
+          <form onSubmit={handleSubmit} className="space-y-3">
             {mode === 'signup' && (
-              <div className="animate-fadeIn space-y-1.5">
-                <label className={`block text-[10px] font-bold uppercase tracking-widest ${subtextClass}`}>
-                  Full Name
-                </label>
-                <div className="relative group">
-                  <div className={`absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none transition-colors ${subtextClass} group-focus-within:text-blue-500`}>
-                    <User size={18} />
-                  </div>
-                  <input 
+              <div className="animate-fadeIn">
+                <div className="relative">
+                  <User size={15} className={`absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none ${muted}`} />
+                  <input
                     type="text"
                     required={mode === 'signup'}
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
-                    className={`w-full border rounded-xl py-3 pl-11 pr-4 text-sm transition-all outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/50 ${inputBgClass} ${textClass}`}
-                    placeholder="John Doe"
+                    className={`w-full border rounded-xl py-2.5 pl-10 pr-3.5 text-[13.5px] transition-colors outline-none ${inputCls}`}
+                    placeholder="Full name"
+                    autoComplete="name"
                   />
                 </div>
               </div>
             )}
 
-            {/* Email */}
-            <div className="space-y-1.5">
-              <label className={`block text-[10px] font-bold uppercase tracking-widest ${subtextClass}`}>
-                Email Address
-              </label>
-              <div className="relative group">
-                <div className={`absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none transition-colors ${subtextClass} group-focus-within:text-blue-500`}>
-                  <Mail size={18} />
-                </div>
-                <input 
-                  type="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className={`w-full border rounded-xl py-3 pl-11 pr-4 text-sm transition-all outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/50 ${inputBgClass} ${textClass}`}
-                  placeholder="name@example.com"
-                  autoComplete="email"
-                />
-              </div>
+            <div className="relative">
+              <Mail size={15} className={`absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none ${muted}`} />
+              <input
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className={`w-full border rounded-xl py-2.5 pl-10 pr-3.5 text-[13.5px] transition-colors outline-none ${inputCls}`}
+                placeholder="Email address"
+                autoComplete="email"
+              />
             </div>
 
-            {/* Password */}
-            <div className="space-y-1.5">
-              <label className={`block text-[10px] font-bold uppercase tracking-widest ${subtextClass}`}>
-                Password
-              </label>
-              <div className="relative group">
-                <div className={`absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none transition-colors ${subtextClass} group-focus-within:text-blue-500`}>
-                  <Lock size={18} />
-                </div>
-                <input 
-                  type="password"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className={`w-full border rounded-xl py-3 pl-11 pr-4 text-sm transition-all outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/50 ${inputBgClass} ${textClass}`}
-                  placeholder="••••••••"
-                  autoComplete={mode === 'signin' ? "current-password" : "new-password"}
-                />
-              </div>
+            <div className="relative">
+              <Lock size={15} className={`absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none ${muted}`} />
+              <input
+                type="password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className={`w-full border rounded-xl py-2.5 pl-10 pr-3.5 text-[13.5px] transition-colors outline-none ${inputCls}`}
+                placeholder="Password"
+                autoComplete={mode === 'signin' ? "current-password" : "new-password"}
+              />
             </div>
 
-            {/* Error Message */}
             {error && (
-              <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-500 text-xs flex items-start gap-2 animate-shake">
-                <AlertCircle size={16} className="shrink-0 mt-0.5" />
-                <p>{error}</p>
+              <div className={`px-3.5 py-2.5 rounded-xl text-[12.5px] leading-snug border animate-fadeIn ${isDark ? 'bg-red-500/10 border-red-500/20 text-red-300' : 'bg-red-50 border-red-200 text-red-600'}`}>
+                {error}
               </div>
             )}
 
-            {/* Submit Button */}
-            <button 
+            <button
               type="submit"
               disabled={loading}
-              className="w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3.5 rounded-xl transition-all shadow-lg shadow-blue-500/20 active:scale-[0.98] flex items-center justify-center gap-2"
+              className="w-full py-2.5 rounded-full text-[13.5px] font-medium transition-all active:scale-[0.98] disabled:opacity-40 bg-black text-white hover:bg-neutral-800 dark:bg-white dark:text-black dark:hover:bg-neutral-200 flex items-center justify-center gap-2"
             >
-              {loading ? (
-                <Loader2 size={18} className="animate-spin" />
-              ) : (
-                <>
-                  {mode === 'signin' ? 'Sign In' : 'Create Account'}
-                </>
-              )}
+              {loading && <Loader2 size={15} className="animate-spin" />}
+              {mode === 'signin' ? 'Log in' : 'Sign up'}
             </button>
           </form>
 
-          {/* Mobile Hint */}
-          <p className={`mt-4 text-center text-[10px] ${subtextClass}`}>
-            {/iPhone|iPad|iPod|Android/i.test(navigator.userAgent) 
-              ? "You'll be redirected to Google for secure sign-in" 
-              : "Secure popup sign-in"}
-          </p>
-
-          {/* Mode Switch */}
-          <p className={`mt-6 text-center text-sm ${subtextClass}`}>
-            {mode === 'signin' ? "Don't have an account?" : "Already have an account?"}
-            <button 
+          <p className={`mt-5 text-center text-[13px] ${muted}`}>
+            {mode === 'signin' ? "New here?" : "Already have an account?"}
+            <button
               type="button"
               onClick={handleModeSwitch}
               disabled={loading}
-              className="ml-1.5 text-blue-500 font-bold hover:text-blue-400 transition-colors disabled:opacity-50"
+              className={`ml-1.5 font-semibold disabled:opacity-50 ${isDark ? 'text-neutral-100 hover:underline' : 'text-neutral-900 hover:underline'}`}
             >
-              {mode === 'signin' ? 'Sign Up' : 'Sign In'}
+              {mode === 'signin' ? 'Sign up' : 'Log in'}
             </button>
           </p>
         </div>

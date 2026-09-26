@@ -14,6 +14,8 @@ interface ChatMessageItemProps {
   onReusePrompt?: (text: string) => void;
   selectedVoiceId?: string;
   isAuthenticated?: boolean;
+  /** DOM anchor id so the prompt tree can scroll to this message */
+  anchorId?: string;
 }
 
 const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
@@ -22,7 +24,8 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
   theme = 'dark',
   onReusePrompt,
   selectedVoiceId,
-  isAuthenticated = false
+  isAuthenticated = false,
+  anchorId
 }) => {
   const isUser = message.role === 'user';
   const isAssistant = message.role === 'assistant';
@@ -88,23 +91,39 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
   const CodeBlock = ({ node, inline, className, children, ...props }: any) => {
     const match = /language-(\w+)/.exec(className || '');
     const codeString = String(children).replace(/\n$/, '');
+    const langLabel = match?.[1]
+      ? match[1].charAt(0).toUpperCase() + match[1].slice(1)
+      : '';
+
     if (!inline && match) {
       return (
-        <div className={`my-3 rounded-xl overflow-hidden border ${isDark ? 'border-white/10 bg-[#0d0d0d]' : 'border-black/[0.08] bg-[#f7f7f8]'}`}>
-          <div className={`flex items-center justify-between px-3.5 py-2 ${isDark ? 'bg-white/[0.03] border-b border-white/[0.06]' : 'bg-black/[0.02] border-b border-black/[0.06]'}`}>
-            <span className={`text-[11.5px] font-medium ${isDark ? 'text-neutral-500' : 'text-neutral-500'}`}>{match[1]}</span>
+        <div className={`my-3 rounded-2xl overflow-hidden ${isDark ? 'bg-[#2b2b2b]' : 'bg-[#f2f2f2]'}`}>
+          <div className="flex items-center justify-between pl-4 pr-2.5 py-2">
+            <span className={`text-[12.5px] font-medium flex items-center gap-1.5 ${isDark ? 'text-neutral-400' : 'text-neutral-500'}`}>
+              <span className="font-mono text-[11px] opacity-70">&lt;/&gt;</span>
+              {langLabel}
+            </span>
             <button
               onClick={() => handleCopy(codeString)}
-              className={`flex items-center gap-1.5 text-[11.5px] font-medium transition-colors ${isDark ? 'text-neutral-500 hover:text-neutral-200' : 'text-neutral-500 hover:text-neutral-800'}`}
+              className={`p-2 rounded-lg transition-colors ${isDark ? 'text-neutral-400 hover:text-white hover:bg-white/10' : 'text-neutral-500 hover:text-neutral-900 hover:bg-black/5'}`}
+              title="Copy code"
             >
-              {copiedCode === codeString ? <><Check size={13} /> Copied</> : <><Copy size={13} /> Copy code</>}
+              {copiedCode === codeString ? <Check size={15} /> : <Copy size={15} />}
             </button>
           </div>
           <SyntaxHighlighter
             style={isDark ? oneDark : oneLight}
             language={match[1]}
             PreTag="div"
-            customStyle={{ margin: 0, padding: '14px 16px', fontSize: '13px', lineHeight: '1.65', background: 'transparent', overflowX: 'auto' }}
+            codeTagProps={{ style: { background: 'transparent', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace' } }}
+            customStyle={{
+              margin: 0,
+              padding: '4px 16px 14px',
+              fontSize: '13px',
+              lineHeight: '1.7',
+              background: 'transparent',
+              overflowX: 'auto',
+            }}
             {...props}
           >
             {codeString}
@@ -113,7 +132,7 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
       );
     }
     return (
-      <code className={`px-1.5 py-0.5 rounded-md text-[0.88em] font-mono ${isDark ? 'bg-white/10 text-neutral-200' : 'bg-black/[0.06] text-neutral-800'}`} {...props}>
+      <code className={`font-mono text-[0.85em] px-1.5 py-0.5 rounded-md ${isDark ? 'bg-white/[0.09] text-neutral-200' : 'bg-black/[0.06] text-neutral-800'}`} {...props}>
         {children}
       </code>
     );
@@ -125,7 +144,7 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
   /* ---------- USER: right-aligned bubble like DeepSeek/Claude ---------- */
   if (isUser) {
     return (
-      <div className="flex flex-col items-end w-full mb-5 animate-slide-up group">
+      <div id={anchorId} className="flex flex-col items-end w-full mb-5 animate-slide-up group scroll-mt-20">
         <div className={`max-w-[85%] sm:max-w-[75%] px-4 py-2.5 rounded-2xl text-[14.5px] leading-relaxed break-words
           ${isDark ? 'bg-[#2f2f2f] text-[#ececec]' : 'bg-[#f4f4f4] text-neutral-900'}`}>
           {(message.parts || []).map((part, idx) => (
@@ -164,7 +183,7 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
 
   /* ---------- ASSISTANT: plain full-width like Claude ---------- */
   return (
-    <div className="flex flex-col w-full mb-6 animate-slide-up group/message">
+    <div id={anchorId} className="flex flex-col w-full mb-6 animate-slide-up group/message scroll-mt-20">
       <div className="flex items-start gap-3 w-full">
         <img src="/assets/logo.webp" alt="" className="w-7 h-7 rounded-full object-cover shrink-0 mt-0.5 border border-black/10 dark:border-white/10" />
         <div className="flex-1 min-w-0">
@@ -188,7 +207,17 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
 
           {(message.parts || []).map((part, idx) => (
             <div key={idx} className="w-full">
-              {part.type === 'text' ? (
+              {part.type === 'thinking' ? (
+                <details className={`mb-2 rounded-xl border overflow-hidden ${isDark ? 'border-white/10 bg-white/[0.02]' : 'border-black/10 bg-black/[0.02]'}`}>
+                  <summary className={`px-3.5 py-2 text-[12.5px] font-medium cursor-pointer list-none flex items-center gap-2 select-none ${isDark ? 'text-neutral-500 hover:text-neutral-300' : 'text-neutral-500 hover:text-neutral-700'}`}>
+                    <span aria-hidden>💭</span> Thought process
+                    <span className="text-[11px] opacity-60">· tap to expand</span>
+                  </summary>
+                  <div className={`px-3.5 pb-3 pt-1 text-[13px] leading-relaxed whitespace-pre-wrap ${isDark ? 'text-neutral-400' : 'text-neutral-500'}`}>
+                    {part.content}
+                  </div>
+                </details>
+              ) : part.type === 'text' ? (
                 <div className={`text-[14.5px] leading-[1.75] markdown-content ${isDark ? 'text-[#ececec]' : 'text-neutral-800'}`}>
                   <ReactMarkdown
                     remarkPlugins={[remarkGfm]}

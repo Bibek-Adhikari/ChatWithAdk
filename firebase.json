@@ -1,4 +1,17 @@
 {
+  // Auth providers (firebase-auth-basics skill): email/password is declared
+  // here so `deploy --only auth` enables it. Google sign-in is left
+  // untouched — it is managed in the console and already working.
+  "auth": {
+    "providers": {
+      "emailPassword": true
+    }
+  },
+  // Firestore rules target: deploys ./firestore.rules to the (default) DB.
+  "firestore": {
+    "database": "(default)",
+    "rules": "firestore.rules"
+  },
   "hosting": {
     "public": "dist",
     "ignore": [

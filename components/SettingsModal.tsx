@@ -177,7 +177,7 @@ const SettingsModal: React.FC<SettingsModalProps> = memo(({
 
         {/* Footer */}
         <div className={`px-5 py-3 text-center border-t shrink-0 ${isDark ? 'border-white/[0.07]' : 'border-black/[0.06]'}`}>
-          <p className={`text-[11px] ${muted}`}>ChatADK v2.0.0</p>
+          <p className={`text-[11px] ${muted}`}>Tufan v2.0.0</p>
         </div>
       </div>
     </div>

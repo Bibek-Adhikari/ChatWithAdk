@@ -16,11 +16,15 @@ import {
   Globe,
   Lightbulb,
   PenLine,
-  GraduationCap
+  GraduationCap,
+  Bot,
+  List
 } from 'lucide-react';
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { ChatMessage, ChatSession, GenerationState, MessagePart } from './types';
 import ChatMessageItem from './components/ChatMessageItem';
+import PromptTreePanel from './components/PromptTreePanel';
+import { supabaseStorageService } from './services/supabaseStorageService';
 import Sidebar from './components/Sidebar';
 import AuthModal from './components/AuthModal';
 import Plans from './components/Plans';
@@ -29,6 +33,8 @@ import UserProfileModal from './components/UserProfileModal';
 import { generateTextResponse } from './services/geminiService';
 import { generateGroqResponse } from './services/groqService';
 import { generateResearchResponse } from './services/openRouterService';
+import { generateCodecraftResponse } from './services/codecraftService';
+import { CODECRAFT_MODELS, CODECRAFT_FAMILIES, isCodecraftModel, craftModelLabel, DEFAULT_CRAFT_MODEL } from './services/codecraftModels';
 import { generateImageResponse } from './services/imageService';
 import { searchYouTubeVideo, getVideoDetails } from './services/youtubeService';
 import { auth, db } from './services/firebase';
@@ -48,7 +54,7 @@ import { readBoolean, readJson, readNumber, readString, removeKey, writeJson, wr
 
 const ADMIN_EMAILS = [
   "crazybibek4444@gmail.com",
-  "geniusbibek4444@gmail.com"
+  "bibekadhikari0763@gmail.com"
 ];
 
 
@@ -123,13 +129,41 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
     return VOICE_LIBRARY.some(v => v.id === legacy) ? legacy : '';
   });
   const [selectedImage, setSelectedImage] = useState<{ data: string; mimeType: string } | null>(null);
-  const [aiModel, setAiModel] = useState<'gemini' | 'groq' | 'research' | 'imagine' | 'motion' | 'multi'>('groq');
+  const [aiModel, setAiModel] = useState<'gemini' | 'groq' | 'research' | 'craft' | 'imagine' | 'motion' | 'multi'>('groq');
   const [multiChatConfig, setMultiChatConfig] = useState({
     leftModel: 'groq' as const,
     rightModel: 'gemini' as const,
     dividerPosition: 50,
   });
   const [isModelMenuOpen, setIsModelMenuOpen] = useState(false);
+  // Craft sub-selector: which of the 33 CodeCraft models backs Craft mode
+  const [craftModel, setCraftModel] = useState<string>(() => {
+    const saved = readString('craft_model_id', DEFAULT_CRAFT_MODEL);
+    return isCodecraftModel(saved) ? saved : DEFAULT_CRAFT_MODEL;
+  });
+  const [isCraftMenuOpen, setIsCraftMenuOpen] = useState(false);
+  const [craftQuery, setCraftQuery] = useState('');
+  const craftMenuRef = useRef<HTMLDivElement>(null);
+  const selectCraftModel = (id: string) => {
+    if (!isCodecraftModel(id)) return;
+    setCraftModel(id);
+    writeString('craft_model_id', id, { persist: 'both' });
+    setIsCraftMenuOpen(false);
+  };
+  // Grouped + searchable view of the 33 CodeCraft models for the sub-selector
+  const craftMenuGroups = useMemo(() => {
+    const q = craftQuery.trim().toLowerCase();
+    if (q) {
+      const flat = CODECRAFT_MODELS.filter(m =>
+        m.id.toLowerCase().includes(q) || m.label.toLowerCase().includes(q) || m.family.toLowerCase().includes(q)
+      );
+      return [{ family: `${flat.length} match${flat.length === 1 ? '' : 'es'}`, items: flat }];
+    }
+    return (CODECRAFT_FAMILIES as readonly string[]).map(family => ({
+      family,
+      items: CODECRAFT_MODELS.filter(m => m.family === family),
+    })).filter(g => g.items.length > 0);
+  }, [craftQuery]);
   const [isPromptDisabled, setIsPromptDisabled] = useState(false);
   const [isPreviewVideoOpen, setIsPreviewVideoOpen] = useState(false);
   const [usageCount, setUsageCount] = useState<number>(() => {
@@ -254,10 +288,41 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
     writeString('selectedVoiceId', voiceId, { persist: 'both' });
   };
 
-  const currentSession = useMemo(() => 
-    sessions.find(s => s.id === currentSessionId), 
+  const currentSession = useMemo(() =>
+    sessions.find(s => s.id === currentSessionId),
     [sessions, currentSessionId]
   );
+
+  // Prompt tree (DeepSeek-style jump-to-question panel, Supabase-backed)
+  const [promptTreeOpen, setPromptTreeOpen] = useState(false);
+  const [supabasePrompts, setSupabasePrompts] = useState<{ id: string; text: string }[]>([]);
+
+  const treePrompts = useMemo(() => {
+    const live = (currentSession?.messages || [])
+      .filter(m => m.role === 'user')
+      .map(m => {
+        const text = (m.parts || []).filter(p => p.type === 'text').map(p => p.content).join('\n').trim();
+        return { id: m.id, text: text || '[image]' };
+      });
+    if (live.length > 0) return live;
+    // Fallback to the Supabase mirror (e.g. history still loading into state)
+    return supabasePrompts.map(p => ({ id: p.id, text: p.text }));
+  }, [currentSession, supabasePrompts]);
+
+  const jumpToPrompt = useCallback((id: string) => {
+    document.getElementById(`msg-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, []);
+
+  // Backfill the tree from Supabase when live state has no prompts yet
+  useEffect(() => {
+    let cancelled = false;
+    setSupabasePrompts([]);
+    if (!currentSessionId || !user || currentSessionId.startsWith('new_')) return;
+    supabaseStorageService.getSessionPrompts(currentSessionId).then(list => {
+      if (!cancelled) setSupabasePrompts(list);
+    });
+    return () => { cancelled = true; };
+  }, [currentSessionId, user]);
 
   // Get storage key for current user
   const getUserStorageKey = () => {
@@ -287,7 +352,11 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
       }
 
       if (user) {
-        // Migrate Guest -> User Cloud if guest data exists
+        // Migrate Guest -> User Cloud if guest data exists.
+        // The local guest cache is cleared ONLY after every session is
+        // confirmed present in the cloud. Previously removeKey ran even when
+        // the (allSettled, never-throwing) saves failed, permanently deleting
+        // guest chats that existed nowhere else.
         const guestKey = `${STORAGE_KEY}_guest`;
         const guestSessions = readJson<ChatSession[]>(guestKey, [], { prefer: 'local' });
         if (guestSessions.length > 0) {
@@ -296,7 +365,19 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
           for (const s of guestSessions) {
             await storageAggregator.saveSession(user.uid, s);
           }
-          removeKey(guestKey, { persist: 'both' });
+          // Verify before clearing: re-read the cloud and keep anything missing.
+          const cloudNow = await chatStorageService.getUserSessions(user.uid).catch(() => []);
+          const cloudIds = new Set(cloudNow.map(s => s.id));
+          const missing = guestSessions.filter(s => !cloudIds.has(s.id));
+          if (missing.length === 0) {
+            removeKey(guestKey, { persist: 'both' });
+          } else {
+            console.warn(`Guest migration incomplete — ${missing.length} session(s) kept locally:`, missing.map(s => s.id));
+            setStatus(prev => ({
+              ...prev,
+              error: `Cloud backup failed for ${missing.length} chat(s) — they are kept on this device. Check your connection and reload.`,
+            }));
+          }
         }
 
         // Subscribe to real-time updates from cloud
@@ -335,6 +416,15 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
           }
           
           setStatus(prev => ({ ...prev, isSyncing: false }));
+        }, (syncError) => {
+          // A dead listener looks exactly like "no chats" — surface it so a
+          // permissions/network failure can't silently empty the sidebar.
+          console.error('Sidebar sync failed:', syncError);
+          setStatus(prev => ({
+            ...prev,
+            isSyncing: false,
+            error: `Chat history sync failed (${syncError.message || 'connection error'}). Your local chats are untouched — check connection and reload.`,
+          }));
         });
       } else {
         // Guest mode
@@ -515,6 +605,7 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
         setIsProfileOpen(prev => ({ ...prev, open: false }));
         setIsAdminDashboardOpen(false);
         setIsModelMenuOpen(false);
+        setIsCraftMenuOpen(false);
         setIsCompilerOpen(false);
         setIsConverterOpen(false);
         setIsPhotoAdkOpen(false);
@@ -525,6 +616,9 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
     const handleClickOutside = (e: MouseEvent) => {
       if (modelMenuRef.current && !modelMenuRef.current.contains(e.target as Node)) {
         setIsModelMenuOpen(false);
+      }
+      if (craftMenuRef.current && !craftMenuRef.current.contains(e.target as Node)) {
+        setIsCraftMenuOpen(false);
       }
     };
 
@@ -681,7 +775,7 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
         messages: [{
           id: `welcome_${newId}`,
           role: 'assistant',
-          parts: [{ type: 'text', content: `${greeting} I am ChatAdk. How can I help you today?` }],
+          parts: [{ type: 'text', content: `${greeting} I am Tufan. How can I help you today?` }],
           timestamp: new Date(Date.now() - 1000).toISOString(), // Set greeting slightly in past
         }],
         updatedAt: Date.now(),
@@ -726,10 +820,15 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
     try {
       const history = (currentSession?.messages || []).map(m => ({
         role: (m.role === 'assistant' ? 'model' : 'user') as 'user' | 'model',
-        parts: (m.parts || []).filter(p => p && p.content).map(p => {
-          if (p.type === 'text') return { text: p.content };
-          return { inlineData: { data: p.content, mimeType: p.mimeType || 'image/jpeg' } };
-        })
+        // Only real model inputs go back as context: text as-is, images as
+        // inline data. Thinking traces, video cards, etc. are skipped —
+        // sending them as image payloads corrupts the request.
+        parts: (m.parts || [])
+          .filter(p => p && p.content && (p.type === 'text' || p.type === 'image'))
+          .map(p => {
+            if (p.type === 'text') return { text: p.content };
+            return { inlineData: { data: p.content, mimeType: p.mimeType || 'image/jpeg' } };
+          })
       }));
       
       let responseText = '';
@@ -737,7 +836,7 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
 
       if (aiModel === 'imagine' || currentInput.toLowerCase().startsWith('/image')) {
         if (!user) {
-          addAssistantMessage(sessionId, [{ type: 'text', content: "Please sign in to ChatADK to generate images and access premium features." }]);
+          addAssistantMessage(sessionId, [{ type: 'text', content: "Please sign in to Tufan to generate images and access premium features." }]);
           handleAuthClick('signin');
         } else {
           const imagePrompt = currentInput.toLowerCase().startsWith('/image') 
@@ -838,8 +937,8 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
             generateModelResponse(multiChatConfig.rightModel, finalInput, history, selectedImage || undefined)
           ]);
           
-          await processAssistantResponse(sessionId, leftResponse, multiChatConfig.leftModel);
-          await processAssistantResponse(sessionId, rightResponse, multiChatConfig.rightModel);
+          await processAssistantResponse(sessionId, leftResponse.text, multiChatConfig.leftModel, leftResponse.thinking);
+          await processAssistantResponse(sessionId, rightResponse.text, multiChatConfig.rightModel, rightResponse.thinking);
         } else {
           let finalInput = `${dateContext}\n\nUSER QUESTION: ${currentInput}`;
           
@@ -859,8 +958,8 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
             }
           }
 
-          const responseText = await generateModelResponse(aiModel, finalInput, history, selectedImage || undefined);
-          await processAssistantResponse(sessionId, responseText);
+          const response = await generateModelResponse(aiModel, finalInput, history, selectedImage || undefined);
+          await processAssistantResponse(sessionId, response.text, undefined, response.thinking);
         }
       }
     } catch (err: any) {
@@ -925,7 +1024,7 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
     updateSessionMessages(sessionId, prev => [...prev, newMessage]);
   };
 
-  const processAssistantResponse = async (sessionId: string, text: string, modelId?: string) => {
+  const processAssistantResponse = async (sessionId: string, text: string, modelId?: string, thinking?: string) => {
     // 1. Detect if the response contains a /youtube [query] command
     const youtubeSearchMatch = text.match(/\/youtube\s+([^\n]+)/i);
     // 2. Detect if the response contains a direct YouTube URL
@@ -933,6 +1032,12 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
 
     let parts: MessagePart[] = [];
     let cleanText = text;
+
+    // Reasoning trace first (when the model provides one) — rendered as a
+    // collapsible block and persisted with the message for per-user history.
+    if (thinking && thinking.trim()) {
+      parts.push({ type: 'thinking', content: thinking.trim() });
+    }
 
     // Handle Search Command (/youtube ...)
     if (youtubeSearchMatch) {
@@ -981,7 +1086,7 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
     addAssistantMessage(sessionId, parts, modelId);
   };
 
-  const generateModelResponse = async (model: string, input: string, history: any[], image?: any) => {
+  const generateModelResponse = async (model: string, input: string, history: any[], image?: any): Promise<{ text: string; thinking?: string }> => {
     // Map the UI Mode to the Configured Engine
     let engine = model;
     if (systemConfig) {
@@ -1002,8 +1107,14 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
         parts: h.parts.filter(p => 'text' in p) as { text: string }[]
       }));
       return await generateResearchResponse(input, textOnlyHistory);
+    } else if (engine === 'craft') {
+      const textOnlyHistory = history.map(h => ({
+        ...h,
+        parts: h.parts.filter(p => 'text' in p) as { text: string }[]
+      }));
+      return await generateCodecraftResponse(input, textOnlyHistory, craftModel);
     } else if (engine === 'imagine') {
-      return `[Imagine Model Placeholder] I cannot yet generate images inside multi-chat logic cleanly. Use the standalone Imagine mode.`;
+      return { text: `[Imagine Model Placeholder] I cannot yet generate images inside multi-chat logic cleanly. Use the standalone Imagine mode.` };
     } else if (engine === 'openrouter') {
       // Fallback to research/openrouter service
       const textOnlyHistory = history.map(h => ({
@@ -1012,8 +1123,8 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
       }));
       return await generateResearchResponse(input, textOnlyHistory);
     } else {
-      // Default to Gemini (for 'gemini' engine or unknown)
-      return await generateTextResponse(input, history, image);
+      // Default to Gemini (for 'gemini' engine or unknown — no thinking trace)
+      return { text: await generateTextResponse(input, history, image) };
     }
   };
 
@@ -1036,7 +1147,10 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
   );
 
   return (
-    <div className={`flex h-screen overflow-hidden transition-colors duration-300 relative ${theme === 'dark' ? 'bg-[#212121] text-[#ececec]' : 'bg-white text-neutral-900'}`}>
+    <div
+      className={`flex h-screen overflow-hidden transition-colors duration-300 relative ${theme === 'dark' ? 'bg-[#212121] text-[#ececec]' : 'bg-white text-neutral-900'}`}
+      style={{ height: '100dvh' }}
+    >
       <Sidebar 
         sessions={sessions}
         currentSessionId={currentSessionId}
@@ -1094,7 +1208,7 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
             onClick={() => setIsModelMenuOpen(!isModelMenuOpen)}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[14px] font-medium transition-colors ${theme === 'dark' ? 'text-neutral-200 hover:bg-white/[0.06]' : 'text-neutral-700 hover:bg-black/[0.05]'}`}
           >
-            ChatADK {aiModel === 'gemini' ? 'Detail' : aiModel === 'groq' ? 'Flash' : aiModel === 'research' ? 'Reasoning' : aiModel === 'imagine' ? 'Imagine' : aiModel === 'motion' ? 'Motion' : 'Multi'}
+            Tufan {aiModel === 'gemini' ? 'Detail' : aiModel === 'groq' ? 'Flash' : aiModel === 'craft' ? 'Craft' : aiModel === 'research' ? 'Reasoning' : aiModel === 'imagine' ? 'Imagine' : aiModel === 'motion' ? 'Motion' : 'Multi'}
             <ChevronDown size={15} className={`opacity-50 transition-transform ${isModelMenuOpen ? 'rotate-180' : ''}`} />
           </button>
 
@@ -1128,11 +1242,12 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
           ref={scrollRef}
         >
           {aiModel !== 'multi' ? (
+            <>
             <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-6 custom-scrollbar relative flex flex-col">
               <div className="max-w-[768px] mx-auto w-full flex-1 flex flex-col">
                 {localizedMessages.length === 0 && !currentSession && (
                   <div className="flex flex-col items-center justify-center flex-1 text-center py-10 min-h-[50vh]">
-                    <img src="/assets/logo.webp" alt="ChatADK" className="w-14 h-14 rounded-2xl object-cover mb-5 shadow-lg" />
+                    <img src="/assets/logo.webp" alt="Tufan" className="w-14 h-14 rounded-2xl object-cover mb-5 shadow-lg" />
                     <h1 className={`text-[26px] sm:text-[32px] font-medium tracking-tight mb-2 ${theme === 'dark' ? 'text-neutral-100' : 'text-neutral-900'}`}>
                       How can I help you today?
                     </h1>
@@ -1168,9 +1283,10 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
                 )}
                 
                 {localizedMessages.map((msg) => (
-                  <ChatMessageItem 
-                    key={msg.id} 
-                    message={msg as any} 
+                  <ChatMessageItem
+                    key={msg.id}
+                    anchorId={`msg-${msg.id}`}
+                    message={msg as any}
                     theme={theme}
                     selectedVoiceId={selectedVoiceId}
                     isAuthenticated={!!user}
@@ -1215,6 +1331,29 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
                 )}
               </div>
             </div>
+            {/* Prompt tree toggle + panel (single-chat only, like DeepSeek) */}
+            {treePrompts.length > 0 && !promptTreeOpen && (
+              <button
+                onClick={() => setPromptTreeOpen(true)}
+                title="Jump to prompt"
+                className={`absolute right-3 top-3 z-10 w-9 h-9 flex items-center justify-center rounded-full border shadow-lg backdrop-blur-md transition-all active:scale-95 ${
+                  theme === 'dark'
+                    ? 'bg-[#2a2a2a]/90 border-white/10 text-neutral-400 hover:text-neutral-100'
+                    : 'bg-white/90 border-black/10 text-neutral-500 hover:text-neutral-900'
+                }`}
+              >
+                <List size={16} />
+              </button>
+            )}
+            {treePrompts.length > 0 && promptTreeOpen && (
+              <PromptTreePanel
+                prompts={treePrompts}
+                theme={theme}
+                onJump={jumpToPrompt}
+                onClose={() => setPromptTreeOpen(false)}
+              />
+            )}
+            </>
           ) : (
             <div className="flex-1 flex overflow-hidden relative group/multi">
               {/* Left Column */}
@@ -1290,8 +1429,8 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
           )}
         </main>
 
-        {/* Input Section — Claude / DeepSeek style */}
-        <footer className="p-3 sm:p-4 shrink-0 z-10 pb-safe">
+        {/* Input Section — pinned to viewport bottom, never scrolls away */}
+        <footer className={`p-3 sm:p-4 shrink-0 z-10 pb-safe sticky bottom-0 ${theme === 'dark' ? 'bg-[#212121]' : 'bg-white'}`}>
           <div className="max-w-[768px] mx-auto w-full relative">
             {/* Model menu */}
             {isModelMenuOpen && (
@@ -1303,6 +1442,7 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
                 <p className={`px-3 pt-2 pb-1 text-[11px] font-medium ${theme === 'dark' ? 'text-neutral-500' : 'text-neutral-400'}`}>Choose a mode</p>
                 {[
                   { id: 'groq', name: 'Flash', desc: 'Fast answers for everyday tasks', icon: Zap, lock: false },
+                  { id: 'craft', name: 'Craft', desc: '33 models via CodeCraft — login required', icon: Bot, lock: !user },
                   { id: 'research', name: 'Reasoning', desc: 'Deep analysis with DeepSeek R1', icon: Globe, lock: !user },
                   { id: 'gemini', name: 'Detail', desc: 'Multimodal, technical breakdowns', icon: Sparkles, lock: !user },
                   { id: 'imagine', name: 'Imagine', desc: 'Generate images from words', icon: ImageIcon, lock: !user },
@@ -1321,6 +1461,7 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
                       }
                       setAiModel(m.id as any);
                       setIsModelMenuOpen(false);
+                      setIsCraftMenuOpen(false);
                     }}
                     className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-colors ${aiModel === m.id ? (theme === 'dark' ? 'bg-white/[0.07]' : 'bg-black/[0.05]') : (theme === 'dark' ? 'hover:bg-white/[0.04]' : 'hover:bg-black/[0.03]')}`}
                   >
@@ -1338,6 +1479,51 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
                     ▶ Preview how Multi Chat works
                   </button>
                 )}
+              </div>
+            )}
+
+            {/* Craft model selector — grouped by provider family */}
+            {isCraftMenuOpen && aiModel === 'craft' && (
+              <div
+                ref={craftMenuRef}
+                onClick={(e) => e.stopPropagation()}
+                className={`absolute bottom-[calc(100%+10px)] left-0 w-[340px] max-w-[calc(100vw-2rem)] rounded-2xl border animate-slide-up z-50 shadow-2xl flex flex-col overflow-hidden ${theme === 'dark' ? 'bg-[#2f2f2f] border-white/10' : 'bg-white border-black/10'}`}
+              >
+                <p className={`px-3 pt-2.5 pb-1 text-[11px] font-medium ${theme === 'dark' ? 'text-neutral-500' : 'text-neutral-400'}`}>Choose a CodeCraft model · 33 verified</p>
+                <div className="px-2 pb-1.5">
+                  <input
+                    type="text"
+                    value={craftQuery}
+                    onChange={(e) => setCraftQuery(e.target.value)}
+                    placeholder="Search models…"
+                    className={`w-full px-3 py-2 rounded-xl border text-[12.5px] outline-none ${theme === 'dark' ? 'bg-black/20 border-white/10 text-neutral-100 placeholder:text-neutral-600 focus:border-white/25' : 'bg-neutral-50 border-black/10 text-neutral-900 placeholder:text-neutral-400 focus:border-black/25'}`}
+                  />
+                </div>
+                <div className="overflow-y-auto custom-scrollbar max-h-[46vh] p-1.5 pt-0">
+                  {craftMenuGroups.map(g => (
+                    <div key={g.family}>
+                      <p className={`px-3 pt-2 pb-1 text-[10px] font-bold uppercase tracking-widest ${theme === 'dark' ? 'text-neutral-500' : 'text-neutral-400'}`}>{g.family}</p>
+                      {g.items.map(m => (
+                        <button
+                          key={m.id}
+                          type="button"
+                          onClick={() => selectCraftModel(m.id)}
+                          title={m.id}
+                          className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-left transition-colors ${craftModel === m.id ? (theme === 'dark' ? 'bg-white/[0.07]' : 'bg-black/[0.05]') : (theme === 'dark' ? 'hover:bg-white/[0.04]' : 'hover:bg-black/[0.03]')}`}
+                        >
+                          <span className="flex-1 min-w-0">
+                            <span className={`block text-[13px] font-medium leading-tight ${theme === 'dark' ? 'text-neutral-100' : 'text-neutral-900'}`}>{m.label}</span>
+                            {m.hint ? <span className={`block text-[11px] truncate ${theme === 'dark' ? 'text-neutral-500' : 'text-neutral-400'}`}>{m.hint}</span> : null}
+                          </span>
+                          {craftModel === m.id && <Check size={15} className="text-[#4d6bfe] shrink-0" />}
+                        </button>
+                      ))}
+                    </div>
+                  ))}
+                  {craftMenuGroups.length === 0 && (
+                    <p className={`px-3 py-4 text-[12px] text-center ${theme === 'dark' ? 'text-neutral-500' : 'text-neutral-400'}`}>No models match.</p>
+                  )}
+                </div>
               </div>
             )}
 
@@ -1369,7 +1555,7 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
                         handleSend();
                       }
                     }}
-                    placeholder={aiModel === 'imagine' ? 'Describe the image you want…' : aiModel === 'research' ? 'Ask a hard question…' : 'Message ChatADK…'}
+                    placeholder={aiModel === 'imagine' ? 'Describe the image you want…' : aiModel === 'research' ? 'Ask a hard question…' : aiModel === 'craft' ? `Ask ${craftModelLabel(craftModel)} anything…` : 'Message Tufan…'}
                     className={`w-full bg-transparent border-none outline-none px-4 sm:px-5 pt-3.5 pb-1 text-[15px] leading-relaxed resize-none overflow-y-auto max-h-[200px] custom-scrollbar ${theme === 'dark' ? 'text-neutral-100 placeholder:text-neutral-500' : 'text-neutral-900 placeholder:text-neutral-400'}`}
                     disabled={status.isTyping}
                   />
@@ -1392,9 +1578,21 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
                         className={`flex items-center gap-1 pl-2 pr-2.5 py-1.5 rounded-full border text-[12px] font-medium transition-colors ${theme === 'dark' ? 'border-white/10 text-neutral-300 hover:bg-white/[0.06]' : 'border-black/10 text-neutral-600 hover:bg-black/[0.04]'}`}
                       >
                         <Zap size={12} />
-                        {aiModel === 'gemini' ? 'Detail' : aiModel === 'groq' ? 'Flash' : aiModel === 'research' ? 'Reasoning' : aiModel === 'imagine' ? 'Imagine' : aiModel === 'motion' ? 'Motion' : 'Multi'}
+                        {aiModel === 'gemini' ? 'Detail' : aiModel === 'groq' ? 'Flash' : aiModel === 'craft' ? 'Craft' : aiModel === 'research' ? 'Reasoning' : aiModel === 'imagine' ? 'Imagine' : aiModel === 'motion' ? 'Motion' : 'Multi'}
                         <ChevronDown size={12} className="opacity-50" />
                       </button>
+                      {aiModel === 'craft' && (
+                        <button
+                          type="button"
+                          onClick={(e) => { e.preventDefault(); e.stopPropagation(); setIsModelMenuOpen(false); setIsCraftMenuOpen(!isCraftMenuOpen); }}
+                          title="Choose CodeCraft model (33 available)"
+                          className={`flex items-center gap-1 pl-2 pr-2.5 py-1.5 rounded-full border text-[12px] font-medium transition-colors max-w-[180px] ${theme === 'dark' ? 'border-[#4d6bfe]/40 text-neutral-200 hover:bg-white/[0.06]' : 'border-[#4d6bfe]/40 text-neutral-700 hover:bg-black/[0.04]'}`}
+                        >
+                          <Bot size={12} className="shrink-0" />
+                          <span className="truncate">{craftModelLabel(craftModel)}</span>
+                          <ChevronDown size={12} className="opacity-50 shrink-0" />
+                        </button>
+                      )}
                     </>
                   )}
                   <span className="flex-1" />
@@ -1413,7 +1611,7 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
             </form>
 
             <p className={`mt-2.5 text-center text-[11px] ${theme === 'dark' ? 'text-neutral-600' : 'text-neutral-400'}`}>
-              ChatADK can make mistakes. Verify important information.
+                Tufan can make mistakes. Verify important information.
             </p>
           </div>
         </footer>

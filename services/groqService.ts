@@ -1,6 +1,8 @@
 
 import { proxyPost } from './serverProxy';
 
+import { extractThinking, ModelResponse } from './modelThinking';
+
 export interface GroqMessage {
   role: 'user' | 'assistant' | 'system';
   content: string;
@@ -11,7 +13,7 @@ const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 export async function generateGroqResponse(
   prompt: string,
   history: { role: 'user' | 'model'; parts: { text: string }[] }[]
-): Promise<string> {
+): Promise<ModelResponse> {
   const apiKey = import.meta.env.VITE_GROQ_API_KEY;
 
   if (!apiKey) {
@@ -22,7 +24,7 @@ export async function generateGroqResponse(
   const messages: GroqMessage[] = [
     {
       role: 'system',
-      content: "You are ChatADK (Fast Mode). Today is February 2026. \n\n1. Use 'LATEST NEWS DATA' as your absolute source for 2025-2026 facts. \n2. If the news data is from 2026 but doesn't name a leader, DON'T use your pre-2024 knowledge. State clearly that recent news is available but doesn't mention the name. \n3. If a name IS mentioned in the news as the current official, that is the only correct answer."
+      content: "You are Tufan (Fast Mode). Today is February 2026. \n\n1. Use 'LATEST NEWS DATA' as your absolute source for 2025-2026 facts. \n2. If the news data is from 2026 but doesn't name a leader, DON'T use your pre-2024 knowledge. State clearly that recent news is available but doesn't mention the name. \n3. If a name IS mentioned in the news as the current official, that is the only correct answer."
     },
     ...history.map(h => ({
       role: (h.role === 'model' ? 'assistant' : 'user') as 'user' | 'assistant',
@@ -67,7 +69,11 @@ export async function generateGroqResponse(
     }
 
     const data = await response.json();
-    return data.choices[0]?.message?.content || '';
+    const message = data.choices[0]?.message;
+    return {
+      text: message?.content || '',
+      thinking: extractThinking(message),
+    };
   } catch (error: any) {
     console.error('Groq API Error:', error);
     throw error;

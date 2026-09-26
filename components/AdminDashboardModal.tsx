@@ -201,7 +201,7 @@ const ApiDetail = memo(({ def, result, checking, theme, onCheck, onBack }: ApiDe
 });
 
 // Admin emails - move to config or env in production
-const ADMIN_EMAILS = ['crazybibek4444@gmail.com', 'geniusbibek4444@gmail.com'];
+const ADMIN_EMAILS = ['crazybibek4444@gmail.com', 'bibekadhikari0763@gmail.com'];
 
 const TABS = [
   { id: 'overview', label: 'Overview' },

@@ -6,6 +6,7 @@ import { fileURLToPath } from 'url';
 import { createClient } from '@supabase/supabase-js';
 import { initializeApp, applicationDefault, cert } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
+import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import paymentsRouter from './routes/payments.js';
 import proxyRouter from './routes/proxy.js';
 
@@ -19,7 +20,12 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 
 // --- Firebase Admin Init (for verifying Firebase ID tokens) ---
+// The service account MUST belong to the same project as the web app
+// (VITE_FIREBASE_PROJECT_ID). A mismatch silently 401s every /api route.
 let firebaseAdminReady = false;
+let firebaseAdminProject = null;
+const WEB_FIREBASE_PROJECT = process.env.VITE_FIREBASE_PROJECT_ID || null;
+
 const initFirebaseAdmin = () => {
   if (firebaseAdminReady) return;
 
@@ -28,24 +34,46 @@ const initFirebaseAdmin = () => {
   try {
     if (serviceAccountJson) {
       const serviceAccount = JSON.parse(serviceAccountJson);
+      firebaseAdminProject = serviceAccount.project_id || null;
       initializeApp({ credential: cert(serviceAccount) });
       firebaseAdminReady = true;
-      return;
-    }
-
-    if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+    } else if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
       initializeApp({ credential: applicationDefault() });
       firebaseAdminReady = true;
+    } else {
+      console.warn('Firebase Admin not configured. Set FIREBASE_SERVICE_ACCOUNT_JSON or GOOGLE_APPLICATION_CREDENTIALS.');
       return;
     }
 
-    console.warn('Firebase Admin not configured. Set FIREBASE_SERVICE_ACCOUNT_JSON or GOOGLE_APPLICATION_CREDENTIALS.');
+    if (firebaseAdminProject && WEB_FIREBASE_PROJECT && firebaseAdminProject !== WEB_FIREBASE_PROJECT) {
+      console.error(
+        `\n⚠️  FIREBASE PROJECT MISMATCH — server auth is DISABLED in practice:\n` +
+        `   service account project: '${firebaseAdminProject}'\n` +
+        `   web app project (VITE_FIREBASE_PROJECT_ID): '${WEB_FIREBASE_PROJECT}'\n` +
+        `   verifyIdToken() will reject every user token (401 on all /api routes)\n` +
+        `   and clients fall back to direct provider keys (no quotas enforced).\n` +
+        `   FIX: Firebase Console → ${WEB_FIREBASE_PROJECT} → Project Settings →\n` +
+        `   Service accounts → Generate new private key → replace FIREBASE_SERVICE_ACCOUNT_JSON in .env.\n`
+      );
+    } else if (firebaseAdminReady) {
+      console.log(`Firebase Admin ready (project: ${firebaseAdminProject || 'application-default'}).`);
+    }
   } catch (error) {
     console.error('Failed to initialize Firebase Admin:', error);
   }
 };
 
 initFirebaseAdmin();
+
+export const getFirebaseAdminStatus = () => ({
+  ready: firebaseAdminReady,
+  adminProject: firebaseAdminProject,
+  webProject: WEB_FIREBASE_PROJECT,
+  projectMatch:
+    !firebaseAdminProject || !WEB_FIREBASE_PROJECT
+      ? null
+      : firebaseAdminProject === WEB_FIREBASE_PROJECT,
+});
 
 // --- Supabase Admin Client (Service Role) ---
 const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_APP_SUPABASE_URL;
@@ -94,8 +122,8 @@ app.use('/api/proxy', proxyRouter);
 
 // ─── Health Check ────────────────────────────────────────────────
 app.get('/api/health', (req, res) => {
-  res.json({ 
-    status: 'ok', 
+  res.json({
+    status: 'ok',
     timestamp: new Date().toISOString(),
     services: {
       gemini: !!process.env.VITE_GEMINI_API_KEY,
@@ -105,7 +133,11 @@ app.get('/api/health', (req, res) => {
       firebase: !!process.env.VITE_FIREBASE_API_KEY,
       worldnews: !!process.env.VITE_WORLD_NEWS_API_KEY,
       newsdata: !!process.env.VITE_NEWSDATA_API_KEY,
-    }
+      codecraft: !!process.env.VITE_CODECRAFT_API_KEY,
+      supabase: !!(process.env.SUPABASE_URL || process.env.VITE_APP_SUPABASE_URL),
+    },
+    firebaseAdmin: getFirebaseAdminStatus(),
+    proxy: true,
   });
 });
 
@@ -376,13 +408,9 @@ ${code}`;
   }
 });
 
-// ─── Supabase Gateway: Chat Backup (per-user, Firebase-verified) ───────────
-// The browser never touches Supabase. Every route below verifies the Firebase
-// ID token, takes the UID from the verified token, and uses the service-role
-// key. Tables live in a locked-down project (supabase/schema.sql).
-
 // --- Admin guard: verified Firebase email must be allow-listed ---
-const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || 'crazybibek4444@gmail.com,geniusbibek4444@gmail.com')
+// (Defined here, before any route that references it.)
+const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || 'crazybibek4444@gmail.com,bibekadhikari0763@gmail.com')
   .split(',')
   .map((s) => s.trim().toLowerCase())
   .filter(Boolean);
@@ -394,6 +422,122 @@ const requireAdmin = (req, res, next) => {
   }
   next();
 };
+
+// ─── Admin Gateway (Firebase Admin SDK — bypasses locked rules) ─────────────
+// firestore.rules denies ALL client writes to users/* and system/* and all
+// cross-user reads, so the client can never do these directly. These routes
+// verify the Firebase ID token and perform the reads/writes with the Admin
+// SDK. UID/email always come from the verified token, never the request body.
+
+// Upsert the signed-in user's profile for admin tracking. Safe to call on
+// every login; merge keeps first-seen createdAt.
+app.post('/api/admin/sync-user', requireFirebaseAuth, async (req, res) => {
+  try {
+    const { uid, email, name, picture } = req.firebaseUser || {};
+    if (!uid) return res.status(401).json({ success: false, error: 'No verified user.' });
+
+    const db = getFirestore();
+    const ref = db.collection('users').doc(uid);
+    const snap = await ref.get().catch(() => null);
+    await ref.set(
+      {
+        uid,
+        email: email || null,
+        displayName: name || null,
+        photoURL: picture || null,
+        lastLogin: FieldValue.serverTimestamp(),
+        ...(!snap || !snap.exists ? { createdAt: FieldValue.serverTimestamp() } : {}),
+      },
+      { merge: true }
+    );
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('Admin sync-user error:', error?.message || error);
+    return res.status(500).json({ success: false, error: error?.message || 'Failed to sync user.' });
+  }
+});
+
+// Latest users (admin only).
+app.get('/api/admin/users', requireFirebaseAuth, requireAdmin, async (req, res) => {
+  try {
+    const limit = Math.min(Math.max(Number(req.query.limit) || 10, 1), 200);
+    const snap = await getFirestore()
+      .collection('users')
+      .orderBy('lastLogin', 'desc')
+      .limit(limit)
+      .get();
+    const users = snap.docs.map((d) => {
+      const data = d.data() || {};
+      return {
+        id: d.id,
+        ...data,
+        lastLogin: data.lastLogin?.toMillis ? data.lastLogin.toMillis() : Date.now(),
+      };
+    });
+    return res.json({ success: true, data: users });
+  } catch (error) {
+    console.error('Admin users error:', error?.message || error);
+    return res.status(500).json({ success: false, error: error?.message || 'Failed to fetch users.' });
+  }
+});
+
+// System-wide counts (admin only).
+app.get('/api/admin/stats', requireFirebaseAuth, requireAdmin, async (req, res) => {
+  try {
+    const db = getFirestore();
+    const [usersCount, sessionsCount] = await Promise.all([
+      db.collection('users').count().get(),
+      db.collection('sessions').count().get(),
+    ]);
+    return res.json({
+      success: true,
+      data: { totalUsers: usersCount.data().count, totalSessions: sessionsCount.data().count },
+    });
+  } catch (error) {
+    console.error('Admin stats error:', error?.message || error);
+    return res.status(500).json({ success: false, error: error?.message || 'Failed to fetch stats.' });
+  }
+});
+
+const DEFAULT_MODEL_CONFIG = { fast: 'groq', research: 'research', detail: 'gemini', imagine: 'imagine', motion: 'motion' };
+const MODEL_CONFIG_KEYS = ['fast', 'research', 'detail'];
+const MODEL_ENGINE_VALUES = ['groq', 'gemini', 'research', 'openrouter'];
+
+// Model config read (any signed-in user — the chat needs it to route modes).
+app.get('/api/admin/model-config', requireFirebaseAuth, async (req, res) => {
+  try {
+    const snap = await getFirestore().collection('system').doc('config').get().catch(() => null);
+    const data = snap && snap.exists ? snap.data() : {};
+    return res.json({ success: true, data: { ...DEFAULT_MODEL_CONFIG, ...(data || {}) } });
+  } catch (error) {
+    console.error('Admin model-config read error:', error?.message || error);
+    return res.status(500).json({ success: false, error: error?.message || 'Failed to fetch model config.' });
+  }
+});
+
+// Model config write (admin only, values validated).
+app.post('/api/admin/model-config', requireFirebaseAuth, requireAdmin, async (req, res) => {
+  try {
+    const clean = {};
+    for (const key of MODEL_CONFIG_KEYS) {
+      const v = req.body?.[key];
+      if (typeof v === 'string' && MODEL_ENGINE_VALUES.includes(v)) clean[key] = v;
+    }
+    if (Object.keys(clean).length === 0) {
+      return res.status(400).json({ success: false, error: 'No valid config fields.' });
+    }
+    await getFirestore().collection('system').doc('config').set(clean, { merge: true });
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('Admin model-config write error:', error?.message || error);
+    return res.status(500).json({ success: false, error: error?.message || 'Failed to save model config.' });
+  }
+});
+
+// ─── Supabase Gateway: Chat Backup (per-user, Firebase-verified) ───────────
+// The browser never touches Supabase. Every route below verifies the Firebase
+// ID token, takes the UID from the verified token, and uses the service-role
+// key. Tables live in a locked-down project (supabase/schema.sql).
 
 // Save (upsert) one chat session + replace its messages. UID comes from token.
 app.post('/api/supabase/chat/sessions', requireFirebaseAuth, async (req, res) => {
@@ -468,6 +612,48 @@ app.delete('/api/supabase/chat/sessions/:id', requireFirebaseAuth, async (req, r
   } catch (error) {
     console.error('Supabase chat delete error:', error?.message || error);
     return res.status(500).json({ success: false, error: error?.message || 'Failed to delete chat session.' });
+  }
+});
+
+// List one session's user prompts (prompt-tree source, scoped to the verified user).
+app.get('/api/supabase/chat/sessions/:id/prompts', requireFirebaseAuth, async (req, res) => {
+  try {
+    const supabase = ensureSupabaseAdmin();
+    const uid = req.firebaseUser?.uid;
+    const { id } = req.params;
+
+    const { data: session, error: sessionError } = await supabase
+      .from('sessions')
+      .select('user_id')
+      .eq('id', id)
+      .maybeSingle();
+    if (sessionError) throw sessionError;
+    if (!session || session.user_id !== uid) {
+      return res.status(404).json({ success: false, error: 'Session not found.' });
+    }
+
+    const { data, error } = await supabase
+      .from('messages')
+      .select('role, parts, timestamp')
+      .eq('session_id', id)
+      .eq('role', 'user')
+      .order('timestamp', { ascending: true })
+      .limit(500);
+    if (error) throw error;
+
+    const prompts = (data || []).map((m, i) => {
+      const parts = Array.isArray(m.parts) ? m.parts : [];
+      const text = parts
+        .filter((p) => p && (p.type === 'text' || typeof p.text === 'string'))
+        .map((p) => p.text || p.content || '')
+        .join('\n')
+        .trim();
+      return { id: `${id}-prompt-${i}`, text: text || '[image]', timestamp: m.timestamp };
+    }).filter((p) => p.text);
+    return res.json({ success: true, data: prompts });
+  } catch (error) {
+    console.error('Supabase session prompts error:', error?.message || error);
+    return res.status(500).json({ success: false, error: error?.message || 'Failed to fetch prompts.' });
   }
 });
 
@@ -591,7 +777,7 @@ app.get('/api/supabase/admin/explanations', requireFirebaseAuth, requireAdmin, a
 
 // ─── Start Server ────────────────────────────────────────────────
 app.listen(PORT, () => {
-  console.log(`\n🚀 ChatADK Express Server running on http://localhost:${PORT}`);
+  console.log(`\n🚀 Tufan Express Server running on http://localhost:${PORT}`);
   console.log(`   Health: http://localhost:${PORT}/api/health`);
   console.log(`   Keys:   http://localhost:${PORT}/api/keys/status`);
   console.log(`   Convert: POST http://localhost:${PORT}/api/convert`);

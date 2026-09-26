@@ -14,7 +14,7 @@ interface User {
   createdAt?: string;
 }
 
-const ADMIN_EMAILS = ['crazybibek4444@gmail.com', 'geniusbibek4444@gmail.com'];
+const ADMIN_EMAILS = ['crazybibek4444@gmail.com', 'bibekadhikari0763@gmail.com'];
 
 // Helper component for stat cards
 const StatCard: React.FC<{

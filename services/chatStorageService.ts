@@ -25,10 +25,35 @@ export const chatStorageService = {
   async saveSession(userId: string, session: ChatSession): Promise<void> {
     try {
       const sessionRef = doc(db, SESSIONS_COLLECTION, session.id);
-      
+
+      // Firestore caps documents at 1MB. Inline base64 photos blow past it,
+      // which fails the whole write and silently stops real-time sync.
+      // Slim a copy for the cloud (local copy keeps the full image).
+      const slim = (s: ChatSession): ChatSession => ({
+        ...s,
+        messages: (s.messages || []).map((m) => ({
+          ...m,
+          parts: (m.parts || []).map((p) => {
+            const content = (p as any)?.content;
+            if (p.type === 'image' && typeof content === 'string' && content.length > 50000
+                && !content.startsWith('http')) {
+              return { ...p, content: '[Photo kept on original device — too large to sync]' };
+            }
+            return p;
+          }),
+        })),
+      });
+
+      let payload: ChatSession = session;
+      try {
+        if (JSON.stringify({ ...session, userId }).length > 900000) payload = slim(session);
+      } catch {
+        payload = session;
+      }
+
       // We store the userId inside the document for easy filtering
       await setDoc(sessionRef, {
-        ...session,
+        ...payload,
         userId,
         updatedAt: Timestamp.fromMillis(session.updatedAt),
         // Convert ISO timestamps if needed, but keeping them as strings is fine for messages
@@ -106,9 +131,15 @@ export const chatStorageService = {
   },
 
   /**
-   * Subscribes to real-time updates for a user's sessions
+   * Subscribes to real-time updates for a user's sessions.
+   * The onError callback surfaces permission/network failures — without it
+   * a dead listener looks identical to "no chats", which hides the problem.
    */
-  subscribeToUserSessions(userId: string, callback: (sessions: ChatSession[]) => void) {
+  subscribeToUserSessions(
+    userId: string,
+    callback: (sessions: ChatSession[]) => void,
+    onError?: (error: Error) => void
+  ) {
     const q = query(
       collection(db, SESSIONS_COLLECTION),
       where("userId", "==", userId)
@@ -129,6 +160,7 @@ export const chatStorageService = {
       callback(sessions);
     }, (error) => {
       console.error("Real-time sync error:", error);
+      onError?.(error as Error);
     });
   }
 };
