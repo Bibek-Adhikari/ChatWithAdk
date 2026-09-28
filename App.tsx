@@ -121,6 +121,36 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
   const [showConverterHistory, setShowConverterHistory] = useState(false);
   const [previousSessionId, setPreviousSessionId] = useState<string | null>(null);
   const [imageError, setImageError] = useState(false);
+  const [isOnline, setIsOnline] = useState(() => (typeof navigator === 'undefined' ? true : navigator.onLine));
+
+  useEffect(() => {
+    const goOnline = () => {
+      setIsOnline(true);
+      setStatus(prev => ({ ...prev, isSyncing: true }));
+      // Local writes already persisted; trigger a cloud re-save on reconnect.
+      if (user && currentSessionId) {
+        const key = `${STORAGE_KEY}_${user.uid}`;
+        const cached = readJson<ChatSession[]>(key, [], { prefer: 'local' });
+        const sess = cached.find(s => s.id === currentSessionId);
+        if (sess) {
+          storageAggregator.saveSession(user.uid, sess)
+            .catch(err => console.error('Reconnect sync failed:', err))
+            .finally(() => setStatus(prev => ({ ...prev, isSyncing: false })));
+        } else {
+          setStatus(prev => ({ ...prev, isSyncing: false }));
+        }
+      } else {
+        setStatus(prev => ({ ...prev, isSyncing: false }));
+      }
+    };
+    const goOffline = () => setIsOnline(false);
+    window.addEventListener('online', goOnline);
+    window.addEventListener('offline', goOffline);
+    return () => {
+      window.removeEventListener('online', goOnline);
+      window.removeEventListener('offline', goOffline);
+    };
+  }, [user, currentSessionId]);
 
   const [selectedVoiceId, setSelectedVoiceId] = useState<string>(() => {
     const savedId = readString('selectedVoiceId', '');
@@ -671,6 +701,14 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
     };
   }, [isResizing, resize, stopResizing]);
 
+  const handleSelectSession = useCallback((id: string) => {
+    setCurrentSessionId(id);
+    if (location.pathname !== `/chat/${id}`) {
+      navigate(`/chat/${id}`);
+    }
+    if (window.innerWidth < 1024) setIsSidebarOpen(false);
+  }, [location.pathname, navigate]);
+
   const handleNewChat = (shouldNavigate = true) => {
     // Just set a fresh ID and clear state. 
     // We DON'T add to sessions or save to cloud yet to avoid cluttering history with empty greetings.
@@ -691,8 +729,13 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
   const handleDeleteSession = async (id: string) => {
     const updated = sessions.filter(s => s.id !== id);
     setSessions(updated);
+    writeJson(getUserStorageKey(), updated, { persist: 'both' });
     if (currentSessionId === id) {
-      setCurrentSessionId(updated.length > 0 ? updated[0].id : '');
+      const nextId = updated.length > 0 ? updated[0].id : '';
+      setCurrentSessionId(nextId);
+      if (nextId) {
+        navigate(`/chat/${nextId}`);
+      }
     }
     
     // Sync with Firestore if authenticated
@@ -747,6 +790,16 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
   const handleSend = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!inputValue.trim() || status.isTyping) return;
+
+    // Edge: offline send — queue locally, sync on reconnect, show syncing state.
+    if (!isOnline) {
+      setStatus(prev => ({
+        ...prev,
+        isSyncing: true,
+        error: "You're offline — message queued on this device and will sync on reconnect.",
+      }));
+      return;
+    }
 
     // Enforce daily limit for free users
     if (!isPro && usageCount >= dailyLimit) {
@@ -1154,7 +1207,7 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
       <Sidebar 
         sessions={sessions}
         currentSessionId={currentSessionId}
-        onSelectSession={setCurrentSessionId}
+        onSelectSession={handleSelectSession}
         onNewChat={handleNewChat}
         onDeleteSession={handleDeleteSession}
         onRenameSession={handleRenameSession}
@@ -1732,6 +1785,14 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
           </motion.div>
         )}
       </AnimatePresence>
+
+      {!isOnline && (
+        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 animate-fadeIn">
+          <div className={`px-3.5 py-2 rounded-full border shadow-lg text-[12px] ${theme === 'dark' ? 'bg-red-500/15 border-red-500/30 text-red-300' : 'bg-red-50 border-red-200 text-red-700'}`}>
+            Offline — sends are queued locally and sync on reconnect.
+          </div>
+        </div>
+      )}
 
       {status.isSyncing && (
         <div className="fixed bottom-24 right-6 z-50 animate-fadeIn">
