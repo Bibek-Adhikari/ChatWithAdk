@@ -11,6 +11,7 @@ import {
 } from 'firebase/auth';
 import { auth, googleProvider } from '../services/firebase';
 import { adminService } from '../services/adminService';
+import { isDisposableEmail } from '../services/disposableEmails';
 import { X, Mail, Lock, User, Loader2 } from 'lucide-react';
 import { readString, removeKey, writeString } from '../services/storage';
 
@@ -51,6 +52,13 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode, the
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+
+    // Block temporary / disposable emails before hitting Firebase
+    if (isDisposableEmail(email.trim())) {
+      setError('Temporary or disposable email addresses are not allowed. Please use a permanent email.');
+      return;
+    }
+
     setLoading(true);
 
     try {
