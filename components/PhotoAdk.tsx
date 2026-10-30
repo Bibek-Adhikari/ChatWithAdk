@@ -126,7 +126,7 @@ const ToastContainer = ({ toasts, onDismiss, isDark }: { toasts: Toast[]; onDism
     {toasts.map((toast) => (
       <div
         key={toast.id}
-        className={`pointer-events-auto flex items-center gap-2.5 rounded-full pl-4 pr-2 py-2 shadow-xl border text-[13px] animate-slide-up w-auto max-w-full ${isDark ? 'bg-[#2f2f2f] border-white/10 text-neutral-200' : 'bg-white border-black/10 text-neutral-700'}`}
+        className={`pointer-events-auto flex items-center gap-2.5 rounded-full pl-4 pr-2 py-2 shadow-xl border text-[13px] animate-slide-up w-auto max-w-full ${isDark ? 'bg-[#1B2024] border-white/10 text-neutral-200' : 'bg-white border-black/10 text-neutral-700'}`}
       >
         {toast.type === 'error' ? <AlertCircle size={15} className="text-red-500 shrink-0" /> :
          toast.type === 'success' ? <CheckCircle2 size={15} className="text-emerald-500 shrink-0" /> : <Sparkles size={15} className="shrink-0 opacity-60" />}
@@ -467,7 +467,7 @@ export default function PhotoEditorPro({ onClose, theme = 'dark' }: PhotoAdkProp
   const card = isDark ? 'bg-white/[0.02] border-white/[0.07]' : 'bg-neutral-50 border-black/[0.07]';
 
   return (
-    <div className={`h-full flex flex-col overflow-hidden ${isDark ? 'bg-[#212121] text-neutral-100' : 'bg-white text-neutral-900'}`}>
+    <div className={`h-full flex flex-col overflow-hidden ${isDark ? 'bg-[#0E1113] text-neutral-100' : 'bg-white text-neutral-900'}`}>
       {/* Slim header — matches chat */}
       <header className={`flex items-center gap-1 h-14 px-3 sm:px-4 shrink-0 border-b ${isDark ? 'border-white/[0.06]' : 'border-black/[0.06]'}`}>
         {onClose && (
@@ -617,7 +617,7 @@ export default function PhotoEditorPro({ onClose, theme = 'dark' }: PhotoAdkProp
                   value={prompt}
                   onChange={(e) => setPrompt(e.target.value)}
                   placeholder={activeTool.promptPlaceholder}
-                  className={`w-full px-3.5 py-2.5 rounded-xl border text-[13.5px] outline-none transition-colors ${isDark ? 'bg-[#212121] border-white/10 text-neutral-100 placeholder:text-neutral-600 focus:border-white/25' : 'bg-white border-black/10 text-neutral-900 placeholder:text-neutral-400 focus:border-black/25'}`}
+                  className={`w-full px-3.5 py-2.5 rounded-xl border text-[13.5px] outline-none transition-colors ${isDark ? 'bg-[#0E1113] border-white/10 text-neutral-100 placeholder:text-neutral-600 focus:border-white/25' : 'bg-white border-black/10 text-neutral-900 placeholder:text-neutral-400 focus:border-black/25'}`}
                 />
               </div>
             )}
@@ -628,7 +628,7 @@ export default function PhotoEditorPro({ onClose, theme = 'dark' }: PhotoAdkProp
                 <button
                   type="button"
                   onClick={() => maskInputRef.current?.click()}
-                  className={`w-full px-3.5 py-2.5 rounded-xl border text-[13px] text-left truncate transition-colors ${isDark ? 'bg-[#212121] border-white/10 text-neutral-300 hover:border-white/25' : 'bg-white border-black/10 text-neutral-700 hover:border-black/25'}`}
+                  className={`w-full px-3.5 py-2.5 rounded-xl border text-[13px] text-left truncate transition-colors ${isDark ? 'bg-[#0E1113] border-white/10 text-neutral-300 hover:border-white/25' : 'bg-white border-black/10 text-neutral-700 hover:border-black/25'}`}
                 >
                   {maskFile ? maskFile.name : 'White area = replaced. Skip for auto mode.'}
                 </button>

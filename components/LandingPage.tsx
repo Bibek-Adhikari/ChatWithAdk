@@ -214,8 +214,8 @@ const LandingPage: React.FC = () => {
   };
 
   const isDark = theme === 'dark';
-  const bg = isDark ? 'bg-[#212121]' : 'bg-white';
-  const text = isDark ? 'text-[#ececec]' : 'text-neutral-900';
+  const bg = isDark ? 'bg-[#0E1113]' : 'bg-white';
+  const text = isDark ? 'text-[#E7EBEE]' : 'text-neutral-900';
   const muted = isDark ? 'text-neutral-500' : 'text-neutral-500';
 
   return (
@@ -246,7 +246,7 @@ const LandingPage: React.FC = () => {
       <div className="flex-1 flex flex-col min-w-0 transition-all duration-300 relative">
 
       {/* Fixed Header — slim, matches chat */}
-      <header className={`flex fixed top-0 left-0 right-0 z-20 items-center justify-between h-14 px-3 sm:px-4 border-b ${isDark ? 'border-white/[0.06] bg-[#212121]/90 backdrop-blur-md' : 'border-black/[0.06] bg-white/90 backdrop-blur-md'}`}>
+      <header className={`flex fixed top-0 left-0 right-0 z-20 items-center justify-between h-14 px-3 sm:px-4 border-b ${isDark ? 'border-white/[0.06] bg-[#0E1113]/90 backdrop-blur-md' : 'border-black/[0.06] bg-white/90 backdrop-blur-md'}`}>
         <div className="flex items-center gap-1">
           <button
             onClick={() => setIsSidebarOpen(!isSidebarOpen)}
@@ -363,10 +363,10 @@ const LandingPage: React.FC = () => {
       </main>
 
       {/* Input Section — matches chat */}
-      <footer className={`p-3 sm:p-4 shrink-0 z-10 pb-safe sticky bottom-0 ${isDark ? 'bg-[#212121]' : 'bg-white'}`}>
+      <footer className={`p-3 sm:p-4 shrink-0 z-10 pb-safe sticky bottom-0 ${isDark ? 'bg-[#0E1113]' : 'bg-white'}`}>
         <div className="max-w-[768px] mx-auto w-full">
           <form onSubmit={handleSubmit} className="relative">
-            <div className={`rounded-[26px] border transition-all focus-within:shadow-lg ${isDark ? 'bg-[#2f2f2f] border-transparent focus-within:border-white/20' : 'bg-[#f4f4f4] border-transparent focus-within:border-black/15 focus-within:bg-white'}`}>
+            <div className={`rounded-[26px] border transition-all focus-within:shadow-lg ${isDark ? 'bg-[#1B2024] border-transparent focus-within:border-white/20' : 'bg-[#f4f4f4] border-transparent focus-within:border-black/15 focus-within:bg-white'}`}>
               <textarea
                 ref={inputRef}
                 value={prompt}

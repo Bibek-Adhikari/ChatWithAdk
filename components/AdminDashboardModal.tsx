@@ -335,7 +335,7 @@ const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
         role="dialog"
         aria-modal="true"
         aria-labelledby="admin-dashboard-title"
-        className={`relative w-full max-w-4xl max-h-[85vh] overflow-hidden rounded-2xl shadow-2xl border flex flex-col animate-slide-up ${isDark ? 'bg-[#2f2f2f] border-white/10' : 'bg-white border-black/10'}`}
+        className={`relative w-full max-w-4xl max-h-[85vh] overflow-hidden rounded-2xl shadow-2xl border flex flex-col animate-slide-up ${isDark ? 'bg-[#1B2024] border-white/10' : 'bg-white border-black/10'}`}
       >
         {/* Header */}
         <div className={`px-5 py-4 border-b shrink-0 ${divider}`}>
@@ -465,7 +465,7 @@ const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
                           <select
                             value={modelConfig?.[item.id] || 'groq'}
                             onChange={(e) => setModelConfig((prev: any) => ({ ...prev, [item.id]: e.target.value }))}
-                            className={`w-full px-3 py-2.5 rounded-xl border text-[13px] outline-none cursor-pointer appearance-none ${isDark ? 'bg-[#212121] border-white/10 text-neutral-200' : 'bg-white border-black/10 text-neutral-800'}`}
+                            className={`w-full px-3 py-2.5 rounded-xl border text-[13px] outline-none cursor-pointer appearance-none ${isDark ? 'bg-[#0E1113] border-white/10 text-neutral-200' : 'bg-white border-black/10 text-neutral-800'}`}
                           >
                             <option value="groq">Groq (Llama 3 70B)</option>
                             <option value="gemini">Gemini (2.0 Flash)</option>

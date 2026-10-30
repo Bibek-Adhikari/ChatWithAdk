@@ -167,7 +167,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         className={`z-40 sidebar-transition flex flex-col shrink-0 overflow-hidden
           fixed inset-y-0 left-0 lg:static lg:h-auto
           ${isOpen ? 'w-[260px] translate-x-0 opacity-100' : 'w-0 -translate-x-full opacity-0'}
-          ${isDark ? 'bg-[#171717]' : 'bg-[#f9f9f9]'}
+          ${isDark ? 'bg-[#161A1D]' : 'bg-[#f9f9f9]'}
           ${isOpen ? `border-r ${isDark ? 'border-white/[0.06]' : 'border-black/[0.06]'}` : 'border-r-0'}`}
       >
         <div className="w-[260px] h-full flex flex-col">

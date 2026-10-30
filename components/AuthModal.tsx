@@ -168,7 +168,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode, the
   const isDark = theme === 'dark';
   const fg = isDark ? 'text-neutral-100' : 'text-neutral-900';
   const muted = isDark ? 'text-neutral-500' : 'text-neutral-400';
-  const cardCls = isDark ? 'bg-[#2f2f2f] border-white/10' : 'bg-white border-black/10';
+  const cardCls = isDark ? 'bg-[#1B2024] border-white/10' : 'bg-white border-black/10';
   const inputCls = isDark
     ? 'bg-white/[0.04] border-white/10 text-neutral-100 placeholder:text-neutral-600 focus:border-white/25'
     : 'bg-neutral-50 border-black/10 text-neutral-900 placeholder:text-neutral-400 focus:border-black/25';

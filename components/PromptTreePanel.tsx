@@ -51,7 +51,7 @@ const PromptTreePanel: React.FC<PromptTreePanelProps> = ({ prompts, theme = 'dar
   return (
     <div
       className={`absolute right-3 top-12 z-20 w-64 max-w-[75vw] rounded-2xl border shadow-2xl backdrop-blur-md overflow-hidden animate-slide-up ${
-        isDark ? 'bg-[#2a2a2a]/95 border-white/10' : 'bg-white/95 border-black/10'
+        isDark ? 'bg-[#191E22]/95 border-white/10' : 'bg-white/95 border-black/10'
       }`}
     >
       <div className={`flex items-center gap-2 px-3.5 py-2.5 border-b ${isDark ? 'border-white/[0.06]' : 'border-black/[0.06]'}`}>

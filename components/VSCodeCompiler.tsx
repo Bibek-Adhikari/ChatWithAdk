@@ -789,7 +789,7 @@ ${jsCode}
   const fg = isDark ? 'text-neutral-200' : 'text-neutral-700';
   const border = isDark ? 'border-white/[0.07]' : 'border-black/[0.07]';
   const hoverBg = isDark ? 'hover:bg-white/[0.06]' : 'hover:bg-black/[0.05]';
-  const menuCard = isDark ? 'bg-[#2f2f2f] border-white/10' : 'bg-white border-black/10';
+  const menuCard = isDark ? 'bg-[#1B2024] border-white/10' : 'bg-white border-black/10';
   const menuItem = (active: boolean) =>
     active
       ? (isDark ? 'bg-white/[0.08] text-white' : 'bg-black/[0.05] text-neutral-900')
@@ -805,10 +805,10 @@ ${jsCode}
   };
 
   return (
-    <div className={`flex flex-col h-full overflow-hidden ${isDark ? 'bg-[#212121] text-neutral-200' : 'bg-white text-neutral-700'}`}>
+    <div className={`flex flex-col h-full overflow-hidden ${isDark ? 'bg-[#0E1113] text-neutral-200' : 'bg-white text-neutral-700'}`}>
 
       {/* --- Slim header (scrolls sideways on narrow screens) --- */}
-      <header className={`h-14 shrink-0 flex items-center gap-1 px-3 sm:px-4 border-b z-20 overflow-x-auto scrollbar-hide [&>*]:shrink-0 ${border} ${isDark ? 'bg-[#212121]' : 'bg-white'}`}>
+      <header className={`h-14 shrink-0 flex items-center gap-1 px-3 sm:px-4 border-b z-20 overflow-x-auto scrollbar-hide [&>*]:shrink-0 ${border} ${isDark ? 'bg-[#0E1113]' : 'bg-white'}`}>
         {onClose && (
           <button onClick={onClose} className={ghostBtn} title="Back to chat">
             <MessageSquare size={17} strokeWidth={1.8} />
@@ -990,14 +990,14 @@ ${jsCode}
         {/* Editor Section */}
         {isEditorVisible && !isFullscreen && (
           <div
-            className={cn('flex flex-col relative transition-all duration-300 order-2 lg:order-1', `border-t lg:border-t-0 lg:border-r ${border}`, isDark ? 'bg-[#1e1e1e]' : 'bg-neutral-50')}
+            className={cn('flex flex-col relative transition-all duration-300 order-2 lg:order-1', `border-t lg:border-t-0 lg:border-r ${border}`, isDark ? 'bg-[#13181B]' : 'bg-neutral-50')}
             style={{
               width: window.innerWidth >= 1024 ? (isPreviewVisible || isConsoleVisible ? `${splitRatio}%` : '100%') : '100%',
               height: window.innerWidth < 1024 ? (isPreviewVisible || isConsoleVisible ? `${100 - mobileOutputHeight}%` : '100%') : '100%'
             }}
           >
             {/* Minimal file tabs */}
-            <div className={`flex items-center justify-between pr-1 border-b ${border} ${isDark ? 'bg-[#171717]' : 'bg-neutral-100/60'}`}>
+            <div className={`flex items-center justify-between pr-1 border-b ${border} ${isDark ? 'bg-[#161A1D]' : 'bg-neutral-100/60'}`}>
               <div className="flex items-center px-1">
                 {activeLanguage === 'web' ? (
                   (['html', 'css', 'js'] as Tab[]).map((tab) => (
@@ -1140,7 +1140,7 @@ ${jsCode}
                 </div>
 
                 {/* Iframe Container */}
-                <div className={`flex-1 flex justify-center overflow-auto relative ${isDark ? 'bg-[#111]' : 'bg-neutral-100'}`}>
+                <div className={`flex-1 flex justify-center overflow-auto relative ${isDark ? 'bg-[#0A0D0F]' : 'bg-neutral-100'}`}>
                   {activeLanguage === 'web' ? (
                     <div className={cn('bg-white transition-all duration-300 h-full', device === 'mobile' ? 'w-[375px] border-x border-black/10' : device === 'tablet' ? 'w-[768px] border-x border-black/10' : 'w-full')}>
                       <iframe
@@ -1187,7 +1187,7 @@ ${jsCode}
             {/* Console Panel */}
             {isConsoleVisible && !isFullscreen && (activeOutputTab === 'console' || window.innerWidth >= 1024) && (
               <div
-                className={cn('flex flex-col shrink-0 transition-all border-t', border, window.innerWidth < 1024 ? 'flex-1' : '', isDark ? 'bg-[#171717]' : 'bg-neutral-50')}
+                className={cn('flex flex-col shrink-0 transition-all border-t', border, window.innerWidth < 1024 ? 'flex-1' : '', isDark ? 'bg-[#161A1D]' : 'bg-neutral-50')}
                 style={window.innerWidth >= 1024 && isPreviewVisible && activeLanguage === 'web' ? { height: `${consoleHeight}px` } : { flex: 1 }}
               >
                 <div className={`h-9 flex items-center justify-between px-3 border-b ${border}`}>
@@ -1212,7 +1212,7 @@ ${jsCode}
                       onChange={(e) => setProgramInput(e.target.value)}
                       rows={2}
                       placeholder="Values for scanf / input() / readLine()…"
-                      className={`w-full rounded-lg px-2.5 py-1.5 text-[12px] border outline-none resize-y font-mono ${isDark ? 'bg-[#212121] border-white/10 text-neutral-200 placeholder:text-neutral-600' : 'bg-white border-black/10 text-neutral-800 placeholder:text-neutral-400'}`}
+                      className={`w-full rounded-lg px-2.5 py-1.5 text-[12px] border outline-none resize-y font-mono ${isDark ? 'bg-[#0E1113] border-white/10 text-neutral-200 placeholder:text-neutral-600' : 'bg-white border-black/10 text-neutral-800 placeholder:text-neutral-400'}`}
                     />
                   </div>
                 )}

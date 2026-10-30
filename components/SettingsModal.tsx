@@ -82,7 +82,7 @@ const SettingsModal: React.FC<SettingsModalProps> = memo(({
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Settings">
       <div className="absolute inset-0 bg-black/50 animate-fadeIn" onClick={onClose} />
 
-      <div className={`relative w-full max-w-md max-h-[85vh] flex flex-col rounded-2xl border shadow-2xl animate-slide-up overflow-hidden ${isDark ? 'bg-[#2f2f2f] border-white/10' : 'bg-white border-black/10'}`}>
+      <div className={`relative w-full max-w-md max-h-[85vh] flex flex-col rounded-2xl border shadow-2xl animate-slide-up overflow-hidden ${isDark ? 'bg-[#1B2024] border-white/10' : 'bg-white border-black/10'}`}>
         {/* Header */}
         <div className={`flex items-center justify-between px-5 h-14 shrink-0 border-b ${isDark ? 'border-white/[0.07]' : 'border-black/[0.06]'}`}>
           <h2 className={`text-[15px] font-medium ${fg}`}>Settings</h2>
@@ -147,7 +147,7 @@ const SettingsModal: React.FC<SettingsModalProps> = memo(({
                 value={selectedVoiceId}
                 onChange={handleVoiceSelect}
                 disabled={isLoadingVoices}
-                className={`w-full px-3 py-2.5 rounded-xl border text-[13.5px] outline-none cursor-pointer appearance-none transition-colors ${isDark ? 'bg-[#212121] border-white/10 text-neutral-200' : 'bg-white border-black/10 text-neutral-800'}`}
+                className={`w-full px-3 py-2.5 rounded-xl border text-[13.5px] outline-none cursor-pointer appearance-none transition-colors ${isDark ? 'bg-[#0E1113] border-white/10 text-neutral-200' : 'bg-white border-black/10 text-neutral-800'}`}
               >
                 <option value="">Auto (language default)</option>
                 {availableVoices.map(voice => (

@@ -1201,7 +1201,7 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
 
   return (
     <div
-      className={`flex h-screen overflow-hidden transition-colors duration-300 relative ${theme === 'dark' ? 'bg-[#212121] text-[#ececec]' : 'bg-white text-neutral-900'}`}
+      className={`flex h-screen overflow-hidden transition-colors duration-300 relative ${theme === 'dark' ? 'bg-[#0E1113] text-[#E7EBEE]' : 'bg-white text-neutral-900'}`}
       style={{ height: '100dvh' }}
     >
       <Sidebar 
@@ -1235,10 +1235,10 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
       />
 
 
-      <div className={`flex-1 flex flex-col min-w-0 transition-all duration-300 ${theme === 'dark' ? 'bg-[#212121]' : 'bg-white'}`}>
+      <div className={`flex-1 flex flex-col min-w-0 transition-all duration-300 ${theme === 'dark' ? 'bg-[#0E1113]' : 'bg-white'}`}>
 
         {/* Unified slim top bar — DeepSeek / Claude style */}
-        <header className={`flex items-center justify-between h-14 px-3 sm:px-4 shrink-0 sticky top-0 z-20 border-b ${theme === 'dark' ? 'border-white/[0.06] bg-[#212121]/90 backdrop-blur-md' : 'border-black/[0.06] bg-white/90 backdrop-blur-md'}`}>
+        <header className={`flex items-center justify-between h-14 px-3 sm:px-4 shrink-0 sticky top-0 z-20 border-b ${theme === 'dark' ? 'border-white/[0.06] bg-[#0E1113]/90 backdrop-blur-md' : 'border-black/[0.06] bg-white/90 backdrop-blur-md'}`}>
           <div className="flex items-center gap-1">
             <button
               onClick={() => setIsSidebarOpen(!isSidebarOpen)}
@@ -1391,7 +1391,7 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
                 title="Jump to prompt"
                 className={`absolute right-3 top-3 z-10 w-9 h-9 flex items-center justify-center rounded-full border shadow-lg backdrop-blur-md transition-all active:scale-95 ${
                   theme === 'dark'
-                    ? 'bg-[#2a2a2a]/90 border-white/10 text-neutral-400 hover:text-neutral-100'
+                    ? 'bg-[#191E22]/90 border-white/10 text-neutral-400 hover:text-neutral-100'
                     : 'bg-white/90 border-black/10 text-neutral-500 hover:text-neutral-900'
                 }`}
               >
@@ -1483,14 +1483,14 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
         </main>
 
         {/* Input Section — pinned to viewport bottom, never scrolls away */}
-        <footer className={`p-3 sm:p-4 shrink-0 z-10 pb-safe sticky bottom-0 ${theme === 'dark' ? 'bg-[#212121]' : 'bg-white'}`}>
+        <footer className={`p-3 sm:p-4 shrink-0 z-10 pb-safe sticky bottom-0 ${theme === 'dark' ? 'bg-[#0E1113]' : 'bg-white'}`}>
           <div className="max-w-[768px] mx-auto w-full relative">
             {/* Model menu */}
             {isModelMenuOpen && (
               <div
                 ref={modelMenuRef}
                 onClick={(e) => e.stopPropagation()}
-                className={`absolute bottom-[calc(100%+10px)] left-0 w-[320px] max-w-[calc(100vw-2rem)] rounded-2xl border p-1.5 animate-slide-up z-50 shadow-2xl ${theme === 'dark' ? 'bg-[#2f2f2f] border-white/10' : 'bg-white border-black/10'}`}
+                className={`absolute bottom-[calc(100%+10px)] left-0 w-[320px] max-w-[calc(100vw-2rem)] rounded-2xl border p-1.5 animate-slide-up z-50 shadow-2xl ${theme === 'dark' ? 'bg-[#1B2024] border-white/10' : 'bg-white border-black/10'}`}
               >
                 <p className={`px-3 pt-2 pb-1 text-[11px] font-medium ${theme === 'dark' ? 'text-neutral-500' : 'text-neutral-400'}`}>Choose a mode</p>
                 {[
@@ -1540,7 +1540,7 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
               <div
                 ref={craftMenuRef}
                 onClick={(e) => e.stopPropagation()}
-                className={`absolute bottom-[calc(100%+10px)] left-0 w-[340px] max-w-[calc(100vw-2rem)] rounded-2xl border animate-slide-up z-50 shadow-2xl flex flex-col overflow-hidden ${theme === 'dark' ? 'bg-[#2f2f2f] border-white/10' : 'bg-white border-black/10'}`}
+                className={`absolute bottom-[calc(100%+10px)] left-0 w-[340px] max-w-[calc(100vw-2rem)] rounded-2xl border animate-slide-up z-50 shadow-2xl flex flex-col overflow-hidden ${theme === 'dark' ? 'bg-[#1B2024] border-white/10' : 'bg-white border-black/10'}`}
               >
                 <p className={`px-3 pt-2.5 pb-1 text-[11px] font-medium ${theme === 'dark' ? 'text-neutral-500' : 'text-neutral-400'}`}>Choose a CodeCraft model · 33 verified</p>
                 <div className="px-2 pb-1.5">
@@ -1581,7 +1581,7 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
             )}
 
             <form onSubmit={handleSend} className="relative">
-              <div className={`relative rounded-[26px] border transition-all focus-within:border-neutral-400 ${theme === 'dark' ? 'bg-[#2f2f2f] border-transparent focus-within:border-white/20' : 'bg-[#f4f4f4] border-transparent focus-within:border-black/15 focus-within:bg-white focus-within:shadow-lg'}`}>
+              <div className={`relative rounded-[26px] border transition-all focus-within:border-neutral-400 ${theme === 'dark' ? 'bg-[#1B2024] border-transparent focus-within:border-white/20' : 'bg-[#f4f4f4] border-transparent focus-within:border-black/15 focus-within:bg-white focus-within:shadow-lg'}`}>
                 {selectedImage && !isPromptDisabled && (
                   <div className="px-4 pt-3">
                     <div className="relative inline-block group/img">
@@ -1796,7 +1796,7 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
 
       {status.isSyncing && (
         <div className="fixed bottom-24 right-6 z-50 animate-fadeIn">
-          <div className={`px-3.5 py-2 rounded-full border shadow-lg flex items-center gap-2 text-[12px] ${theme === 'dark' ? 'bg-[#2f2f2f] border-white/10 text-neutral-300' : 'bg-white border-black/10 text-neutral-600'}`}>
+          <div className={`px-3.5 py-2 rounded-full border shadow-lg flex items-center gap-2 text-[12px] ${theme === 'dark' ? 'bg-[#1B2024] border-white/10 text-neutral-300' : 'bg-white border-black/10 text-neutral-600'}`}>
             <span className="w-1.5 h-1.5 rounded-full bg-current thinking-dot" />
             <span className="w-1.5 h-1.5 rounded-full bg-current thinking-dot" />
             <span className="w-1.5 h-1.5 rounded-full bg-current thinking-dot" />

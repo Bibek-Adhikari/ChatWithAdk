@@ -97,7 +97,7 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
 
     if (!inline && match) {
       return (
-        <div className={`my-3 rounded-2xl overflow-hidden ${isDark ? 'bg-[#2b2b2b]' : 'bg-[#f2f2f2]'}`}>
+        <div className={`my-3 rounded-2xl overflow-hidden ${isDark ? 'bg-[#1B2024]' : 'bg-[#f2f2f2]'}`}>
           <div className="flex items-center justify-between pl-4 pr-2.5 py-2">
             <span className={`text-[12.5px] font-medium flex items-center gap-1.5 ${isDark ? 'text-neutral-400' : 'text-neutral-500'}`}>
               <span className="font-mono text-[11px] opacity-70">&lt;/&gt;</span>
@@ -146,7 +146,7 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
     return (
       <div id={anchorId} className="flex flex-col items-end w-full mb-5 animate-slide-up group scroll-mt-20">
         <div className={`max-w-[85%] sm:max-w-[75%] px-4 py-2.5 rounded-2xl text-[14.5px] leading-relaxed break-words
-          ${isDark ? 'bg-[#2f2f2f] text-[#ececec]' : 'bg-[#f4f4f4] text-neutral-900'}`}>
+          ${isDark ? 'bg-[#1B2024] text-[#E7EBEE]' : 'bg-[#f4f4f4] text-neutral-900'}`}>
           {(message.parts || []).map((part, idx) => (
             <div key={idx}>
               {part.type === 'text' ? (
@@ -218,7 +218,7 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
                   </div>
                 </details>
               ) : part.type === 'text' ? (
-                <div className={`text-[14.5px] leading-[1.75] markdown-content ${isDark ? 'text-[#ececec]' : 'text-neutral-800'}`}>
+                <div className={`text-[14.5px] leading-[1.75] markdown-content ${isDark ? 'text-[#E7EBEE]' : 'text-neutral-800'}`}>
                   <ReactMarkdown
                     remarkPlugins={[remarkGfm]}
                     components={{

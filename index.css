@@ -11,29 +11,31 @@
 }
 
 :root {
-  /* DeepSeek / Claude inspired — Dark default */
-  --bg-primary: #212121;
-  --bg-sidebar: #171717;
-  --bg-secondary: #2f2f2f;
-  --bg-hover: rgba(255, 255, 255, 0.06);
-  --bg-input: #2f2f2f;
-  --bg-user: #2f2f2f;
-  --text-primary: #ececec;
-  --text-secondary: #9b9b9b;
-  --text-tertiary: #6b6b6b;
-  --border-color: rgba(255, 255, 255, 0.08);
-  --border-subtle: rgba(255, 255, 255, 0.05);
+  /* Dark default — body #0E1113, sidebar #161A1D + derived variants */
+  --bg-primary: #0E1113;      /* app body / main canvas */
+  --bg-sidebar: #161A1D;      /* sidebar */
+  --bg-secondary: #1B2024;    /* cards, popovers, modals */
+  --bg-elevated: #20262B;     /* raised surfaces (menus, tooltips) */
+  --bg-hover: rgba(255, 255, 255, 0.055);
+  --bg-input: #1B2024;
+  --bg-user: #1B2024;
+  --text-primary: #E7EBEE;
+  --text-secondary: #9AA3AA;
+  --text-tertiary: #6A737A;
+  --border-color: rgba(255, 255, 255, 0.075);
+  --border-subtle: rgba(255, 255, 255, 0.045);
   --accent: #10a37f;
   --accent-blue: #4d6bfe;
-  --send-bg: #ffffff;
-  --send-fg: #212121;
-  --glass-bg: rgba(33, 33, 33, 0.85);
+  --send-bg: #E7EBEE;
+  --send-fg: #0E1113;
+  --glass-bg: rgba(14, 17, 19, 0.85);
 }
 
 [data-theme="light"] {
   --bg-primary: #ffffff;
   --bg-sidebar: #f9f9f9;
   --bg-secondary: #f4f4f4;
+  --bg-elevated: #ffffff;
   --bg-hover: rgba(0, 0, 0, 0.045);
   --bg-input: #f4f4f4;
   --bg-user: #f4f4f4;
@@ -57,6 +59,7 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
+    background-color: var(--bg-primary);
   }
   body {
     font-family: var(--font-inter);
