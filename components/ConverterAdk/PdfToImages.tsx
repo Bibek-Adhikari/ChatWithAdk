@@ -174,30 +174,30 @@ export default function PdfToImages({ tool, onBack }: { tool: ToolDefinition; on
       <button
         type="button"
         onClick={onBack}
-        className="mb-5 inline-flex items-center gap-1.5 text-[13px] text-[#969EAD] transition hover:text-[#F5F7FA]"
+        className="mb-5 inline-flex items-center gap-1.5 text-[13px] text-[var(--text-secondary)] transition hover:text-[var(--text-primary)]"
       >
         <ArrowLeft className="h-4 w-4" /> All tools
       </button>
 
       <header className="flex items-start gap-4">
-        <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-[#A855F7]/20 bg-[#A855F7]/10 text-[#C084FC]">
+        <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-[#A855F7]/20 bg-[#A855F7]/10 text-[#7E22CE] dark:text-[#C084FC]">
           <tool.icon className="h-6 w-6" aria-hidden="true" />
         </span>
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-2xl font-semibold tracking-tight text-[#F5F7FA]">{tool.name}</h1>
-            <span className="rounded-md border border-[#262B34] bg-[#111419] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-[#969EAD]">
+            <h1 className="text-2xl font-semibold tracking-tight text-[var(--text-primary)]">{tool.name}</h1>
+            <span className="rounded-md border border-[var(--border-color)] bg-[var(--bg-secondary)] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-secondary)]">
               PDF <span aria-hidden="true">→</span> JPG
             </span>
           </div>
-          <p className="mt-1 max-w-xl text-[13px] leading-relaxed text-[#969EAD]">{tool.description}</p>
+          <p className="mt-1 max-w-xl text-[13px] leading-relaxed text-[var(--text-secondary)]">{tool.description}</p>
         </div>
       </header>
 
       <div className="mt-6 grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
-        <section className="rounded-2xl border border-[#262B34] bg-[#111419] p-4 sm:p-5">
-          <h2 className="mb-3 text-[13px] font-semibold text-[#F5F7FA]">
-            <span className="mr-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-[#A855F7]/15 text-[11px] font-bold text-[#C084FC]">
+        <section className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-secondary)] p-4 sm:p-5">
+          <h2 className="mb-3 text-[13px] font-semibold text-[var(--text-primary)]">
+            <span className="mr-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-[#A855F7]/15 text-[11px] font-bold text-[#7E22CE] dark:text-[#C084FC]">
               1
             </span>
             Upload a PDF
@@ -220,15 +220,15 @@ export default function PdfToImages({ tool, onBack }: { tool: ToolDefinition; on
             disabled={busy}
           />
           {fileError && (
-            <p role="alert" className="mt-3 flex items-center gap-2 rounded-lg border border-[#EF4444]/30 bg-[#EF4444]/10 px-3 py-2 text-[12px] text-[#FCA5A5]">
+            <p role="alert" className="mt-3 flex items-center gap-2 rounded-lg border border-[#EF4444]/30 bg-[#EF4444]/10 px-3 py-2 text-[12px] text-[#B91C1C] dark:text-[#FCA5A5]">
               <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" /> {fileError}
             </p>
           )}
         </section>
 
-        <section className="rounded-2xl border border-[#262B34] bg-[#111419] p-4 sm:p-5">
-          <h2 className="mb-4 text-[13px] font-semibold text-[#F5F7FA]">
-            <span className="mr-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-[#A855F7]/15 text-[11px] font-bold text-[#C084FC]">
+        <section className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-secondary)] p-4 sm:p-5">
+          <h2 className="mb-4 text-[13px] font-semibold text-[var(--text-primary)]">
+            <span className="mr-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-[#A855F7]/15 text-[11px] font-bold text-[#7E22CE] dark:text-[#C084FC]">
               2
             </span>
             Options
@@ -236,7 +236,7 @@ export default function PdfToImages({ tool, onBack }: { tool: ToolDefinition; on
 
           <div className="space-y-4">
             <div>
-              <label htmlFor="pdf-resolution" className="text-[12px] font-medium uppercase tracking-[0.08em] text-[#969EAD]">
+              <label htmlFor="pdf-resolution" className="text-[12px] font-medium uppercase tracking-[0.08em] text-[var(--text-secondary)]">
                 Resolution
               </label>
               <select
@@ -244,7 +244,7 @@ export default function PdfToImages({ tool, onBack }: { tool: ToolDefinition; on
                 value={scale}
                 disabled={busy}
                 onChange={(event) => setScale(event.target.value)}
-                className="mt-2 w-full rounded-xl border border-[#262B34] bg-[#0E1113] px-3 py-2.5 text-[13px] text-[#F5F7FA] outline-none focus:border-[#A855F7] focus:ring-2 focus:ring-[#A855F7]/25"
+                className="mt-2 w-full rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2.5 text-[13px] text-[var(--text-primary)] outline-none focus:border-[#A855F7] focus:ring-2 focus:ring-[#A855F7]/25"
               >
                 <option value="1">72 DPI — fast, small</option>
                 <option value="2">144 DPI — balanced</option>
@@ -254,10 +254,10 @@ export default function PdfToImages({ tool, onBack }: { tool: ToolDefinition; on
 
             <div>
               <div className="flex items-center justify-between">
-                <label htmlFor="pdf-quality" className="text-[12px] font-medium uppercase tracking-[0.08em] text-[#969EAD]">
+                <label htmlFor="pdf-quality" className="text-[12px] font-medium uppercase tracking-[0.08em] text-[var(--text-secondary)]">
                   JPG quality
                 </label>
-                <span className="text-[12px] tabular-nums text-[#F5F7FA]">{quality}%</span>
+                <span className="text-[12px] tabular-nums text-[var(--text-primary)]">{quality}%</span>
               </div>
               <input
                 id="pdf-quality"
@@ -268,12 +268,12 @@ export default function PdfToImages({ tool, onBack }: { tool: ToolDefinition; on
                 value={quality}
                 disabled={busy}
                 onChange={(event) => setQuality(Number(event.target.value))}
-                className="mt-3 h-1.5 w-full cursor-pointer appearance-none rounded-full bg-[#262B34] accent-[#A855F7]"
+                className="mt-3 h-1.5 w-full cursor-pointer appearance-none rounded-full bg-[var(--border-color)] accent-[#A855F7]"
               />
             </div>
 
             <div>
-              <label htmlFor="pdf-range" className="text-[12px] font-medium uppercase tracking-[0.08em] text-[#969EAD]">
+              <label htmlFor="pdf-range" className="text-[12px] font-medium uppercase tracking-[0.08em] text-[var(--text-secondary)]">
                 Pages (blank = all)
               </label>
               <input
@@ -283,14 +283,14 @@ export default function PdfToImages({ tool, onBack }: { tool: ToolDefinition; on
                 placeholder="1-3, 7"
                 disabled={busy}
                 onChange={(event) => setRange(event.target.value)}
-                className="mt-2 w-full rounded-xl border border-[#262B34] bg-[#0E1113] px-3 py-2.5 text-[13px] text-[#F5F7FA] outline-none placeholder:text-[#5C646F] focus:border-[#A855F7] focus:ring-2 focus:ring-[#A855F7]/25"
+                className="mt-2 w-full rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2.5 text-[13px] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-tertiary)] focus:border-[#A855F7] focus:ring-2 focus:ring-[#A855F7]/25"
               />
             </div>
           </div>
 
           <div aria-live="polite" className="mt-4">
             {error && (
-              <div className="flex items-start gap-2 rounded-lg border border-[#EF4444]/30 bg-[#EF4444]/10 px-3 py-2 text-[12px] text-[#FCA5A5]">
+              <div className="flex items-start gap-2 rounded-lg border border-[#EF4444]/30 bg-[#EF4444]/10 px-3 py-2 text-[12px] text-[#B91C1C] dark:text-[#FCA5A5]">
                 <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                 <span>{error}</span>
                 <button type="button" onClick={() => setError(null)} className="ml-auto" aria-label="Dismiss error">
@@ -302,8 +302,8 @@ export default function PdfToImages({ tool, onBack }: { tool: ToolDefinition; on
 
           <div className="mt-4 space-y-2">
             {busy ? (
-              <div className="rounded-xl border border-[#262B34] bg-[#0E1113] px-3 py-2.5">
-                <p className="flex items-center gap-2 text-[12px] font-medium text-[#F5F7FA]">
+              <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2.5">
+                <p className="flex items-center gap-2 text-[12px] font-medium text-[var(--text-primary)]">
                   <Loader2 className="h-3.5 w-3.5 animate-spin text-[#A855F7]" aria-hidden="true" />
                   {progress || 'Rendering…'}
                 </p>
@@ -312,27 +312,27 @@ export default function PdfToImages({ tool, onBack }: { tool: ToolDefinition; on
               <button
                 type="button"
                 onClick={convert}
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#A855F7] px-4 py-2.5 text-[13px] font-semibold text-white transition hover:bg-[#9333EA] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A855F7]/60 focus-visible:ring-offset-2 focus-visible:ring-offset-[#111419]"
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#A855F7] px-4 py-2.5 text-[13px] font-semibold text-white transition hover:bg-[#9333EA] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A855F7]/60 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-secondary)]"
               >
                 <Sparkles className="h-4 w-4" aria-hidden="true" /> Convert to JPG
               </button>
             )}
           </div>
-          <p className="mt-3 text-[11px] leading-relaxed text-[#6B7482]">
+          <p className="mt-3 text-[11px] leading-relaxed text-[var(--text-tertiary)]">
             Rendering happens in your browser — the PDF is never uploaded.
           </p>
         </section>
       </div>
 
       {status === 'done' && pages.length > 0 && (
-        <section className="mt-6 rounded-2xl border border-[#262B34] bg-[#111419] p-4 sm:p-5">
+        <section className="mt-6 rounded-2xl border border-[var(--border-color)] bg-[var(--bg-secondary)] p-4 sm:p-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <p className="flex items-center gap-2 text-[13px] font-semibold text-[#34D399]">
+              <p className="flex items-center gap-2 text-[13px] font-semibold text-[#047857] dark:text-[#34D399]">
                 <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
                 {pages.length} page{pages.length > 1 ? 's' : ''} rendered
               </p>
-              <p className="mt-0.5 text-[11px] text-[#969EAD]">
+              <p className="mt-0.5 text-[11px] text-[var(--text-secondary)]">
                 {formatBytes(pages.reduce((total, page) => total + page.size, 0))} total
               </p>
             </div>
@@ -353,7 +353,7 @@ export default function PdfToImages({ tool, onBack }: { tool: ToolDefinition; on
               <button
                 type="button"
                 onClick={reset}
-                className="inline-flex items-center gap-2 rounded-xl border border-[#262B34] bg-[#181C23] px-3.5 py-2 text-[12px] font-medium text-[#C7CEDA] transition hover:bg-[#1F242C]"
+                className="inline-flex items-center gap-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] px-3.5 py-2 text-[12px] font-medium text-[var(--text-secondary)] transition hover:bg-[var(--bg-hover)]"
               >
                 <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" /> Convert another
               </button>
@@ -362,8 +362,8 @@ export default function PdfToImages({ tool, onBack }: { tool: ToolDefinition; on
 
           <ul className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
             {pages.map((page) => (
-              <li key={page.page} className="group overflow-hidden rounded-xl border border-[#262B34] bg-[#0E1113]">
-                <div className="flex aspect-[3/4] items-center justify-center overflow-hidden bg-[#181C23]">
+              <li key={page.page} className="group overflow-hidden rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)]">
+                <div className="flex aspect-[3/4] items-center justify-center overflow-hidden bg-[var(--bg-elevated)]">
                   <img
                     src={page.url}
                     alt={`Page ${page.page} rendered as JPG`}
@@ -372,7 +372,7 @@ export default function PdfToImages({ tool, onBack }: { tool: ToolDefinition; on
                   />
                 </div>
                 <div className="flex items-center justify-between gap-2 px-2.5 py-2">
-                  <span className="text-[11px] text-[#969EAD]">
+                  <span className="text-[11px] text-[var(--text-secondary)]">
                     <ImageIcon className="mr-1 inline h-3 w-3" aria-hidden="true" />
                     Page {page.page}
                   </span>
@@ -380,7 +380,7 @@ export default function PdfToImages({ tool, onBack }: { tool: ToolDefinition; on
                     type="button"
                     onClick={() => downloadBlob(page.blob, `page-${String(page.page).padStart(2, '0')}.jpg`)}
                     className={cx(
-                      'inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] font-medium text-[#C084FC]',
+                      'inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] font-medium text-[#7E22CE] dark:text-[#C084FC]',
                       'hover:bg-[#A855F7]/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A855F7]/50'
                     )}
                   >

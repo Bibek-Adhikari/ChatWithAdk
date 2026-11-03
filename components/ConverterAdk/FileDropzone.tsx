@@ -142,20 +142,20 @@ export default function FileDropzone({
         }}
         className={cx(
           'group relative flex cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed px-6 py-10 text-center transition-all',
-          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A855F7]/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0B0D10]',
+          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A855F7]/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-primary)]',
           dragging
             ? 'border-[#A855F7] bg-[#A855F7]/10'
-            : 'border-[#2A303A] bg-[#111419] hover:border-[#A855F7]/60 hover:bg-[#151920]',
+            : 'border-[var(--border-color)] bg-[var(--bg-primary)] hover:border-[#A855F7]/60 hover:bg-[var(--bg-hover)]',
           disabled && 'pointer-events-none opacity-50'
         )}
       >
-        <span className="mb-3 flex h-11 w-11 items-center justify-center rounded-xl border border-[#262B34] bg-[#181C23] text-[#A855F7] transition group-hover:border-[#A855F7]/40">
+        <span className="mb-3 flex h-11 w-11 items-center justify-center rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] text-[#A855F7] transition group-hover:border-[#A855F7]/40">
           <Upload className="h-5 w-5" aria-hidden="true" />
         </span>
-        <p className="text-sm font-medium text-[#F5F7FA]">
+        <p className="text-sm font-medium text-[var(--text-primary)]">
           {dragging ? 'Release to add your files' : `Drop ${fileLabel} here, or click to browse`}
         </p>
-        <p className="mt-1 text-xs text-[#969EAD]">
+        <p className="mt-1 text-xs text-[var(--text-secondary)]">
           {multiple ? `Up to ${maxFiles} files · ` : 'One file · '}20 MB each
         </p>
         <input
@@ -178,14 +178,14 @@ export default function FileDropzone({
           {files.map((file, index) => (
             <li
               key={`${file.name}-${file.size}-${index}`}
-              className="flex items-center gap-3 rounded-xl border border-[#262B34] bg-[#111419] px-3 py-2.5"
+              className="flex items-center gap-3 rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)] px-3 py-2.5"
             >
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#181C23] text-[#969EAD]">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--bg-elevated)] text-[var(--text-secondary)]">
                 <FileText className="h-4 w-4" aria-hidden="true" />
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-[13px] font-medium text-[#F5F7FA]">{file.name}</span>
-                <span className="text-[11px] text-[#969EAD]">{formatBytes(file.size)}</span>
+                <span className="block truncate text-[13px] font-medium text-[var(--text-primary)]">{file.name}</span>
+                <span className="text-[11px] text-[var(--text-secondary)]">{formatBytes(file.size)}</span>
               </span>
               {multiple && files.length > 1 && (
                 <span className="flex items-center gap-1">
@@ -194,7 +194,7 @@ export default function FileDropzone({
                     onClick={() => move(index, -1)}
                     disabled={index === 0}
                     aria-label={`Move ${file.name} up`}
-                    className="rounded-md p-1.5 text-[#969EAD] transition hover:bg-[#181C23] hover:text-[#F5F7FA] disabled:opacity-30"
+                    className="rounded-md p-1.5 text-[var(--text-secondary)] transition hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] disabled:opacity-30"
                   >
                     <ArrowUp className="h-3.5 w-3.5" />
                   </button>
@@ -203,7 +203,7 @@ export default function FileDropzone({
                     onClick={() => move(index, 1)}
                     disabled={index === files.length - 1}
                     aria-label={`Move ${file.name} down`}
-                    className="rounded-md p-1.5 text-[#969EAD] transition hover:bg-[#181C23] hover:text-[#F5F7FA] disabled:opacity-30"
+                    className="rounded-md p-1.5 text-[var(--text-secondary)] transition hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] disabled:opacity-30"
                   >
                     <ArrowDown className="h-3.5 w-3.5" />
                   </button>
@@ -213,7 +213,7 @@ export default function FileDropzone({
                 type="button"
                 onClick={() => removeAt(index)}
                 aria-label={`Remove ${file.name}`}
-                className="rounded-md p-1.5 text-[#969EAD] transition hover:bg-[#EF4444]/15 hover:text-[#EF4444]"
+                className="rounded-md p-1.5 text-[var(--text-secondary)] transition hover:bg-[#EF4444]/15 hover:text-[#EF4444]"
               >
                 <X className="h-3.5 w-3.5" />
               </button>
@@ -222,7 +222,7 @@ export default function FileDropzone({
         </ul>
       )}
 
-      <p className="flex items-center gap-1.5 text-[11px] leading-relaxed text-[#6B7482]">
+      <p className="flex items-center gap-1.5 text-[11px] leading-relaxed text-[var(--text-tertiary)]">
         <AlertCircle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
         Files are processed in memory and never stored on the server.
       </p>
