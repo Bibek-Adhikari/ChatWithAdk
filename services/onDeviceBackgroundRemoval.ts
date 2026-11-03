@@ -260,9 +260,35 @@ function prettyAssetName(key: string): string {
   return 'model data';
 }
 
+/**
+ * WebGPU is worth trying on desktop, but phones and low-memory devices are much
+ * more likely to fail (or run out of memory) than to be faster. They go straight
+ * to the CPU/WASM path.
+ */
+function prefersQualityGpu(): boolean {
+  if (typeof navigator === 'undefined' || !('gpu' in navigator)) return false;
+  const ua = navigator.userAgent || '';
+  if (/Android|iPhone|iPad|iPod|Mobile|Windows Phone/i.test(ua)) return false;
+  const memory = (navigator as any).deviceMemory as number | undefined;
+  if (typeof memory === 'number' && memory < 4) return false;
+  return true;
+}
+
+/** Errors that mean the assets never arrived, so retrying another backend is pointless. */
+function isAssetLoadError(err: unknown): boolean {
+  const message = String((err as any)?.message || err || '');
+  return /failed to fetch|load failed|networkerror|network request failed|content security policy|refused to connect|importing a module script failed|dynamically imported/i.test(
+    message,
+  );
+}
+
 async function removeQuality(file: File, onProgress?: (p: BgProgress) => void): Promise<BgResult> {
   const started = performance.now();
   onProgress?.({ stage: 'loading', message: 'Preparing the high-quality model…' });
+
+  if (typeof WebAssembly === 'undefined') {
+    throw new Error('This browser does not support WebAssembly, so the high-quality model cannot run here.');
+  }
 
   const { removeBackground } = await import('@imgly/background-removal');
 
@@ -282,13 +308,18 @@ async function removeQuality(file: File, onProgress?: (p: BgProgress) => void): 
       },
     });
 
+  const preferred = prefersQualityGpu() ? 'gpu' : 'cpu';
   let blob: Blob;
   try {
-    blob = await run('gpu');
+    blob = await run(preferred);
   } catch (err) {
-    console.warn('[bg] WebGPU path failed, retrying on CPU', err);
-    onProgress?.({ stage: 'loading', message: 'Retrying on CPU…' });
-    blob = await run('cpu');
+    if (preferred === 'gpu' && !isAssetLoadError(err)) {
+      console.warn('[bg] WebGPU path failed, retrying on CPU', err);
+      onProgress?.({ stage: 'loading', message: 'Retrying on CPU…' });
+      blob = await run('cpu');
+    } else {
+      throw err;
+    }
   }
 
   onProgress?.({ stage: 'composing', message: 'Measuring the cutout…' });

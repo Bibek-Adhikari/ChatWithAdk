@@ -339,11 +339,20 @@ export default function PhotoEditorPro({ onClose, theme = 'dark' }: PhotoAdkProp
   // --- On-device background removal (Remove BG) ---
   const friendlyDeviceError = (err: any): string => {
     const raw = String(err?.message || '');
+    if (/content security policy|refused to connect|csp/i.test(raw)) {
+      return 'The high-quality model is blocked by this site’s security policy. Switch to Fast, or use the cloud fallback.';
+    }
+    if (/out of memory|memory access out of bounds|allocation failed|aborted\(|cannot allocate|array buffer allocation|runtimeerror/i.test(raw)) {
+      return 'This device ran out of memory loading the high-quality model. Fast mode needs far less memory.';
+    }
+    if (/webassembly is not supported|does not support webassembly/i.test(raw)) {
+      return 'This browser cannot run the high-quality model. Switch to Fast, or use the cloud fallback.';
+    }
     if (/webgpu|gpu|adapter/i.test(raw)) {
       return 'This browser could not start the on-device GPU model. Try Fast mode, or use the cloud fallback.';
     }
-    if (/fetch|network|failed to load|import|dynamically imported/i.test(raw)) {
-      return 'Could not load the on-device model. Check your connection once, or use the cloud fallback.';
+    if (/fetch|network|failed to load|load failed|import|dynamically imported/i.test(raw)) {
+      return 'Could not download the on-device model. Check your connection, or use the cloud fallback.';
     }
     return raw || 'On-device removal failed.';
   };

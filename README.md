@@ -31,6 +31,7 @@
   - *Auto* starts fast and escalates to high quality when the subject is unclear.
 - **Cloud fallback** — if the local model fails, a “Retry with cloud” button uses the existing Picsart flow. The other studio tools (upscale, retouch, AI background, replace, crop) remain cloud-based.
 - **Fully offline option** — run `npm run ondevice:assets`, then set `VITE_ONDEVICE_WASM_URL`, `VITE_ONDEVICE_SEGMENTER_URL` and `VITE_ONDEVICE_IMGLY_PATH` to serve the WASM/model files from `public/ondevice/` instead of public CDNs.
+- **Content Security Policy** — the default engines load from `cdn.jsdelivr.net`, `storage.googleapis.com` and `staticimgly.com`, and ONNX Runtime fetches its WASM from `blob:` URLs. If you deploy with a CSP (see `vercel.json`), allow those hosts in `connect-src` plus `blob:` in `connect-src`, `script-src` and `worker-src`, otherwise High quality fails with “Could not download the on-device model”.
 
 ---
 
