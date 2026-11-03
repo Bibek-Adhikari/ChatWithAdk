@@ -5,7 +5,8 @@ import { User } from 'firebase/auth';
 import {
   Search, SquarePen, MessageSquare, Pencil, Trash2,
   Settings, PanelLeftClose, Code2, Image as ImageIcon,
-  Repeat2, Gem, ShieldCheck, Check, X, Bell
+  Repeat2, Gem, ShieldCheck, Check, X, Bell,
+  Loader2
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -226,6 +227,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               {[
                 { label: 'CodeAdk', icon: Code2, path: '/codeadk' },
                 { label: 'PhotoAdk', icon: ImageIcon, path: '/photoadk' },
+                { label: 'ConverterAdk', icon: Loader2, path: '/converteradk' },
               ].map(t => (
                 <button
                   key={t.path}
