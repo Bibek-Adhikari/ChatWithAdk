@@ -1,0 +1,360 @@
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  ArrowLeft,
+  ChevronDown,
+  ChevronUp,
+  Files,
+  Search,
+  ShieldCheck,
+  X,
+} from 'lucide-react';
+import ToolWorkbench from './ToolWorkbench';
+import PdfToImages from './PdfToImages';
+import { fetchCapabilities } from './api';
+import type { Capabilities, ToolDefinition } from './tools';
+import { TOOL_CATEGORIES, applyCapabilities, matchesQuery, readyToolCount } from './tools';
+
+const cx = (...values: Array<string | false | null | undefined>) => values.filter(Boolean).join(' ');
+
+const readHash = () => {
+  if (typeof window === 'undefined') return null;
+  const raw = window.location.hash.replace(/^#\/?/, '').trim();
+  return raw || null;
+};
+
+type Theme = 'light' | 'dark';
+
+const ConverterAdk: React.FC<{ theme: Theme; onClose: () => void }> = ({ theme, onClose }) => {
+  const [activeId, setActiveId] = useState<string | null>(() => readHash());
+  const [query, setQuery] = useState('');
+  const [capabilities, setCapabilities] = useState<Capabilities | null>(null);
+  const [convertOpen, setConvertOpen] = useState(false);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const convertRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const onHashChange = () => setActiveId(readHash());
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetchCapabilities(controller.signal).then((caps) => {
+      if (caps) setCapabilities(caps);
+    });
+    return () => controller.abort();
+  }, []);
+
+  useEffect(() => {
+    if (!convertOpen) return undefined;
+    const onPointerDown = (event: PointerEvent) => {
+      if (!convertRef.current?.contains(event.target as Node)) setConvertOpen(false);
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    return () => document.removeEventListener('pointerdown', onPointerDown);
+  }, [convertOpen]);
+
+  const openTool = useCallback((id: string | null) => {
+    setActiveId(id);
+    setConvertOpen(false);
+    if (typeof window !== 'undefined') {
+      if (id) {
+        window.location.hash = id;
+      } else {
+        window.history.replaceState(null, '', window.location.pathname + window.location.search);
+      }
+    }
+    scrollRef.current?.scrollTo({ top: 0, behavior: 'auto' });
+  }, []);
+
+  const tools = useMemo(() => applyCapabilities(capabilities), [capabilities]);
+
+  const filtered = useMemo(() => tools.filter((tool) => matchesQuery(tool, query)), [query, tools]);
+
+  const grouped = useMemo(
+    () => TOOL_CATEGORIES.map((entry) => ({
+      ...entry,
+      tools: filtered.filter((tool) => tool.category === entry.id),
+    })).filter((entry) => entry.tools.length > 0),
+    [filtered]
+  );
+
+  const primaryGroups = grouped.filter((group) => !group.secondary);
+  const secondaryGroups = grouped.filter((group) => group.secondary);
+
+  const readyCount = readyToolCount(tools);
+  const plannedCount = tools.length - readyCount;
+  const activeTool = useMemo(() => tools.find((tool) => tool.id === activeId) ?? null, [activeId, tools]);
+
+  const quickLinks = useMemo(
+    () => ['merge-pdf', 'split-pdf', 'compress-pdf'].map((id) => tools.find((tool) => tool.id === id)).filter(Boolean) as ToolDefinition[],
+    [tools]
+  );
+  const convertGroups = useMemo(
+    () => TOOL_CATEGORIES.filter((entry) => entry.id === 'to-pdf' || entry.id === 'from-pdf').map((entry) => ({
+      ...entry,
+      tools: tools.filter((tool) => tool.category === entry.id),
+    })),
+    [tools]
+  );
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const typing =
+        target &&
+        (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable);
+
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        openTool(null);
+        window.setTimeout(() => searchRef.current?.focus(), 0);
+        return;
+      }
+      if (event.key === '/' && !typing) {
+        event.preventDefault();
+        openTool(null);
+        window.setTimeout(() => searchRef.current?.focus(), 0);
+        return;
+      }
+      if (event.key === 'Escape') {
+        if (convertOpen) {
+          setConvertOpen(false);
+          return;
+        }
+        if (typing && (target as HTMLInputElement).value) {
+          setQuery('');
+          (target as HTMLInputElement).blur();
+          return;
+        }
+        if (activeId) {
+          event.preventDefault();
+          openTool(null);
+          return;
+        }
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [activeId, convertOpen, onClose, openTool]);
+
+  return (
+    <div
+      className="h-full w-full overflow-y-auto antialiased"
+      style={{ colorScheme: theme }}
+    >
+      {/* ── header ──────────────────────────────────────────────── */}
+      <header className="sticky top-0 z-30 border-b border-[b]/20 bg-[surface]/90 backdrop-blur-md">
+        <div className="mx-auto flex h-14 w-full max-w-6xl items-center gap-2 px-4 sm:px-6">
+          <button
+            type="button"
+            onClick={() => {
+              setQuery('');
+              openTool(null);
+            }}
+            className="flex items-center gap-2.5 rounded-lg py-1 transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[accent-violet]/60"
+            aria-label="ConverterAdk home"
+          >
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-[border]/25 bg-[surface]/10 text-[accent-violet]">
+              <Files className="h-4 w-4" aria-hidden="true" />
+            </span>
+            <span className="flex flex-col text-left leading-tight">
+              <span className="text-[13px] font-semibold tracking-tight text-[t]">ConverterAdk</span>
+              <span className="text-[10px] text-[text-secondary]">by Tufan</span>
+            </span>
+          </button>
+
+          <nav aria-label="Quick tools" className="ml-3 hidden items-center gap-1.5 lg:flex">
+            {quickLinks.map((tool) => (
+              <button
+                key={tool.id}
+                type="button"
+                onClick={() => openTool(tool.id)}
+                className="rounded-md px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-[0.07em] text-[text-secondary] transition-colors hover:bg-[surface]/15 hover:text-[t] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[accent-violet]/50"
+              >
+                {tool.name}
+              </button>
+            ))}
+          </nav>
+
+          <div className="ml-auto flex items-center gap-2">
+            <span className="hidden items-center gap-1.5 rounded-full border border-[border]/02 bg-[surface]/15 px-2.5 py-1 text-[11px] text-[text-secondary] md:inline-flex">
+              <span className="h-1.5 w-1.5 rounded-full bg-[accent-violet]" aria-hidden="true" />
+              {readyCount} ready
+            </span>
+            <button
+              type="button"
+              onClick={onClose}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-[border]/02 bg-[surface]/15 px-2.5 py-1.5 text-[12px] font-medium text-[text-secondary] transition hover:border-[border]/05 hover:bg-[surface]/20 hover:text-[t] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[accent-violet]/60"
+            >
+              <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
+              <span className="hidden sm:inline">Back to Tufan</span>
+              <span className="sm:hidden">Back</span>
+            </button>
+          </div>
+        </div>
+      </header>
+
+      {activeTool ? (
+        activeTool.id === 'pdf-to-jpg' ? (
+          <PdfToImages key={activeTool.id} tool={activeTool} onBack={() => openTool(null)} />
+        ) : (
+          <ToolWorkbench key={activeTool.id} tool={activeTool} onBack={() => openTool(null)} />
+        )
+      ) : (
+        <>
+          <main className="mx-auto w-full max-w-7xl px-4 pb-12 pt-6 sm:px-6">
+            <div className="mb-6">
+              <h1 className="text-[20px] font-semibold tracking-tight text-[t]">All PDF tools</h1>
+              <p className="mt-1 text-[12px] text-[t]">
+                {readyCount} ready · {plannedCount} coming soon · files never leave memory
+              </p>
+            </div>
+
+            <div className="mb-6 rounded-2xl border border-[b] bg-[surface] p-5 sm:p-6">
+              {/* Search and filter section */}
+              <div className="mb-4">
+                <Search
+                  className="pointer-events-none absolute left-3 top-[calc(50%-1.75px)] h-3.5 w-3.5 -translate-y-[1.75px] text-[text-secondary]"
+                  aria-hidden="true"
+                />
+                <input
+                  ref={searchRef}
+                  type="search"
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="Search PDF tools…"
+                  aria-label="Search PDF tools"
+                  className="w-full rounded-lg border border-[b] bg-[surface] py-2.5 pl-10 pr-12 text-[13px] text-[t] outline-none transition placeholder:text-[text-secondary] focus:border-[accent-violet] focus:ring-2 focus-ring-[accent-violet]/20 [&::-webkit-search-cancel-button]:hidden"
+                />
+                {query ? (
+                  <button
+                    type="button"
+                    onClick={() => setQuery('')}
+                    aria-label="Clear search"
+                    className="absolute right-2 top-[calc(50%-1.75px)] rounded-md p-1 text-[text-secondary] transition hover:bg-[surface]/20 hover:text-[t]"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                ) : (
+                  <kbd className="pointer-events-none absolute right-2 top-[calc(50%-1.75px)] rounded border-[b] bg-[surface] px-1.5 py-0.5 font-sans text-[text-secondary]">⌘K</kbd>
+                )}
+              </div>
+
+              {/* Category filter pills */}
+              <div className="flex flex-wrap gap-2 mb-4">
+                <button
+                  type="button"
+                  onClick={() => setQuery('')}
+                  aria-pressed={false}
+                  className="rounded-lg px-2.5 py-1 text-[10px] font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[accent-violet]/50"
+                >
+                  All categories
+                </button>
+                {TOOL_CATEGORIES.map((entry) => (
+                  <button
+                    key={entry.id}
+                    type="button"
+                    onClick={() => setQuery('')}
+                    aria-pressed={false}
+                    className="rounded-lg px-2.5 py-1 text-[10px] font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[accent-violet]/50 hover:border-[b] hover:bg-[surface]"
+                  >
+                    {entry.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Tool grid - 3 column layout on desktop, responsive */}
+            <div className="space-y-4">
+              {primaryGroups.map((section) => (
+                <section
+                  key={section.id}
+                  aria-labelledby={`section-${section.id}`}
+                  className="pt-2"
+                >
+                  <h2
+                    id={`section-${section.id}`}
+                    className="mb-1.5 px-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-[text-secondary]"
+                  >
+                    {section.label}
+                  </h2>
+                  <p className="mb-1 text-[10px] text-[text-secondary] small">
+                    {section.blurb}
+                  </p>
+                  <div className="grid grid-cols-1 gap-y-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                    {section.tools.map((tool) => (
+                      <ToolRow
+                        key={tool.id}
+                        tool={tool}
+                        onOpen={openTool}
+                        theme={theme}
+                      />
+                    ))}
+                  </div>
+                </section>
+              ))}
+            </div>
+
+            {/* Secondary groups - PDF Security & PDF Intelligence */}
+            {secondaryGroups.length > 0 && (
+              <div className="mt-6 rounded-2xl border border-[b] bg-[surface] p-5 sm:p-6">
+                <h2 className="mb-3 text-[13px] font-semibold tracking-tight text-[t]">
+                  More PDF tools
+                </h2>
+                <div className="grid grid-cols-1 gap-y-2 sm:grid-cols-2 lg:grid-cols-3">
+                  {secondaryGroups.map((section) => (
+                    <div key={section.id} className="pt-2 border-t border-[b]">
+                      <h3 className="mb-1 text-[11px] font-medium uppercase tracking-[0.1em] text-[text-secondary]">
+                        {section.label}
+                      </h3>
+                      <p className="mb-1 text-[10px] text-[text-secondary] small">
+                        {section.blurb}
+                      </p>
+                      <div className="grid grid-cols-1 gap-y-1">
+                        {section.tools.map((tool) => (
+                          <ToolRow key={tool.id} tool={tool} onOpen={openTool} theme={theme} />
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </main>
+        </>
+      )}
+    </div>
+  );
+};
+
+export default ConverterAdk;
+
+/* ToolRow - renders an individual tool in the converteradk grid */
+const ToolRow = ({
+  tool,
+  onOpen,
+  theme,
+}: {
+  tool: ToolDefinition;
+  onOpen: (id: string | null) => void;
+  theme: Theme;
+}) => {
+  const t = theme === 'dark' ? '#F2F4F7' : '#1E293B';
+  const s = theme === 'dark' ? '#12161B' : '#FFFFFF';
+  const b = theme === 'dark' ? 'rgba(255,255,255,.08)' : 'rgba(0,0,0,.08)';
+
+  return (
+    <div
+      key={tool.id}
+      className="group rounded-lg border border-[b]/20 bg-[surface]/30 p-3 hover:bg-[surface]/40 transition-colors cursor-pointer"
+    >
+      <span className="text-[11px] text-[text-secondary] truncate">
+        {tool.name}
+      </span>
+    </div>
+  );
+};

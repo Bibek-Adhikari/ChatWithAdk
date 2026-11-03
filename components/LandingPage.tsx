@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef, memo, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { Code2, Image as ImageIcon, RefreshCw, ArrowRight } from 'lucide-react';
+import { Code2, Image as ImageIcon, Files, RefreshCw, ArrowRight } from 'lucide-react';
 import { auth, db } from '../services/firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import AuthModal from './AuthModal';
@@ -62,7 +62,7 @@ const ProductCard = memo(({ product, theme, onNavigate }: {
 const PRODUCTS = [
   { id: 'c', name: 'CodeAdk', icon: Code2, color: 'blue', path: '/codeadk', desc: 'Advanced Compiler' },
   { id: 'p', name: 'PhotoAdk', icon: ImageIcon, color: 'emerald', path: '/photoadk', desc: 'AI Image Editor' },
-  { id: 'v', name: 'ConverterAdk', icon: RefreshCw, color: 'purple', path: '/converteradk', desc: 'Polyglot System' },
+  { id: 'v', name: 'ConverterAdk', icon: Files, color: 'purple', path: '/converteradk', desc: 'PDF Tools Platform' },
 ] as const;
 
 const LandingPage: React.FC = () => {
@@ -334,10 +334,10 @@ const LandingPage: React.FC = () => {
 
           <div className="space-y-2">
             <h1 className="text-[28px] sm:text-[36px] font-medium tracking-tight leading-tight">
-              How can I help you today?
+              Everything you need, in one place.
             </h1>
             <p className={`text-[14.5px] max-w-md mx-auto leading-relaxed ${muted}`}>
-              Chat, code, create images, and explore ideas — all in one place.
+              Chat with AI, write code, transform images, and handle PDFs — all in one place.
             </p>
           </div>
         </motion.div>
@@ -349,7 +349,7 @@ const LandingPage: React.FC = () => {
           transition={{ delay: 0.2, duration: 0.45 }}
           className="w-full max-w-[768px] mt-8"
         >
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {PRODUCTS.map((product) => (
               <ProductCard
                 key={product.id}

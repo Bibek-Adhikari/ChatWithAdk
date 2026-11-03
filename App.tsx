@@ -46,10 +46,11 @@ import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { adminService } from './services/adminService'; 
 import { fetchLatestNews, shouldFetchNews } from './services/newsService';
 import VSCodeCompiler from './components/VSCodeCompiler'
-import LanguageConverter from './components/LanguageConverter'
 import PhotoAdk from './components/PhotoAdk'
+import ConverterAdk from './components/ConverterAdk/ConverterAdk'
 import { VOICE_LIBRARY } from './services/voiceLibrary';
 import { readBoolean, readJson, readNumber, readString, removeKey, writeJson, writeString } from './services/storage';
+import { fetchEntitlement } from './services/entitlements';
 
 
 const ADMIN_EMAILS = [
@@ -66,7 +67,7 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
     return (saved as 'light' | 'dark') || 'dark';
   });
 
-  const overlayPaths = React.useMemo(() => ['codeadk', 'converteradk', 'photoadk', 'converteradk/history'], []);
+  const overlayPaths = React.useMemo(() => ['codeadk', 'photoadk', 'converteradk'], []);
 
   const { sessionId: urlSessionId } = useParams();
   const navigate = useNavigate();
@@ -116,8 +117,8 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
   const [isAdminDashboardOpen, setIsAdminDashboardOpen] = useState(false);
   const [isPlansOpen, setIsPlansOpen] = useState(false);
   const [isCompilerOpen, setIsCompilerOpen] = useState(() => initialTool === 'codeadk');
-  const [isConverterOpen, setIsConverterOpen] = useState(() => initialTool === 'converteradk');
   const [isPhotoAdkOpen, setIsPhotoAdkOpen] = useState(() => initialTool === 'photoadk');
+  const [isConverterAdkOpen, setIsConverterAdkOpen] = useState(() => initialTool === 'converteradk');
   const [showConverterHistory, setShowConverterHistory] = useState(false);
   const [previousSessionId, setPreviousSessionId] = useState<string | null>(null);
   const [imageError, setImageError] = useState(false);
@@ -478,14 +479,12 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
   useEffect(() => {
     const path = location.pathname;
     const isPathCode = path === '/codeadk';
-    const isPathConverter = path === '/converteradk';
-    const isPathConverterHistory = path === '/converteradk/history';
     const isPathPhoto = path === '/photoadk';
+    const isPathConverter = path === '/converteradk';
 
     setIsCompilerOpen(isPathCode);
-    setIsConverterOpen(isPathConverter || isPathConverterHistory);
-    setShowConverterHistory(isPathConverterHistory);
     setIsPhotoAdkOpen(isPathPhoto);
+    setIsConverterAdkOpen(isPathConverter);
 
     // Also sync session from URL param
     if (urlSessionId && !overlayPaths.includes(urlSessionId) && urlSessionId !== currentSessionId) {
@@ -516,7 +515,7 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
       const isVirtual = currentSessionId.startsWith('new_');
       
       // Only auto-redirect if we are at a chat URL that doesn't exist anymore AND it's not a virtual session
-      if (!exists && !isVirtual && !status.isTyping && location.pathname.startsWith('/chat/') && location.pathname !== '/chat/codeadk' && location.pathname !== '/chat/converteradk' && location.pathname !== '/chat/photoadk') {
+      if (!exists && !isVirtual && !status.isTyping && location.pathname.startsWith('/chat/') && location.pathname !== '/chat/codeadk' && location.pathname !== '/chat/photoadk') {
          console.warn("Session not found, starting handleNewChat...");
          handleNewChat();
       }
@@ -590,9 +589,18 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
       try {
         const tokenResult = await user.getIdTokenResult(true);
         const claims = tokenResult.claims as { pro?: boolean; planId?: string };
+        let isPro = !!claims.pro;
+        let plan = claims.planId ?? null;
+        // Claims require the admin service account to match the web project.
+        // Until then, fall back to the server's Stripe-backed entitlement.
+        if (!isPro) {
+          const entitlement = await fetchEntitlement();
+          isPro = entitlement.pro;
+          plan = entitlement.planId ?? plan;
+        }
         if (isActive) {
-          setIsProUser(!!claims.pro);
-          setPlanId(claims.planId ?? null);
+          setIsProUser(isPro);
+          setPlanId(plan);
         }
       } catch (err) {
         console.error('Failed to load user claims:', err);
@@ -637,7 +645,6 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
         setIsModelMenuOpen(false);
         setIsCraftMenuOpen(false);
         setIsCompilerOpen(false);
-        setIsConverterOpen(false);
         setIsPhotoAdkOpen(false);
       }
 
@@ -1239,7 +1246,7 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
 
         {/* Unified slim top bar — DeepSeek / Claude style */}
         <header className={`flex items-center justify-between h-14 px-3 sm:px-4 shrink-0 sticky top-0 z-20 border-b ${theme === 'dark' ? 'border-white/[0.06] bg-[#0E1113]/90 backdrop-blur-md' : 'border-black/[0.06] bg-white/90 backdrop-blur-md'}`}>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 min-w-0">
             <button
               onClick={() => setIsSidebarOpen(!isSidebarOpen)}
               className={`w-9 h-9 flex items-center justify-center rounded-lg transition-colors ${theme === 'dark' ? 'text-neutral-400 hover:bg-white/[0.06] hover:text-white' : 'text-neutral-500 hover:bg-black/[0.05] hover:text-neutral-900'}`}
@@ -1254,6 +1261,52 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
             >
               <SquarePen size={17} strokeWidth={1.8} />
             </button>
+
+            <div className={`mx-1 h-6 w-px shrink-0 ${theme === 'dark' ? 'bg-white/10' : 'bg-black/10'}`} aria-hidden="true" />
+
+            <button
+              onClick={() => navigate('/')}
+              className="flex shrink-0 items-center gap-2 rounded-lg px-1 py-1 transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400/40"
+              title="Tufan home"
+              aria-label="Tufan home"
+            >
+              <img src="/assets/logo.webp" alt="" className="h-7 w-7 rounded-lg object-cover" />
+              <span className={`hidden text-[14px] font-semibold tracking-tight sm:block ${theme === 'dark' ? 'text-neutral-100' : 'text-neutral-900'}`}>
+                Tufan
+              </span>
+            </button>
+
+            <nav
+              aria-label="Products"
+              className={`ml-1 hidden items-center gap-0.5 border-l pl-2 md:flex ${theme === 'dark' ? 'border-white/10' : 'border-black/10'}`}
+            >
+              {[
+                { label: 'CodeAdk', path: '/codeadk' },
+                { label: 'PhotoAdk', path: '/photoadk' },
+                { label: 'ConverterAdk', path: '/converteradk' },
+                { label: 'Plans', path: '/plans' },
+              ].map((item) => {
+                const active = location.pathname === item.path;
+                return (
+                  <button
+                    key={item.path}
+                    onClick={() => navigate(item.path)}
+                    aria-current={active ? 'page' : undefined}
+                    className={`rounded-lg px-2.5 py-1.5 text-[12.5px] font-medium transition-colors ${
+                      active
+                        ? theme === 'dark'
+                          ? 'bg-white/[0.08] text-white'
+                          : 'bg-black/[0.06] text-neutral-900'
+                        : theme === 'dark'
+                          ? 'text-neutral-400 hover:bg-white/[0.06] hover:text-white'
+                          : 'text-neutral-500 hover:bg-black/[0.05] hover:text-neutral-900'
+                    }`}
+                  >
+                    {item.label}
+                  </button>
+                );
+              })}
+            </nav>
           </div>
 
           {/* Center: model picker pill */}
@@ -1734,35 +1787,12 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
             <VSCodeCompiler theme={theme} onClose={() => {
               const fallback = previousSessionId || currentSessionId;
               setPreviousSessionId(null);
-              if (fallback && !['codeadk','photoadk','converteradk'].includes(fallback)) {
+              if (fallback && !['codeadk','photoadk'].includes(fallback)) {
                 navigate(`/chat/${fallback}`);
               } else {
                 handleNewChat();
               }
             }} />
-          </motion.div>
-        )}
-
-        {isConverterOpen && (
-          <motion.div 
-            initial={{ opacity: 0, scale: 0.98 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.98 }}
-            className="fixed inset-0 z-[200] bg-slate-950/40"
-          >
-            <LanguageConverter 
-              theme={theme === 'dark' ? 'vs-dark' : 'vs'} 
-              showHistory={showConverterHistory}
-              onClose={() => {
-                const fallback = previousSessionId || currentSessionId;
-                setPreviousSessionId(null);
-                if (fallback && !['codeadk','photoadk','converteradk'].includes(fallback)) {
-                  navigate(`/chat/${fallback}`);
-                } else {
-                  handleNewChat();
-                }
-              }} 
-            />
           </motion.div>
         )}
 
@@ -1776,11 +1806,24 @@ const App: React.FC<{ initialTool?: 'codeadk' | 'photoadk' | 'converteradk' }> =
             <PhotoAdk theme={theme} onClose={() => {
               const fallback = previousSessionId || currentSessionId;
               setPreviousSessionId(null);
-              if (fallback && !['codeadk','photoadk','converteradk'].includes(fallback)) {
+              if (fallback && !['codeadk','photoadk'].includes(fallback)) {
                 navigate(`/chat/${fallback}`);
               } else {
                 handleNewChat();
               }
+            }} />
+          </motion.div>
+        )}
+        {isConverterAdkOpen && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.98 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.98 }}
+            className={`fixed inset-0 z-[200] ${theme === 'dark' ? 'bg-black/60' : 'bg-black/30'}`}
+          >
+            <ConverterAdk theme={theme} onClose={() => {
+              setIsConverterAdkOpen(false);
+              if (location.pathname.startsWith('/converteradk')) navigate('/');
             }} />
           </motion.div>
         )}

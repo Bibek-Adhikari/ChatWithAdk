@@ -102,7 +102,7 @@ export const API_DEFS: ApiDef[] = [
   {
     id: 'picsart', name: 'Picsart (Photo tools)', icon: 'fa-image',
     envKeys: ['VITE_PICSART_API_KEY'],
-    powers: ['Background remover', 'Ultra upscale', 'Face retouch', 'AI background', 'Smart replace', 'Smart crop'],
+    powers: ['Background remover (cloud fallback — primary runs on device)', 'Ultra upscale', 'Face retouch', 'AI background', 'Smart replace', 'Smart crop'],
     dashboard: 'https://console.picsart.io/',
     quotaNote: 'Balance endpoint is free; each edit burns credits. Plan total is not exposed, so % is n/a.',
     cost: 'free',

@@ -9,6 +9,8 @@ import { getAuth } from 'firebase-admin/auth';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import paymentsRouter from './routes/payments.js';
 import proxyRouter from './routes/proxy.js';
+import converterRouter from './routes/converter.js';
+import { verifyFirebaseToken } from './lib/firebaseAuth.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -92,10 +94,6 @@ const ensureSupabaseAdmin = () => {
 };
 
 const requireFirebaseAuth = async (req, res, next) => {
-  if (!firebaseAdminReady) {
-    return res.status(500).json({ error: 'Firebase Admin not configured on server.' });
-  }
-
   const authHeader = req.headers.authorization || '';
   const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
 
@@ -104,7 +102,7 @@ const requireFirebaseAuth = async (req, res, next) => {
   }
 
   try {
-    const decoded = await getAuth().verifyIdToken(token);
+    const decoded = await verifyFirebaseToken(token);
     req.firebaseUser = decoded;
     return next();
   } catch (error) {
@@ -116,9 +114,14 @@ const requireFirebaseAuth = async (req, res, next) => {
 // Middleware
 app.use(cors());
 app.set('trust proxy', 1); // Enable trust proxy for correct IP detection behind load balancers
-app.use(express.json({ limit: '15mb' })); // MUST be before route handlers (base64 images via proxy)
+// Payments first: its Stripe webhook needs the untouched raw body for signature
+// verification. The router parses JSON itself for every other payments route.
 app.use('/api/payments', paymentsRouter);
+app.use(express.json({ limit: '15mb' })); // MUST be before route handlers (base64 images via proxy)
 app.use('/api/proxy', proxyRouter);
+// ConverterAdk: multipart uploads are parsed by multer inside the router, so
+// mounting after express.json() is safe (JSON parser ignores multipart bodies).
+app.use('/api/converter', converterRouter);
 
 // ─── Health Check ────────────────────────────────────────────────
 app.get('/api/health', (req, res) => {
@@ -145,8 +148,6 @@ app.get('/api/health', (req, res) => {
 // Returns the correct overlay state for a given path
 const VALID_OVERLAYS = {
   'codeadk': 'compiler',
-  'converteradk': 'converter',
-  'converteradk/history': 'converter-history',
 };
 app.get('/api/route/resolve', (req, res) => {
   const { path: routePath, sessionId } = req.query;

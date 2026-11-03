@@ -79,3 +79,33 @@ export const confirmCardPayment = async (
     transactionId: paymentIntent.id
   };
 };
+
+/**
+ * Ask the server to verify the PaymentIntent and activate the plan right away.
+ * The webhook does the same thing asynchronously; this makes checkout instant
+ * and covers deployments where the webhook is not configured yet.
+ */
+export const finalizePayment = async (paymentIntentId: string): Promise<PaymentResult> => {
+  try {
+    const token = await auth.currentUser?.getIdToken().catch(() => null);
+    if (!token) return { success: false, error: 'Please sign in before paying.' };
+
+    const response = await fetch(`${API_BASE}/api/payments/confirm`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify({ paymentIntentId }),
+    });
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(data.error || 'Could not verify the payment.');
+    }
+
+    return { success: true, transactionId: paymentIntentId };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+};

@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
+import { onAuthStateChanged, User } from 'firebase/auth';
 import { 
   Check, 
   Sparkles, 
@@ -14,14 +16,34 @@ import {
   X,
   Lock,
   ShieldCheck,
-  ChevronRight
+  ChevronRight,
+  Loader2
 } from 'lucide-react';
 import { readString, writeString } from '../services/storage';
+import { auth } from '../services/firebase';
+import { createPaymentIntent, confirmCardPayment, finalizePayment } from '../services/stripeService';
+import AuthModal from './AuthModal';
 
 // --- Types ---
 
 type BillingCycle = 'monthly' | 'yearly';
 type PaymentMethod = 'card' | 'paypal' | 'transfer';
+
+// Billing contact for methods that are not self-serve yet.
+const SUPPORT_EMAIL = 'crazybibek4444@gmail.com';
+
+const CARD_ELEMENT_OPTIONS = {
+  style: {
+    base: {
+      fontSize: '15px',
+      color: '#f8fafc',
+      fontFamily: 'Inter, system-ui, -apple-system, sans-serif',
+      '::placeholder': { color: '#64748b' },
+    },
+    invalid: { color: '#f87171', iconColor: '#f87171' },
+  },
+  hidePostalCode: false,
+};
 
 interface PricingTier {
   id: string;
@@ -103,16 +125,26 @@ const PaymentModal = ({
   isOpen, 
   onClose, 
   tier, 
-  billingCycle 
+  billingCycle,
+  user,
+  onRequestSignIn,
+  onActivated,
 }: { 
   isOpen: boolean; 
   onClose: () => void; 
   tier: PricingTier | null;
   billingCycle: BillingCycle;
+  user: User | null;
+  onRequestSignIn: () => void;
+  onActivated: (planId: string) => void;
 }) => {
+  const stripe = useStripe();
+  const elements = useElements();
   const [method, setMethod] = useState<PaymentMethod>('card');
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [cardName, setCardName] = useState('');
 
   // Prevent body scroll when modal is open
   useEffect(() => {
@@ -121,10 +153,12 @@ const PaymentModal = ({
     } else {
       document.body.style.overflow = 'unset';
       // Reset state when closing
-      setTimeout(() => {
+      const timer = setTimeout(() => {
         setIsSuccess(false);
         setIsProcessing(false);
+        setError(null);
       }, 300);
+      return () => clearTimeout(timer);
     }
   }, [isOpen]);
 
@@ -134,14 +168,65 @@ const PaymentModal = ({
   const displayPrice = price === 0 ? 'Free' : `$${price}`;
   const subText = price === 0 ? '' : billingCycle === 'monthly' ? '/ month' : '/ year';
 
-  const handlePayment = (e: React.FormEvent) => {
+  const handleCardPayment = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!user) { onRequestSignIn(); return; }
+    if (!stripe || !elements) {
+      setError('Payment form is still loading. Please try again.');
+      return;
+    }
+    const card = elements.getElement(CardElement);
+    if (!card) {
+      setError('Card form is not ready. Please try again.');
+      return;
+    }
+
+    setError(null);
     setIsProcessing(true);
-    // Simulate API call
-    setTimeout(() => {
+
+    const intent = await createPaymentIntent(tier.id, billingCycle);
+    if (!intent.success || !intent.clientSecret) {
+      setError(intent.error || 'Could not start checkout. Please try again.');
       setIsProcessing(false);
-      setIsSuccess(true);
-    }, 2000);
+      return;
+    }
+
+    const result = await confirmCardPayment(intent.clientSecret, card, {
+      email: user.email || '',
+      name: cardName.trim() || user.displayName || undefined,
+    });
+
+    if (!result.success) {
+      setError(result.error || 'Payment failed. Please check your card and try again.');
+      setIsProcessing(false);
+      return;
+    }
+
+    // Verify the PaymentIntent server-side right away (webhooks are a backup).
+    if (result.transactionId) {
+      await finalizePayment(result.transactionId);
+    }
+
+    // The Stripe webhook writes the subscription doc and the `pro` custom claim.
+    // Force-refresh the ID token until the claim lands so the UI unlocks without
+    // a manual page reload.
+    let activated = false;
+    try {
+      for (let attempt = 0; attempt < 6; attempt++) {
+        const tokenResult = await user.getIdTokenResult(true);
+        if ((tokenResult.claims as { pro?: boolean }).pro) {
+          activated = true;
+          break;
+        }
+        await new Promise(resolve => setTimeout(resolve, 1500));
+      }
+    } catch {
+      // Webhooks can lag; the success screen still confirms the payment.
+    }
+    if (activated) onActivated(tier.id);
+
+    setIsProcessing(false);
+    setIsSuccess(true);
   };
 
   return (
@@ -174,13 +259,16 @@ const PaymentModal = ({
               <div className="w-20 h-20 bg-green-500/20 rounded-full flex items-center justify-center mb-2">
                 <Check className="w-10 h-10 text-green-500" />
               </div>
-              <h3 className="text-2xl font-bold text-white">Payment Successful!</h3>
-              <p className="text-slate-400 max-w-xs mx-auto">Welcome to Tufan {tier.name}. Your account has been upgraded instantly.</p>
+              <h3 className="text-2xl font-bold text-white">Payment received</h3>
+              <p className="text-slate-400 max-w-xs mx-auto">
+                Welcome to Tufan {tier.name}. Your plan is active — if a feature still asks you to
+                upgrade, refresh the page once in a few seconds.
+              </p>
               <button 
                 onClick={onClose}
                 className="mt-4 px-8 py-3 bg-white text-slate-900 rounded-xl font-bold hover:bg-slate-200 transition-colors"
               >
-                Start Using Pro
+                Done
               </button>
             </div>
           ) : (
@@ -233,100 +321,100 @@ const PaymentModal = ({
               {/* Dynamic Forms */}
               <div className="min-h-[200px]">
                 {method === 'card' && (
-                  <form onSubmit={handlePayment} className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-200">
+                  <form onSubmit={handleCardPayment} className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-200">
                     <div className="space-y-2">
-                      <label className="text-xs text-slate-400">Card Number</label>
-                      <div className="relative">
-                        <CreditCard className="absolute left-3 top-3 w-4 h-4 text-slate-500" />
-                        <input 
-                          type="text" 
-                          placeholder="0000 0000 0000 0000" 
-                          className="w-full bg-slate-800 border border-slate-700 rounded-xl py-2.5 pl-10 pr-4 text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 transition-colors"
+                      <label className="text-xs text-slate-400">Email</label>
+                      <div className="w-full bg-slate-800/60 border border-slate-700 rounded-xl py-2.5 px-4 text-sm text-slate-300 truncate">
+                        {user?.email || 'Sign in required'}
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-xs text-slate-400">Name on card</label>
+                      <input
+                        type="text"
+                        value={cardName}
+                        onChange={(e) => setCardName(e.target.value)}
+                        placeholder={user?.displayName || 'Full name'}
+                        autoComplete="cc-name"
+                        className="w-full bg-slate-800 border border-slate-700 rounded-xl py-2.5 px-4 text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 transition-colors"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-xs text-slate-400">Card details</label>
+                      <div className={`bg-slate-800 border rounded-xl py-3.5 px-4 transition-colors ${error ? 'border-red-500/60' : 'border-slate-700 focus-within:border-indigo-500'}`}>
+                        <CardElement
+                          options={CARD_ELEMENT_OPTIONS}
+                          onChange={(event) => {
+                            if (event.error) setError(event.error.message);
+                            else if (event.complete) setError(null);
+                          }}
                         />
                       </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <label className="text-xs text-slate-400">Expiry</label>
-                        <input 
-                          type="text" 
-                          placeholder="MM/YY" 
-                          className="w-full bg-slate-800 border border-slate-700 rounded-xl py-2.5 px-4 text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 transition-colors"
-                        />
+                    {error && (
+                      <div className="flex items-start gap-2 text-xs text-red-400 leading-relaxed">
+                        <X className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                        <span>{error}</span>
                       </div>
-                      <div className="space-y-2">
-                        <label className="text-xs text-slate-400">CVC</label>
-                        <input 
-                          type="text" 
-                          placeholder="123" 
-                          className="w-full bg-slate-800 border border-slate-700 rounded-xl py-2.5 px-4 text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 transition-colors"
-                        />
-                      </div>
-                    </div>
+                    )}
                     <div className="pt-2">
-                      <button 
-                        disabled={isProcessing}
-                        type="submit" 
+                      <button
+                        disabled={isProcessing || !stripe}
+                        type="submit"
                         className="w-full py-3.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold shadow-lg shadow-indigo-500/25 transition-all active:scale-[0.98] flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
                       >
                         {isProcessing ? (
-                          <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                          <Loader2 className="w-5 h-5 animate-spin" />
+                        ) : !user ? (
+                          'Sign in to continue'
                         ) : (
                           <>Pay {displayPrice} <ChevronRight className="w-4 h-4" /></>
                         )}
                       </button>
                       <div className="flex items-center justify-center gap-2 mt-4 text-slate-500 text-xs">
-                        <Lock className="w-3 h-3" /> Secure SSL Encryption
+                        <Lock className="w-3 h-3" /> Secured by Stripe · Cancel anytime
                       </div>
                     </div>
                   </form>
                 )}
 
                 {method === 'paypal' && (
-                  <div className="h-full flex flex-col items-center justify-center text-center space-y-6 py-8 animate-in fade-in slide-in-from-right-4 duration-200">
+                  <div className="h-full flex flex-col items-center justify-center text-center space-y-4 py-8 animate-in fade-in slide-in-from-right-4 duration-200">
                     <div className="w-16 h-16 bg-blue-500/10 rounded-full flex items-center justify-center">
                       <Wallet className="w-8 h-8 text-blue-500" />
                     </div>
-                    <div className="space-y-2">
-                      <h4 className="text-white font-bold">Pay with PayPal</h4>
-                      <p className="text-slate-400 text-sm max-w-[200px]">You will be redirected to PayPal to complete your purchase securely.</p>
-                    </div>
-                    <button 
-                      onClick={handlePayment}
-                      disabled={isProcessing}
+                    <h4 className="text-white font-bold">PayPal invoicing</h4>
+                    <p className="text-slate-400 text-sm max-w-[260px]">
+                      Card checkout is live today. For PayPal we send a secure invoice and activate
+                      your plan once it clears.
+                    </p>
+                    <a
+                      href={`mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(`PayPal upgrade to ${tier.name} (${billingCycle})`)}`}
                       className="w-full py-3.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold shadow-lg shadow-blue-500/25 transition-all active:scale-[0.98] flex items-center justify-center gap-2"
                     >
-                       {isProcessing ? 'Connecting...' : 'Proceed to PayPal'}
-                    </button>
+                      Request a PayPal invoice
+                    </a>
                   </div>
                 )}
 
                 {method === 'transfer' && (
                   <div className="h-full flex flex-col space-y-4 py-2 animate-in fade-in slide-in-from-right-4 duration-200">
-                    <div className="p-4 bg-slate-800 rounded-xl border border-slate-700 space-y-3">
-                      <div className="flex justify-between text-sm">
-                        <span className="text-slate-400">Bank Name</span>
-                        <span className="text-white font-mono">Silicon Valley Bank</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-slate-400">Account</span>
-                        <span className="text-white font-mono">0192 3847 5648</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-slate-400">Swift</span>
-                        <span className="text-white font-mono">SVBKUS6S</span>
-                      </div>
+                    <div className="p-4 bg-slate-800 rounded-xl border border-slate-700 space-y-2">
+                      <h4 className="text-white font-bold text-sm">Bank transfer</h4>
+                      <p className="text-slate-400 text-xs leading-relaxed">
+                        We'll email you the invoice and bank details. Your plan activates after the
+                        transfer clears (usually 1–2 business days).
+                      </p>
                     </div>
                     <p className="text-xs text-slate-500 leading-relaxed">
-                      Please use your email as the reference. Your account will be upgraded manually within 24 hours of confirmation.
+                      Include your account email as the payment reference so we can match it.
                     </p>
-                    <button 
-                      onClick={handlePayment}
-                      disabled={isProcessing}
-                      className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold shadow-lg shadow-emerald-500/25 transition-all active:scale-[0.98]"
+                    <a
+                      href={`mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(`Bank transfer upgrade to ${tier.name} (${billingCycle})`)}`}
+                      className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold shadow-lg shadow-emerald-500/25 transition-all active:scale-[0.98] text-center"
                     >
-                      I've Sent the Transfer
-                    </button>
+                      Request bank details
+                    </a>
                   </div>
                 )}
               </div>
@@ -349,21 +437,67 @@ const PricingPage: React.FC = () => {
   const [billingCycle, setBillingCycle] = useState<BillingCycle>('monthly');
   const [selectedTier, setSelectedTier] = useState<PricingTier | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [user, setUser] = useState<User | null>(auth.currentUser);
+  const [currentPlanId, setCurrentPlanId] = useState<string | null>(null);
+  const [isAuthOpen, setIsAuthOpen] = useState(false);
+  const [pendingTier, setPendingTier] = useState<PricingTier | null>(null);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
     writeString('theme', theme, { persist: 'both' });
   }, [theme]);
 
+  // Keep the CTA in sync with the user's entitlement (server-set `pro` claim).
+  useEffect(() => {
+    let active = true;
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      if (!active) return;
+      setUser(currentUser);
+      if (!currentUser) {
+        setCurrentPlanId(null);
+        return;
+      }
+      try {
+        const token = await currentUser.getIdTokenResult(true);
+        const claims = token.claims as { pro?: boolean; planId?: string };
+        if (active) setCurrentPlanId(claims.pro ? (claims.planId || null) : null);
+      } catch {
+        if (active) setCurrentPlanId(null);
+      }
+    });
+    return () => { active = false; unsubscribe(); };
+  }, []);
+
+  // Resume checkout automatically after a guest signs in.
+  useEffect(() => {
+    if (user && pendingTier) {
+      setSelectedTier(pendingTier);
+      setIsModalOpen(true);
+      setPendingTier(null);
+      setIsAuthOpen(false);
+    }
+  }, [user, pendingTier]);
+
   const toggleTheme = () => setTheme(prev => prev === 'light' ? 'dark' : 'light');
 
   const handleSelectPlan = (tier: PricingTier) => {
     if (tier.id === 'starter') {
       navigate('/');
-    } else {
-      setSelectedTier(tier);
-      setIsModalOpen(true);
+      return;
     }
+    if (!user) {
+      setPendingTier(tier);
+      setIsAuthOpen(true);
+      return;
+    }
+    setSelectedTier(tier);
+    setIsModalOpen(true);
+  };
+
+  const handleRequestSignIn = () => {
+    setIsModalOpen(false);
+    setPendingTier(selectedTier);
+    setIsAuthOpen(true);
   };
 
   return (
@@ -492,14 +626,15 @@ const PricingPage: React.FC = () => {
 
                 <button 
                   onClick={() => handleSelectPlan(tier)}
-                  className={`w-full py-4 rounded-xl text-sm font-bold uppercase tracking-wider transition-all active:scale-[0.98]
+                  disabled={currentPlanId === tier.id}
+                  className={`w-full py-4 rounded-xl text-sm font-bold uppercase tracking-wider transition-all active:scale-[0.98] disabled:opacity-60 disabled:cursor-default
                     ${tier.popular 
                       ? 'bg-white text-indigo-600 shadow-lg shadow-indigo-500/20 hover:bg-indigo-50' 
                       : theme === 'dark' 
                         ? 'bg-slate-800 text-white hover:bg-slate-700 border border-slate-700' 
                         : 'bg-slate-100 text-slate-900 hover:bg-slate-200 border border-slate-200'}`}
                 >
-                  {tier.id === 'starter' ? 'Current Plan' : 'Select Plan'}
+                  {tier.id === 'starter' || currentPlanId === tier.id ? 'Current Plan' : 'Select Plan'}
                 </button>
               </div>
             );
@@ -531,6 +666,16 @@ const PricingPage: React.FC = () => {
         onClose={() => setIsModalOpen(false)} 
         tier={selectedTier}
         billingCycle={billingCycle}
+        user={user}
+        onRequestSignIn={handleRequestSignIn}
+        onActivated={(planId) => setCurrentPlanId(planId)}
+      />
+
+      <AuthModal
+        isOpen={isAuthOpen}
+        onClose={() => setIsAuthOpen(false)}
+        initialMode="signin"
+        theme={theme}
       />
     </div>
   );

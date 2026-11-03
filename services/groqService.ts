@@ -1,5 +1,5 @@
 
-import { proxyPost } from './serverProxy';
+import { proxyPost, directFallbackAllowed, aiUnavailableError } from './serverProxy';
 
 import { extractThinking, ModelResponse } from './modelThinking';
 
@@ -14,12 +14,6 @@ export async function generateGroqResponse(
   prompt: string,
   history: { role: 'user' | 'model'; parts: { text: string }[] }[]
 ): Promise<ModelResponse> {
-  const apiKey = import.meta.env.VITE_GROQ_API_KEY;
-
-  if (!apiKey) {
-    throw new Error('Groq API Key not found. Please add VITE_GROQ_API_KEY to your .env.local file.');
-  }
-
   // Format history for Groq (OpenAI format)
   const messages: GroqMessage[] = [
     {
@@ -45,7 +39,18 @@ export async function generateGroqResponse(
     }
   } catch (e: any) {
     if (e?.message?.includes('Daily chat limit')) throw e;
-    // unreachable server → direct fallback below
+    // unreachable server → direct fallback below (development only)
+  }
+
+  // Production builds are proxy-only: never expose provider keys to the browser.
+  if (!directFallbackAllowed()) {
+    throw aiUnavailableError('Fast chat');
+  }
+
+  const apiKey = import.meta.env.VITE_GROQ_API_KEY;
+
+  if (!apiKey) {
+    throw new Error('Groq API Key not found for direct mode. Configure the server proxy instead.');
   }
 
   try {

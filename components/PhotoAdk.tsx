@@ -16,16 +16,26 @@ import {
   MoveHorizontal,
   Trash2,
   ArrowLeft,
-  Check
+  Cpu,
+  Cloud,
+  ShieldCheck,
+  RotateCcw
 } from 'lucide-react';
 
-import { proxyPost } from '../services/serverProxy';
+import { proxyPost, directFallbackAllowed } from '../services/serverProxy';
 import { imageHistoryService } from '../services/imageHistoryService';
+import {
+  removeBackgroundOnDevice,
+  preloadFastEngine,
+  type BgEngine,
+  type BgProgress
+} from '../services/onDeviceBackgroundRemoval';
 
 // --- Types ---
 type ToolId = 'adktool' | 'genaiBackground' | 'upscaleUltra' | 'faceRetouch' | 'genaiReplace' | 'smartCrop';
 type Status = 'idle' | 'uploading' | 'processing' | 'complete' | 'error';
 type ToastType = 'error' | 'success' | 'info';
+type BgEngineChoice = BgEngine | 'cloud';
 
 interface Toast {
   id: string;
@@ -54,7 +64,7 @@ const TOOLS: ToolConfig[] = [
     id: 'adktool',
     label: 'Remove BG',
     endpoint: '/removebg',
-    description: 'Remove backgrounds instantly',
+    description: 'Private on-device cutouts',
     icon: Scissors,
     requiresPrompt: false,
     api: 'tools',
@@ -113,6 +123,13 @@ const TOOLS: ToolConfig[] = [
   },
 ];
 
+const BG_ENGINE_OPTIONS: { id: BgEngineChoice; label: string; hint: string; icon: React.ElementType }[] = [
+  { id: 'auto', label: 'Auto', hint: 'Fast on-device, switches to high quality if the subject is unclear.', icon: Cpu },
+  { id: 'fast', label: 'Fast', hint: 'Small on-device model for people and portraits. The engine files (~14 MB) cache after the first run.', icon: Cpu },
+  { id: 'quality', label: 'High quality', hint: 'On-device model for any subject. First run downloads ~40 MB, then it is cached and works offline.', icon: Sparkles },
+  { id: 'cloud', label: 'Cloud', hint: 'Picsart cloud fallback — uses your photo-edit credits.', icon: Cloud },
+];
+
 const BASE_URL = 'https://api.picsart.io/tools/1.0';
 const GENAI_BASE_URL = 'https://genai-api.picsart.io/v1';
 // GenAI jobs are async: POST returns { inference_id }, poll GET /painting/{id}
@@ -158,6 +175,12 @@ export default function PhotoEditorPro({ onClose, theme = 'dark' }: PhotoAdkProp
   const [sliderPos, setSliderPos] = useState(50);
   const [prompt, setPrompt] = useState('');
   const [toasts, setToasts] = useState<Toast[]>([]);
+  // On-device background removal
+  const [bgEngine, setBgEngine] = useState<BgEngineChoice>('auto');
+  const [bgProgress, setBgProgress] = useState<BgProgress | null>(null);
+  const [resultSource, setResultSource] = useState<'device' | 'cloud' | null>(null);
+  const [deviceEngineUsed, setDeviceEngineUsed] = useState<'fast' | 'quality' | null>(null);
+  const [cloudFallbackReady, setCloudFallbackReady] = useState(false);
 
   const sliderRef = useRef<HTMLDivElement>(null);
   const touchStartX = useRef<number | null>(null);
@@ -170,14 +193,24 @@ export default function PhotoEditorPro({ onClose, theme = 'dark' }: PhotoAdkProp
   const activeTool = useMemo(() => TOOLS.find(t => t.id === activeToolId) || TOOLS[0], [activeToolId]);
   const isProcessing = status === 'processing' || status === 'uploading';
   const hasResult = !!processedUrl;
+  const activeEngineHint = BG_ENGINE_OPTIONS.find(o => o.id === bgEngine)?.hint || '';
 
-  // Cleanup Object URLs
+  // Revoke blob URLs when they are replaced or the studio unmounts.
+  useEffect(() => () => {
+    if (previewUrl?.startsWith('blob:')) URL.revokeObjectURL(previewUrl);
+  }, [previewUrl]);
+  useEffect(() => () => {
+    if (processedUrl?.startsWith('blob:')) URL.revokeObjectURL(processedUrl);
+  }, [processedUrl]);
+
+  // Warm the tiny selfie model once the user has a photo and Remove BG is selected,
+  // so the first cutout is instant. Never download anything before that.
   useEffect(() => {
-    return () => {
-      if (previewUrl) URL.revokeObjectURL(previewUrl);
-      if (processedUrl) URL.revokeObjectURL(processedUrl);
-    };
-  }, []);
+    if (!selectedFile || activeToolId !== 'adktool' || (bgEngine !== 'auto' && bgEngine !== 'fast')) return;
+    const id = window.setTimeout(() => { preloadFastEngine().catch(() => undefined); }, 800);
+    return () => window.clearTimeout(id);
+  }, [selectedFile, activeToolId, bgEngine]);
+
 
   // Toast Logic
   const addToast = useCallback((type: ToastType, message: string) => {
@@ -205,6 +238,10 @@ export default function PhotoEditorPro({ onClose, theme = 'dark' }: PhotoAdkProp
     setStatus('idle');
     setErrorMsg(null);
     setSliderPos(50);
+    setResultSource(null);
+    setDeviceEngineUsed(null);
+    setCloudFallbackReady(false);
+    setBgProgress(null);
   };
 
   const onFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -227,6 +264,10 @@ export default function PhotoEditorPro({ onClose, theme = 'dark' }: PhotoAdkProp
     setStatus('idle');
     setErrorMsg(null);
     setMaskFile(null);
+    setResultSource(null);
+    setDeviceEngineUsed(null);
+    setCloudFallbackReady(false);
+    setBgProgress(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
     if (maskInputRef.current) maskInputRef.current.value = '';
   };
@@ -295,16 +336,59 @@ export default function PhotoEditorPro({ onClose, theme = 'dark' }: PhotoAdkProp
     }
   };
 
-  // API Logic
-  const runTool = async () => {
+  // --- On-device background removal (Remove BG) ---
+  const friendlyDeviceError = (err: any): string => {
+    const raw = String(err?.message || '');
+    if (/webgpu|gpu|adapter/i.test(raw)) {
+      return 'This browser could not start the on-device GPU model. Try Fast mode, or use the cloud fallback.';
+    }
+    if (/fetch|network|failed to load|import|dynamically imported/i.test(raw)) {
+      return 'Could not load the on-device model. Check your connection once, or use the cloud fallback.';
+    }
+    return raw || 'On-device removal failed.';
+  };
+
+  const runOnDevice = async (engine: Exclude<BgEngineChoice, 'cloud'>) => {
+    if (!selectedFile) return;
+    setStatus('processing');
+    setErrorMsg(null);
+    setCloudFallbackReady(false);
+    setResultSource(null);
+    setDeviceEngineUsed(null);
+    setBgProgress({ stage: 'loading', message: 'Preparing the on-device studio…' });
+
+    try {
+      const result = await removeBackgroundOnDevice(selectedFile, engine, setBgProgress);
+      const url = URL.createObjectURL(result.blob);
+      setProcessedUrl(url);
+      setResultSource('device');
+      setDeviceEngineUsed(result.engine);
+      setStatus('complete');
+      addToast(
+        'success',
+        result.engine === 'fast'
+          ? `Cutout ready on device in ${(result.ms / 1000).toFixed(1)}s`
+          : 'High-quality cutout ready',
+      );
+      // Local results have no durable URL — log the job, not the blob.
+      imageHistoryService.logImageJob({ tool: activeTool.id, prompt: '', outputUrl: null, status: 'complete' });
+    } catch (err: any) {
+      console.error(err);
+      setStatus('error');
+      setErrorMsg(friendlyDeviceError(err));
+      setCloudFallbackReady(true);
+      addToast('error', 'On-device removal failed');
+      imageHistoryService.logImageJob({ tool: activeTool.id, prompt: '', outputUrl: null, status: 'error' });
+    } finally {
+      setBgProgress(null);
+    }
+  };
+
+  // Cloud Logic (Picsart) — used by the other tools and as the explicit fallback.
+  const runCloudTool = async () => {
     if (!selectedFile) return;
 
-    const apiKey = import.meta.env.VITE_PICSART_API_KEY || (import.meta as any).env?.REACT_APP_PICSART_API_KEY || 'YOUR_API_KEY_HERE';
-    if (apiKey === 'YOUR_API_KEY_HERE') {
-      addToast('error', 'API key missing. Add VITE_PICSART_API_KEY to .env');
-      setStatus('error');
-      return;
-    }
+    const apiKey = import.meta.env.VITE_PICSART_API_KEY || (import.meta as any).env?.REACT_APP_PICSART_API_KEY || '';
 
     // Smart Crop defaults an empty segment to "foreground", so don't block it
     if (activeTool.requiresPrompt && activeTool.id !== 'smartCrop' && !prompt.trim()) {
@@ -314,6 +398,8 @@ export default function PhotoEditorPro({ onClose, theme = 'dark' }: PhotoAdkProp
 
     setStatus('processing');
     setErrorMsg(null);
+    setBgProgress(null);
+    setDeviceEngineUsed(null);
 
     try {
       // Prefer the metered server proxy (per-user daily quota, key stays server-side).
@@ -349,6 +435,7 @@ export default function PhotoEditorPro({ onClose, theme = 'dark' }: PhotoAdkProp
       if (proxied) {
         if (proxied.status === 200 && proxied.json?.url) {
           setProcessedUrl(proxied.json.url);
+          setResultSource('cloud');
           setStatus('complete');
           addToast('success', 'Done');
           return;
@@ -356,6 +443,11 @@ export default function PhotoEditorPro({ onClose, theme = 'dark' }: PhotoAdkProp
         // Quota exhausted → surface it, do NOT bypass via direct key
         if (proxied.status === 429) throw new Error(proxied.json?.error || 'Daily photo-edit limit reached.');
         // Other server errors → fall through to direct-key flow
+      }
+
+      // Production builds are proxy-only: never expose provider keys to the browser.
+      if (!directFallbackAllowed() || !apiKey) {
+        throw new Error('Photo editing is temporarily unavailable. Please try again in a moment.');
       }
 
       const headers = { 'X-Picsart-API-Key': apiKey };
@@ -420,6 +512,7 @@ export default function PhotoEditorPro({ onClose, theme = 'dark' }: PhotoAdkProp
       }
 
       setProcessedUrl(resultUrl);
+      setResultSource('cloud');
       setStatus('complete');
       addToast('success', 'Done');
       // Verified per-user history in Supabase (fire-and-forget — never blocks UI)
@@ -441,6 +534,23 @@ export default function PhotoEditorPro({ onClose, theme = 'dark' }: PhotoAdkProp
         status: 'error',
       });
     }
+  };
+
+  // Remove BG → on-device by default; every other tool (and the explicit
+  // "Cloud" choice) goes through the metered Picsart flow.
+  const runTool = async (engineOverride?: BgEngineChoice) => {
+    if (!selectedFile) return;
+    const engine = engineOverride ?? bgEngine;
+    if (activeTool.id === 'adktool' && engine !== 'cloud') {
+      await runOnDevice(engine);
+      return;
+    }
+    await runCloudTool();
+  };
+
+  const retryWithCloud = () => {
+    setBgEngine('cloud');
+    void runTool('cloud');
   };
 
   const downloadImage = async () => {
@@ -480,6 +590,10 @@ export default function PhotoEditorPro({ onClose, theme = 'dark' }: PhotoAdkProp
           </button>
         )}
         <h1 className="text-[14px] font-semibold tracking-tight px-1">Photo studio</h1>
+        <span className={`hidden sm:inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10.5px] font-medium border ${bgEngine === 'cloud' ? (isDark ? 'border-sky-500/20 bg-sky-500/10 text-sky-300' : 'border-sky-600/20 bg-sky-50 text-sky-700') : (isDark ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-300' : 'border-emerald-600/20 bg-emerald-50 text-emerald-700')}`}>
+          {bgEngine === 'cloud' ? <Cloud size={11} /> : <ShieldCheck size={11} />}
+          {bgEngine === 'cloud' ? 'Cloud BG' : 'On-device BG'}
+        </span>
         <span className="flex-1" />
         {previewUrl && (
           <button
@@ -579,9 +693,20 @@ export default function PhotoEditorPro({ onClose, theme = 'dark' }: PhotoAdkProp
                       </>
                     )}
                     {isProcessing && (
-                      <div className={`absolute inset-0 flex flex-col items-center justify-center gap-2 backdrop-blur-sm ${isDark ? 'bg-black/60' : 'bg-white/70'}`}>
+                      <div className={`absolute inset-0 flex flex-col items-center justify-center gap-2 px-6 backdrop-blur-sm ${isDark ? 'bg-black/60' : 'bg-white/70'}`}>
                         <Loader2 size={26} className="animate-spin opacity-70" />
-                        <p className="text-[13px] font-medium">Enhancing…</p>
+                        <p className="text-[13px] font-medium text-center">{bgProgress?.message || 'Enhancing…'}</p>
+                        {bgProgress?.percent != null && (
+                          <div className={`w-40 h-1 rounded-full overflow-hidden ${isDark ? 'bg-white/15' : 'bg-black/10'}`}>
+                            <div
+                              className={`h-full rounded-full transition-all ${isDark ? 'bg-emerald-400' : 'bg-emerald-600'}`}
+                              style={{ width: `${Math.max(2, Math.min(100, bgProgress.percent))}%` }}
+                            />
+                          </div>
+                        )}
+                        {bgProgress?.percent != null && (
+                          <span className={`text-[11px] ${isDark ? 'text-neutral-400' : 'text-neutral-500'}`}>{Math.round(bgProgress.percent)}%</span>
+                        )}
                       </div>
                     )}
                   </div>
@@ -591,8 +716,11 @@ export default function PhotoEditorPro({ onClose, theme = 'dark' }: PhotoAdkProp
                   <span className="truncate flex-1">{selectedFile?.name}</span>
                   {selectedFile && <span>{(selectedFile.size / 1024 / 1024).toFixed(2)} MB</span>}
                   {hasResult && (
-                    <span className={`flex items-center gap-1 font-medium ${isDark ? 'text-emerald-400' : 'text-emerald-600'}`}>
-                      <Check size={12} /> Done
+                    <span className={`flex items-center gap-1 font-medium ${resultSource === 'device' ? (isDark ? 'text-emerald-400' : 'text-emerald-600') : (isDark ? 'text-sky-400' : 'text-sky-600')}`}>
+                      {resultSource === 'device' ? <Cpu size={12} /> : <Cloud size={12} />}
+                      {resultSource === 'device'
+                        ? (deviceEngineUsed === 'quality' ? 'On-device · HQ' : 'On-device · Fast')
+                        : 'Cloud'}
                     </span>
                   )}
                 </div>
@@ -608,6 +736,40 @@ export default function PhotoEditorPro({ onClose, theme = 'dark' }: PhotoAdkProp
               <p className={`text-[14px] font-medium ${fg}`}>{activeTool.label}</p>
               <p className={`text-[12px] ${muted}`}>{activeTool.description}</p>
             </div>
+
+            {activeTool.id === 'adktool' && (
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className={`text-[12px] font-medium ${muted}`}>Engine</label>
+                  <span className={`inline-flex items-center gap-1 text-[10.5px] font-medium ${bgEngine === 'cloud' ? (isDark ? 'text-sky-400' : 'text-sky-600') : (isDark ? 'text-emerald-400' : 'text-emerald-600')}`}>
+                    {bgEngine === 'cloud' ? <Cloud size={11} /> : <ShieldCheck size={11} />}
+                    {bgEngine === 'cloud' ? 'Cloud credits' : 'Stays on device'}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {BG_ENGINE_OPTIONS.map((opt) => {
+                    const Icon = opt.icon;
+                    const active = bgEngine === opt.id;
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => setBgEngine(opt.id)}
+                        disabled={isProcessing}
+                        title={opt.hint}
+                        className={`flex items-center gap-1.5 px-2.5 py-2 rounded-xl border text-[12px] font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${active
+                          ? (isDark ? 'bg-white text-black border-white' : 'bg-neutral-900 text-white border-neutral-900')
+                          : (isDark ? 'border-white/10 text-neutral-400 hover:bg-white/[0.06] hover:text-neutral-200' : 'border-black/10 text-neutral-600 hover:bg-black/[0.04]')}`}
+                      >
+                        <Icon size={13} strokeWidth={1.8} />
+                        <span className="truncate">{opt.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className={`text-[11px] leading-relaxed mt-1.5 ${muted}`}>{activeEngineHint}</p>
+              </div>
+            )}
 
             {activeTool.requiresPrompt && (
               <div>
@@ -643,17 +805,33 @@ export default function PhotoEditorPro({ onClose, theme = 'dark' }: PhotoAdkProp
             )}
 
             {errorMsg && (
-              <p className="text-[12.5px] text-red-500 leading-snug">{errorMsg}</p>
+              <div className="space-y-2">
+                <p className="text-[12.5px] text-red-500 leading-snug">{errorMsg}</p>
+                {cloudFallbackReady && activeTool.id === 'adktool' && bgEngine !== 'cloud' && (
+                  <button
+                    onClick={retryWithCloud}
+                    disabled={isProcessing}
+                    className={`w-full py-2 rounded-xl text-[12.5px] font-medium flex items-center justify-center gap-2 border transition-colors disabled:opacity-50 ${isDark ? 'border-sky-400/30 text-sky-300 hover:bg-sky-400/10' : 'border-sky-600/30 text-sky-700 hover:bg-sky-50'}`}
+                  >
+                    <RotateCcw size={14} />
+                    Retry with cloud
+                  </button>
+                )}
+              </div>
             )}
 
             <div className="space-y-2">
               <button
-                onClick={runTool}
+                onClick={() => void runTool()}
                 disabled={!previewUrl || isProcessing}
                 className="w-full py-2.5 rounded-full text-[13.5px] font-medium flex items-center justify-center gap-2 transition-all active:scale-[0.98] disabled:opacity-30 disabled:cursor-not-allowed bg-black text-white hover:bg-neutral-800 dark:bg-white dark:text-black dark:hover:bg-neutral-200"
               >
-                {isProcessing ? <Loader2 size={15} className="animate-spin" /> : <Wand2 size={15} />}
-                {isProcessing ? 'Processing…' : previewUrl ? `Apply ${activeTool.label}` : 'Upload an image first'}
+                {isProcessing ? <Loader2 size={15} className="animate-spin" /> : activeTool.id === 'adktool' && bgEngine !== 'cloud' ? <Cpu size={15} /> : <Wand2 size={15} />}
+                {isProcessing
+                  ? 'Processing…'
+                  : previewUrl
+                    ? (activeTool.id === 'adktool' && bgEngine !== 'cloud' ? 'Remove background on device' : `Apply ${activeTool.label}`)
+                    : 'Upload an image first'}
               </button>
               {hasResult && (
                 <button

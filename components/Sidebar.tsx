@@ -226,7 +226,6 @@ const Sidebar: React.FC<SidebarProps> = ({
               {[
                 { label: 'CodeAdk', icon: Code2, path: '/codeadk' },
                 { label: 'PhotoAdk', icon: ImageIcon, path: '/photoadk' },
-                { label: 'Converter', icon: Repeat2, path: '/converteradk' },
               ].map(t => (
                 <button
                   key={t.path}

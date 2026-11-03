@@ -1,5 +1,5 @@
 
-import { proxyPost } from './serverProxy';
+import { proxyPost, directFallbackAllowed } from './serverProxy';
 
 const WORLD_NEWS_KEY = import.meta.env.VITE_WORLD_NEWS_API_KEY || "";
 const NEWSDATA_KEY = import.meta.env.VITE_NEWSDATA_API_KEY || "";
@@ -133,6 +133,11 @@ export async function fetchLatestNews(input: string): Promise<NewsArticle[]> {
       combined = proxyRes.json.articles;
     }
     if (!combined) {
+      // Production builds never use client-side news keys (they would be public).
+      if (!directFallbackAllowed()) {
+        console.warn('[NewsService] Server proxy unavailable; skipping direct news providers in production.');
+        return [];
+      }
       // Direct-provider cascade: stop at the first provider with enough articles
       combined = await fetchTavilyDirect();
       if (combined.length < MIN_DIRECT_ARTICLES) combined = combined.concat(await fetchWorldNewsDirect());

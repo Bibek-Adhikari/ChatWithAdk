@@ -22,6 +22,16 @@
 - **Profile Management:**  
   Upload avatars, edit personal info, and personalize your chat experience.
 
+### 🖼️ On-device Photo studio
+
+- **Remove BG runs on the device** — the image never leaves the browser and no cloud credits are spent.
+- **Auto / Fast / High quality** engines:
+  - *Fast* uses MediaPipe Selfie Segmenter (best for people and portraits, ~14 MB engine files cached once).
+  - *High quality* uses `@imgly/background-removal` (any subject, ~40 MB model cached once).
+  - *Auto* starts fast and escalates to high quality when the subject is unclear.
+- **Cloud fallback** — if the local model fails, a “Retry with cloud” button uses the existing Picsart flow. The other studio tools (upscale, retouch, AI background, replace, crop) remain cloud-based.
+- **Fully offline option** — run `npm run ondevice:assets`, then set `VITE_ONDEVICE_WASM_URL`, `VITE_ONDEVICE_SEGMENTER_URL` and `VITE_ONDEVICE_IMGLY_PATH` to serve the WASM/model files from `public/ondevice/` instead of public CDNs.
+
 ---
 
 ## 🛠️ Technology Stack

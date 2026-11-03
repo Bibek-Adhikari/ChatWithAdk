@@ -29,6 +29,7 @@ import {
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { auth } from '../services/firebase';
+import { proxyPost, directFallbackAllowed, aiUnavailableError } from '../services/serverProxy';
 import { readNumber, readString, writeString } from '../services/storage';
 import { codeExplanationService } from '../services/codeExplanationService';
 
@@ -590,35 +591,59 @@ export default function VSCodeCompiler({ onClose, theme = 'dark' }: VSCodeCompil
     setShowExplanationModal(true);
 
     try {
-      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${import.meta.env.VITE_EXPLAINER_API_KEY || import.meta.env.VITE_GROQ_API_KEY}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          model: 'openai/gpt-oss-120b',
-          messages: [
-            {
-              role: 'system',
-              content: 'You are a helpful coding assistant. Explain the provided code in a clear, concise way. Break down the explanation into: 1) What the code does (overview), 2) Key components/functions, 3) How it works (step-by-step if applicable). Use markdown formatting for readability.'
-            },
-            {
-              role: 'user',
-              content: `Please explain this ${activeLanguage === 'web' ? activeTab.toUpperCase() : LANGUAGE_CONFIGS[activeLanguage as Exclude<Language, 'web'>].label} code:\n\n\`\`\`${getLanguage()}\n${code}\n\`\`\``
-            }
-          ],
-          temperature: 0.7,
-          max_tokens: 2048
-        })
-      });
+      const explainSystemPrompt = 'You are a helpful coding assistant. Explain the provided code in a clear, concise way. Break down the explanation into: 1) What the code does (overview), 2) Key components/functions, 3) How it works (step-by-step if applicable). Use markdown formatting for readability.';
+      const explainUserPrompt = `Please explain this ${activeLanguage === 'web' ? activeTab.toUpperCase() : LANGUAGE_CONFIGS[activeLanguage as Exclude<Language, 'web'>].label} code:\n\n\`\`\`${getLanguage()}\n${code}\n\`\`\``;
 
-      if (!response.ok) {
-        throw new Error(`API error: ${response.status}`);
+      let explanationText = '';
+
+      // Prefer the metered server proxy so the provider key never reaches the browser.
+      const proxied = await proxyPost<{ text: string }>('/chat', {
+        engine: 'groq',
+        model: 'openai/gpt-oss-120b',
+        messages: [
+          { role: 'system', content: explainSystemPrompt },
+          { role: 'user', content: explainUserPrompt }
+        ],
+        temperature: 0.7,
+        max_tokens: 2048
+      }).catch(() => null);
+
+      if (proxied?.status === 200 && typeof proxied.json?.text === 'string') {
+        explanationText = proxied.json.text;
+      } else if (proxied?.status === 429) {
+        throw new Error(proxied.json?.error || 'Daily chat limit reached. Upgrade to Pro.');
+      } else {
+        // Direct mode is development-only; production builds never ship provider keys.
+        if (!directFallbackAllowed()) throw aiUnavailableError('Code explanation');
+
+        const apiKey = import.meta.env.VITE_EXPLAINER_API_KEY || import.meta.env.VITE_GROQ_API_KEY;
+        if (!apiKey) throw new Error('Code explanation is unavailable. Configure the server proxy.');
+
+        const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            model: 'openai/gpt-oss-120b',
+            messages: [
+              { role: 'system', content: explainSystemPrompt },
+              { role: 'user', content: explainUserPrompt }
+            ],
+            temperature: 0.7,
+            max_tokens: 2048
+          })
+        });
+
+        if (!response.ok) {
+          throw new Error(`API error: ${response.status}`);
+        }
+
+        const data = await response.json();
+        explanationText = data.choices?.[0]?.message?.content || 'No explanation received.';
       }
 
-      const data = await response.json();
-      const explanationText = data.choices[0]?.message?.content || 'No explanation received.';
       setExplanation(explanationText);
 
       // Persist to Supabase if user is logged in

@@ -1,5 +1,5 @@
 
-import { proxyPost } from './serverProxy';
+import { proxyPost, directFallbackAllowed, aiUnavailableError } from './serverProxy';
 import { extractThinking, ModelResponse } from './modelThinking';
 import { DEFAULT_CRAFT_MODEL as DEFAULT_CODECRAFT_MODEL } from './codecraftModels';
 
@@ -50,12 +50,17 @@ export async function generateCodecraftResponse(
     }
   } catch (e: any) {
     if (e?.message?.includes('Daily chat limit')) throw e;
-    // unreachable server → direct fallback below
+    // unreachable server → direct fallback below (development only)
+  }
+
+  // Production builds are proxy-only: never expose provider keys to the browser.
+  if (!directFallbackAllowed()) {
+    throw aiUnavailableError('CodeCraft');
   }
 
   const apiKey = (import.meta as any).env?.VITE_CODECRAFT_API_KEY;
   if (!apiKey) {
-    throw new Error('CodeCraft API Key not found. Please add VITE_CODECRAFT_API_KEY to your .env file.');
+    throw new Error('CodeCraft is unavailable. Configure the server proxy.');
   }
 
   try {

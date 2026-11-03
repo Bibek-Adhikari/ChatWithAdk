@@ -1,7 +1,9 @@
 
-import { proxyPost } from './serverProxy';
+import { proxyPost, directFallbackAllowed, aiUnavailableError } from './serverProxy';
 
-const IMAGE_API_URL = import.meta.env.VITE_IMAGE_API_URL || 'https://backend.buildpicoapps.com/aero/run/image-generation-api?pk=v1-Z0FBQUFBQnBmeTlUS2lZdFVCSlQzWG1BTnN6ZXlpMTh6cExGZ2ZmWi1HQ3VRblNuRHg1SW5BOG9vdzdLdWd6U3RxYWw0REtiZkNycUxBQlZUV2o4MVVzUFpIZmFiVHBwZkE9PQ==';
+// No embedded token: the metered server proxy owns the image provider URL.
+// Direct mode is a development-only fallback and requires VITE_IMAGE_API_URL.
+const IMAGE_API_URL = import.meta.env.VITE_IMAGE_API_URL || '';
 
 export async function generateImageResponse(prompt: string): Promise<string> {
   try {
@@ -10,7 +12,10 @@ export async function generateImageResponse(prompt: string): Promise<string> {
     if (proxied) {
       if (proxied.status === 200 && proxied.json?.imageUrl) return proxied.json.imageUrl;
       if (proxied.status === 429) throw new Error(proxied.json?.error || 'Daily image limit reached. Upgrade to Pro.');
-      // other server errors → fall through to direct key below
+      // other server errors → fall through to direct key below (development only)
+    }
+    if (!directFallbackAllowed() || !IMAGE_API_URL) {
+      throw aiUnavailableError('Image generation');
     }
     const response = await fetch(IMAGE_API_URL, {
       method: 'POST',

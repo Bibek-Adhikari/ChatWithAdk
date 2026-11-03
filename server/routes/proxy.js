@@ -5,19 +5,24 @@
 // endpoints first and fall back to direct keys only when the server is
 // absent (static hosting) or cannot verify tokens yet.
 //
-// NOTE: token verification requires the service account project to match
-// the web app's Firebase project. Until aligned, verifyIdToken 401s and
-// clients transparently fall back to direct-key mode.
+//
+// Token verification lives in server/lib/firebaseAuth.js: firebase-admin when a
+// matching service account is configured, otherwise a strict RS256 check
+// against Google's public secure-token certs.
 import express from 'express';
-import { getApps, initializeApp, applicationDefault, cert } from 'firebase-admin/app';
-import { getAuth } from 'firebase-admin/auth';
-import { getFirestore } from 'firebase-admin/firestore';
+import crypto from 'node:crypto';
+import { getDb, verifyFirebaseToken } from '../lib/firebaseAuth.js';
+import { getEntitlement } from '../lib/entitlements.js';
 
 const router = express.Router();
 
 // --- Quotas (per user, per day) ---
-const FREE_LIMITS = { news: 20, picsart: 10, image: 10, chat: 20 };
-const PRO_LIMITS = { news: 200, picsart: 100, image: 100, chat: 1000 };
+const FREE_LIMITS = { news: 20, picsart: 10, image: 10, chat: 20, youtube: 20 };
+const PRO_LIMITS = { news: 200, picsart: 100, image: 100, chat: 1000, youtube: 200 };
+// Guests are metered by hashed IP so they can still try the product without a
+// client-side provider key ever leaving the server.
+const GUEST_LIMITS = { news: 5, picsart: 2, image: 2, chat: 5, youtube: 5 };
+const GUEST_SALT = process.env.GUEST_QUOTA_SALT || 'tufan-guest';
 const ADMIN_EMAILS = ['crazybibek4444@gmail.com', 'bibekadhikari0763@gmail.com'];
 
 // --- Upstream hosts ---
@@ -31,24 +36,35 @@ const IMAGE_API_URL =
 const ALLOWED_TOOLS_ENDPOINTS = new Set(['/removebg', '/upscale/ultra', '/enhance/face', '/smart-crop']);
 const ALLOWED_GENAI_ENDPOINTS = new Set(['/painting/replace-background', '/painting/inpaint']);
 
-const initFirebaseAdmin = () => {
-  if (getApps().length > 0) return;
-  const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
-  if (serviceAccountJson) {
-    initializeApp({ credential: cert(JSON.parse(serviceAccountJson)) });
-    return;
-  }
-  initializeApp({ credential: applicationDefault() });
-};
-
 const requireFirebaseAuth = async (req, res, next) => {
   try {
-    initFirebaseAdmin();
     const authHeader = req.headers.authorization || '';
     const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
     if (!token) return res.status(401).json({ error: 'Missing Authorization bearer token.' });
-    const decoded = await getAuth().verifyIdToken(token);
+    const decoded = await verifyFirebaseToken(token);
     req.firebaseUser = decoded;
+    return next();
+  } catch (error) {
+    console.error('Proxy auth failed:', error?.message || error);
+    return res.status(401).json({ error: 'Invalid or expired token.' });
+  }
+};
+
+// Guest-friendly variant: signed-in users are metered by uid, guests by hashed IP.
+const optionalFirebaseAuth = async (req, res, next) => {
+  const authHeader = req.headers.authorization || '';
+  if (!authHeader.startsWith('Bearer ')) {
+    const ip = req.ip || req.socket?.remoteAddress || 'unknown';
+    const hashed = crypto.createHash('sha256').update(`${GUEST_SALT}:${ip}`).digest('hex').slice(0, 16);
+    req.firebaseUser = null;
+    req.clientId = `guest_${hashed}`;
+    return next();
+  }
+
+  try {
+    const decoded = await verifyFirebaseToken(authHeader.slice(7));
+    req.firebaseUser = decoded;
+    req.clientId = decoded.uid;
     return next();
   } catch (error) {
     console.error('Proxy auth failed:', error?.message || error);
@@ -59,44 +75,44 @@ const requireFirebaseAuth = async (req, res, next) => {
 const todayStr = () => new Date().toISOString().slice(0, 10);
 
 async function isProUser(uid, email) {
+  if (!uid || uid.startsWith('guest_')) return false;
   if (email && ADMIN_EMAILS.includes(email)) return true;
-  try {
-    const u = await getAuth().getUser(uid);
-    if (u.customClaims?.pro) return true;
-  } catch { /* fall through to subscriptions doc */ }
-  try {
-    const snap = await getFirestore().collection('subscriptions').doc(uid).get();
-    if (snap.exists && snap.data()?.status === 'active') return true;
-  } catch { /* treat as free */ }
-  return false;
+  const entitlement = await getEntitlement(uid);
+  return !!entitlement?.pro;
 }
 
-// Reserve one unit of quota. Returns { ok, limit, remaining, pro }.
+// Reserve one unit of quota. Returns { ok, limit, remaining, pro, guest }.
 // Quota is reserved BEFORE the upstream call so retry-spam cannot bypass it.
-async function checkAndBump(uid, email, kind) {
-  const db = getFirestore();
-  const ref = db.collection('api_usage').doc(uid);
+async function checkAndBump(clientId, email, kind) {
+  const db = getDb();
+  const ref = db.collection('api_usage').doc(clientId);
   const snap = await ref.get().catch(() => null);
   const today = todayStr();
+  const guest = String(clientId).startsWith('guest_');
   let data = snap && snap.exists ? snap.data() : null;
-  if (!data || data.date !== today) data = { date: today, news: 0, picsart: 0, image: 0, chat: 0 };
-  const pro = await isProUser(uid, email);
-  const limit = (pro ? PRO_LIMITS : FREE_LIMITS)[kind] ?? 10;
+  if (!data || data.date !== today) data = { date: today, news: 0, picsart: 0, image: 0, chat: 0, youtube: 0 };
+  const pro = await isProUser(clientId, email);
+  const limits = guest ? GUEST_LIMITS : pro ? PRO_LIMITS : FREE_LIMITS;
+  const limit = limits[kind] ?? 10;
   const used = Number(data[kind] || 0);
-  if (used >= limit) return { ok: false, limit, remaining: 0, pro };
+  if (used >= limit) return { ok: false, limit, remaining: 0, pro, guest };
   data[kind] = used + 1;
   await ref.set(data, { merge: true });
-  return { ok: true, limit, remaining: limit - data[kind], pro };
+  return { ok: true, limit, remaining: limit - data[kind], pro, guest };
 }
 
 const metered = (kind) => async (req, res, next) => {
   try {
-    const chk = await checkAndBump(req.firebaseUser.uid, req.firebaseUser.email, kind);
+    const email = req.firebaseUser?.email;
+    const chk = await checkAndBump(req.clientId, email, kind);
     if (!chk.ok) {
       return res.status(429).json({
-        error: `Daily ${kind} limit reached (${chk.limit}). Upgrade to Pro for more.`,
+        error: chk.guest
+          ? `Guest ${kind} limit reached (${chk.limit} per day). Sign in for more.`
+          : `Daily ${kind} limit reached (${chk.limit}). Upgrade to Pro for more.`,
         limit: chk.limit,
         remaining: 0,
+        guest: chk.guest,
       });
     }
     res.set('X-Quota-Limit', String(chk.limit));
@@ -174,7 +190,7 @@ const fetchNewsdataNews = (q, key, political) =>
 // first provider with >= 3 articles. Typical cost: 1 paid call per question.
 router.post(
   '/news',
-  requireFirebaseAuth,
+  optionalFirebaseAuth,
   (req, res, next) => {
     const q = normalizeNewsQuery(req.body?.q);
     if (!q) return res.status(400).json({ error: 'Missing q.' });
@@ -237,7 +253,7 @@ async function pollGenaiResult(inferenceId, headers) {
 
 // POST /api/proxy/picsart
 // { api:'tools'|'genai', endpoint, imageBase64, mime, prompt?, segment?, maskBase64?, extra? }
-router.post('/picsart', requireFirebaseAuth, metered('picsart'), async (req, res) => {
+router.post('/picsart', optionalFirebaseAuth, metered('picsart'), async (req, res) => {
   const picsartKey = process.env.VITE_PICSART_API_KEY || process.env.REACT_APP_PICSART_API_KEY;
   if (!picsartKey) return res.status(500).json({ error: 'Picsart key not configured on server.' });
 
@@ -288,7 +304,7 @@ router.post('/picsart', requireFirebaseAuth, metered('picsart'), async (req, res
 });
 
 // POST /api/proxy/image { prompt }
-router.post('/image', requireFirebaseAuth, metered('image'), async (req, res) => {
+router.post('/image', optionalFirebaseAuth, metered('image'), async (req, res) => {
   const prompt = String(req.body?.prompt || '').trim();
   if (!prompt) return res.status(400).json({ error: 'Missing prompt.' });
   try {
@@ -328,8 +344,8 @@ const CHAT_MAX_TOKENS = 4096;
 
 // POST /api/proxy/chat { engine:'groq'|'research'|'openrouter'|'gemini', ... }
 // Metered chat completions — keys stay server-side, per-user daily quota.
-router.post('/chat', requireFirebaseAuth, metered('chat'), async (req, res) => {
-  const { engine, messages, history, prompt, image, model, temperature, max_tokens } = req.body || {};
+router.post('/chat', optionalFirebaseAuth, metered('chat'), async (req, res) => {
+  const { engine, messages, history, prompt, image, model, temperature, max_tokens, response_format } = req.body || {};
   const remaining = req.quota?.remaining ?? null;
 
   try {
@@ -358,6 +374,7 @@ router.post('/chat', requireFirebaseAuth, metered('chat'), async (req, res) => {
           messages,
           temperature: typeof temperature === 'number' ? temperature : 0.7,
           max_tokens: Math.min(Number(max_tokens) || CHAT_MAX_TOKENS, CHAT_MAX_TOKENS),
+          ...(response_format && typeof response_format === 'object' ? { response_format } : {}),
         }),
       });
       const data = await r.json().catch(() => ({}));
@@ -426,12 +443,48 @@ router.post('/chat', requireFirebaseAuth, metered('chat'), async (req, res) => {
   }
 });
 
+// POST /api/proxy/youtube { q } or { videoId }
+// Search / details stay server-side so the YouTube key never ships to browsers.
+router.post('/youtube', optionalFirebaseAuth, metered('youtube'), async (req, res) => {
+  const { q, videoId } = req.body || {};
+  const key = process.env.VITE_YOUTUBE_API_KEY;
+  if (!key) return res.status(500).json({ error: 'YouTube key not configured on server.' });
+
+  try {
+    const url = videoId
+      ? `https://www.googleapis.com/youtube/v3/videos?part=snippet&id=${encodeURIComponent(String(videoId))}&key=${key}`
+      : `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=1&q=${encodeURIComponent(String(q || ''))}&type=video&key=${key}`;
+
+    const r = await fetch(url);
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      return res.status(r.status).json({ error: data.error?.message || 'YouTube request failed.' });
+    }
+
+    const item = data.items?.[0];
+    if (!item) return res.json({ video: null, remaining: req.quota?.remaining ?? null });
+
+    const thumbs = item.snippet.thumbnails || {};
+    const video = {
+      id: videoId ? String(videoId) : item.id?.videoId,
+      title: item.snippet.title,
+      thumbnail: thumbs.medium?.url || thumbs.default?.url || '',
+      channelTitle: item.snippet.channelTitle,
+      description: item.snippet.description || '',
+    };
+
+    return res.json({ video, remaining: req.quota?.remaining ?? null });
+  } catch (error) {
+    console.error('YouTube proxy error:', error?.message || error);
+    return res.status(500).json({ error: 'YouTube request failed.' });
+  }
+});
+
 // GET /api/proxy/quota — current user's daily usage (for UI display)
 router.get('/quota', requireFirebaseAuth, async (req, res) => {
   try {
-    initFirebaseAdmin();
     const uid = req.firebaseUser.uid;
-    const db = getFirestore();
+    const db = getDb();
     const snap = await db.collection('api_usage').doc(uid).get().catch(() => null);
     const today = todayStr();
     const usage = snap && snap.exists && snap.data()?.date === today

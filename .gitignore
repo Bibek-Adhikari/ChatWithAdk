@@ -13,6 +13,9 @@ dist-ssr
 .venv
 *.local
 
+# Generated on-device model assets (npm run ondevice:assets)
+public/ondevice/
+
 # Agent skills (vendor docs — reinstall anytime via: npx skills add firebase/agent-skills)
 .agents/
 

@@ -1,5 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
-import { proxyPost } from './serverProxy';
+import { proxyPost, directFallbackAllowed, aiUnavailableError } from './serverProxy';
 
 // Enhanced environment retrieval
 const getEnv = (key: string): string => {
@@ -72,7 +72,12 @@ export async function generateTextResponse(
     }
   } catch (e: any) {
     if (e?.message?.includes('Daily chat limit')) throw e;
-    // unreachable server → direct fallback below
+    // unreachable server → direct fallback below (development only)
+  }
+
+  // Production builds are proxy-only: never expose provider keys to the browser.
+  if (!directFallbackAllowed()) {
+    throw aiUnavailableError('Tufan AI');
   }
 
   const ai = getAiInstance();

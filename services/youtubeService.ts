@@ -1,4 +1,6 @@
 
+import { proxyPost, directFallbackAllowed } from './serverProxy';
+
 const YOUTUBE_API_URL = 'https://www.googleapis.com/youtube/v3/search';
 
 export interface YouTubeVideo {
@@ -10,16 +12,18 @@ export interface YouTubeVideo {
 }
 
 export async function searchYouTubeVideo(query: string): Promise<YouTubeVideo | null> {
-  const apiKey = import.meta.env.VITE_YOUTUBE_API_KEY;
-
-  if (!apiKey) {
-    console.error('YouTube API Key not found.');
-    return null;
+  // Prefer the metered server proxy so the YouTube key never reaches the browser.
+  const proxied = await proxyPost<{ video: YouTubeVideo | null }>('/youtube', { q: query }).catch(() => null);
+  if (proxied) {
+    if (proxied.status === 200) return proxied.json?.video ?? null;
+    if (proxied.status === 429) return null;
   }
+
+  const apiKey = import.meta.env.VITE_YOUTUBE_API_KEY;
+  if (!directFallbackAllowed() || !apiKey) return null;
 
   try {
     const url = `${YOUTUBE_API_URL}?part=snippet&maxResults=1&q=${encodeURIComponent(query)}&type=video&key=${apiKey}`;
-    console.log('Fetching YouTube:', url.replace(apiKey, 'HIDDEN_KEY'));
     
     const response = await fetch(url);
     
@@ -31,7 +35,6 @@ export async function searchYouTubeVideo(query: string): Promise<YouTubeVideo | 
     }
 
     const data = await response.json();
-    console.log('YouTube Response Data:', data);
     const item = data.items?.[0];
 
     if (item) {
@@ -44,7 +47,6 @@ export async function searchYouTubeVideo(query: string): Promise<YouTubeVideo | 
       };
     }
 
-    console.warn('No items found in YouTube response');
     return null;
   } catch (error) {
     console.error('YouTube Search Exception:', error);
@@ -53,8 +55,14 @@ export async function searchYouTubeVideo(query: string): Promise<YouTubeVideo | 
 }
 
 export async function getVideoDetails(videoId: string): Promise<YouTubeVideo | null> {
+  const proxied = await proxyPost<{ video: YouTubeVideo | null }>('/youtube', { videoId }).catch(() => null);
+  if (proxied) {
+    if (proxied.status === 200) return proxied.json?.video ?? null;
+    if (proxied.status === 429) return null;
+  }
+
   const apiKey = import.meta.env.VITE_YOUTUBE_API_KEY;
-  if (!apiKey) return null;
+  if (!directFallbackAllowed() || !apiKey) return null;
 
   try {
     const url = `https://www.googleapis.com/youtube/v3/videos?part=snippet&id=${videoId}&key=${apiKey}`;

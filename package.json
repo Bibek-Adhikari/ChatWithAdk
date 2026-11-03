@@ -8,10 +8,13 @@
     "build": "vite build",
     "preview": "vite preview",
     "server": "nodemon server/index.js",
-    "start": "npm run server & npm run dev"
+    "start": "npm run server & npm run dev",
+    "ondevice:assets": "node scripts/fetch-ondevice-assets.mjs"
   },
   "dependencies": {
     "@google/genai": "^1.39.0",
+    "@imgly/background-removal": "^1.7.0",
+    "@mediapipe/tasks-vision": "^1.2.0",
     "@monaco-editor/react": "^4.7.0",
     "@stripe/react-stripe-js": "^5.6.0",
     "@stripe/stripe-js": "^8.8.0",
@@ -24,8 +27,12 @@
     "firebase": "^12.8.0",
     "firebase-admin": "^12.7.0",
     "framer-motion": "^12.34.3",
+    "jszip": "^3.10.2",
     "lucide-react": "^0.563.0",
     "mermaid": "^11.12.3",
+    "multer": "^2.5.0",
+    "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "^6.4.299",
     "pyodide": "^0.29.3",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
